@@ -17,6 +17,7 @@ Contents:
    - [Basins](#44-basins)
    - [Locator / orthographic basemap](#45-locator--orthographic-basemap)
    - [Decorations: scale bar and colourbar](#46-decorations-scale-bar-and-colourbar)
+   - [3D perspective relief (rayshader-style)](#47-3d-perspective-relief-rayshader-style)
 5. [Statistics (x–y) plots](#5-statistics-xy-plots)
    - [Chi profiles (individual + stacked)](#51-chi-profiles)
    - [Swath profiles](#52-swath-profiles)
@@ -344,6 +345,58 @@ from lsdviztools3.render.decorations import add_scalebar, add_colourbar
   the active CPT. `render_channels`/`render_points` call this for you when
   `colorbar=True`; call it directly if you build a CPT yourself.
 
+### 4.7 3D perspective relief (rayshader-style)
+
+A 3D perspective view of the DEM via PyGMT `grdview`: an illuminated terrain
+surface seen from a viewing azimuth/elevation, coloured by height (or by an
+optional drape raster). Projected DEMs get km x/y axes and an Elevation (m)
+z-axis.
+
+```python
+from lsdviztools3.render.relief3d import render_relief3d
+from lsdviztools3.render.base import save_figure
+from lsdviztools3.render.style import MapStyle
+
+style = MapStyle(cmap="geo", figure_size="17c", transparent=False)
+fig = render_relief3d(
+    "demo_output/eigg_glo30.tif",
+    coordinates="local",
+    azimuth=135, elevation=30,       # camera bearing + angle above horizon
+    vertical_exaggeration=2.0,       # true vertical:horizontal scale ratio
+    shade=True,                      # illuminate from the topography
+    style=style,
+)
+save_figure(fig, "demo_output/eigg_relief3d.png", style=style)
+```
+
+`render_relief3d(raster, *, coordinates="local", azimuth=135.0, elevation=30.0,
+vertical_exaggeration=None, zsize="4c", shade=True, drape=None, cmap=None,
+style=None, fig=None)`. `vertical_exaggeration` (projected CRS only) sets the
+true vertical:horizontal scale ratio and overrides `zsize`; pass `zsize` (the
+raw GMT plotted height of the elevation range) directly for explicit control.
+
+**Drape option.** Pass `drape=<raster>` to colour the surface by another raster
+(reprojected and resampled onto the DEM grid) instead of by elevation — e.g. a
+k_sn, gradient, or land-cover grid. `cmap` defaults to `style.cmap`.
+
+**Chi network on the 3D surface.** The workflow helper drapes the chi network,
+coloured by log₁₀ k_sn (with a colourbar), over a hillshaded 3D relief:
+
+```python
+from lsdviztools3.workflows import lsdtt3_chi_analysis, render_chi_ksn_relief3d
+
+out = lsdtt3_chi_analysis("demo_output/eigg_glo30.tif", "work/eigg", stem="eigg",
+                          source_threshold=300, n_largest_basins=5, m_over_n=0.45)
+render_chi_ksn_relief3d("work/eigg/eigg_remove_seas.tif", out["segment_lines"],
+                        "demo_output/eigg_ksn_relief3d.png",
+                        azimuth=135, elevation=30, vertical_exaggeration=2.0)
+```
+
+`render_chi_ksn_relief3d(dem_path, segment_lines, png_path, *,
+coordinates="local", azimuth=135.0, elevation=30.0, vertical_exaggeration=2.0,
+cmap="viridis", width=MapStyle.MAX_WIDTH, high_res=False)`. `segment_lines` is
+the `*_chi_fit_segment_lines_mn_*.fgb` from `lsdtt3_chi_analysis`.
+
 ---
 
 ## 5. Statistics (x–y) plots
@@ -435,6 +488,7 @@ paths (or a Figure/PNG path).
 | `lsdtt3_chi_analysis(dem, workdir, stem=…, source_threshold=…, n_largest_basins=5, m_over_n=0.45)` | preprocess → chi-analysis (fit), N largest complete basins; returns fit CSV/fgb paths |
 | `render_chi_profiles(outputs, out_dir)` | stacked chi plot + one profile per basin |
 | `render_chi_ksn_map(dem, segment_lines, png)` | hillshade + log₁₀ k_sn network + colourbar + scale bar |
+| `render_chi_ksn_relief3d(dem, segment_lines, png, *, vertical_exaggeration=2.0)` | 3D hillshaded relief with the chi network draped on the surface, coloured by log₁₀ k_sn + colourbar |
 | `lsdtt3_swath_profile(dem, workdir, stem=…, half_width_metres=…, bin_width_metres=…)` | preprocess → main-channel baseline → swath; returns swath CSV + rasters |
 | `render_swath_profile(outputs, png)` | swath envelope plot |
 
@@ -460,6 +514,6 @@ Shared **style flags** (all map CLIs): `--coordinates --cmap --projection
 --figure-size --line-width --line-color --font-annotation --font-label
 --font-title --dpi --high-res --opaque`.
 
-> Chi, swath, channel-by-k_sn, and point plots currently have **no dedicated
-> CLI** — use the Python API / workflows above. The `lsdviz3-lsdtt` command runs
-> the underlying lsdtt3 tools that produce their input.
+> Chi, swath, channel-by-k_sn, point, and 3D-relief plots currently have **no
+> dedicated CLI** — use the Python API / workflows above. The `lsdviz3-lsdtt`
+> command runs the underlying lsdtt3 tools that produce their input.

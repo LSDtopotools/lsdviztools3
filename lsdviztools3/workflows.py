@@ -307,6 +307,111 @@ def render_chi_ksn_map(
     return Path(png_path)
 
 
+def render_chi_ksn_relief3d(
+    dem_path: PathLike,
+    segment_lines: PathLike,
+    png_path: PathLike,
+    *,
+    coordinates: str = "local",
+    azimuth: float = 135.0,
+    elevation: float = 30.0,
+    vertical_exaggeration: float = 2.0,
+    cmap: str = "viridis",
+    width: str = MapStyle.MAX_WIDTH,
+    high_res: bool = False,
+):
+    """Drape the chi network (log10 k_sn) over a 3D perspective relief.
+
+    Draws a grey hillshaded 3D surface of the DEM (``render_relief3d``) and
+    overlays the fitted chi segments on the surface as 3D lines coloured by
+    log10 ``k_sn`` (their z is sampled from the DEM), with a colourbar. A
+    rayshader-style "draped network" view.
+
+    Args:
+        dem_path: Projected (UTM) DEM for the relief surface.
+        segment_lines: ``*_chi_fit_segment_lines_mn_*.fgb`` carrying ``k_sn``.
+        png_path: Output PNG path.
+        coordinates: Coordinate mode (``"local"`` UTM-km recommended).
+        azimuth: Viewing azimuth in degrees.
+        elevation: Viewing elevation angle in degrees.
+        vertical_exaggeration: True vertical:horizontal scale ratio.
+        cmap: CPT for the log10 k_sn colour scale.
+        width: Figure width.
+        high_res: Save at high-res DPI.
+
+    Returns:
+        ``Path`` to the written PNG.
+    """
+    import numpy as np
+    import pygmt
+    import xarray as xr
+
+    from .io.raster import get_crs, load_raster, to_coordinates, to_gmt_grid
+    from .render.base import (
+        auto_projection, gdf_to_display, grid_to_display, is_projected, save_figure,
+    )
+    from .render.channels import _iter_line_coords
+    from .render.decorations import add_colourbar
+    from .render.relief3d import _zsize_from_ve, render_relief3d
+
+    # Shared 3D framing (must match between the surface and the draped lines).
+    da = to_coordinates(load_raster(dem_path), coordinates)
+    crs = get_crs(da)
+    grid, extent = grid_to_display(to_gmt_grid(da), crs)
+    zmin = float(np.nanmin(grid.values))
+    zmax = float(np.nanmax(grid.values))
+    region = [extent[0], extent[1], extent[2], extent[3], zmin, zmax]
+    projection = auto_projection(extent, crs, width)
+    perspective = [azimuth, elevation]
+    if is_projected(crs):
+        zsize = _zsize_from_ve(vertical_exaggeration, extent, zmax - zmin, width, crs)
+    else:
+        zsize = "4c"
+
+    # Grey hillshaded relief surface.
+    fig = render_relief3d(
+        dem_path, coordinates=coordinates, azimuth=azimuth, elevation=elevation,
+        zsize=zsize, shade=True, cmap="gray",
+        style=MapStyle(cmap="gray", figure_size=width, transparent=False),
+    )
+
+    # Chi network in display (km) coords, with k_sn -> log10 colour scale.
+    gdf = gdf_to_display(to_vector_coordinates(load_vector(segment_lines), coordinates),
+                         crs)
+    ksn = gdf["k_sn"].to_numpy(dtype=float)
+    z = np.full_like(ksn, np.nan)
+    z[ksn > 0] = np.log10(ksn[ksn > 0])
+    finite = z[np.isfinite(z)]
+    if finite.size:
+        pygmt.makecpt(cmap=cmap, series=[float(finite.min()), float(finite.max())])
+
+        for geom, zval in zip(gdf.geometry, z):
+            if not np.isfinite(zval):
+                continue
+            for xs, ys in _iter_line_coords(geom):
+                # Sample DEM elevation at each line vertex (pointwise interp),
+                # lifting the segment slightly so it sits on the surface.
+                elev = grid.interp(
+                    x=xr.DataArray(xs, dims="pts"),
+                    y=xr.DataArray(ys, dims="pts"),
+                ).values
+                good = np.isfinite(elev)
+                if good.sum() < 2:
+                    continue
+                fig.plot3d(
+                    x=np.asarray(xs)[good], y=np.asarray(ys)[good],
+                    z=elev[good] + 0.01 * (zmax - zmin),
+                    zvalue=zval, cmap=True, pen="1.5p+z",
+                    region=region, projection=projection,
+                    perspective=perspective, zsize=zsize,
+                )
+        add_colourbar(fig, label="log@-10@-k@-sn@-")
+
+    save_figure(fig, png_path, style=MapStyle(figure_size=width, transparent=False),
+                high_res=high_res)
+    return Path(png_path)
+
+
 def lsdtt3_swath_profile(
     dem_path: PathLike,
     workdir: PathLike,

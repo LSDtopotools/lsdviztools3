@@ -167,7 +167,8 @@ of options for each (CLI flags and Python keyword arguments), see
 
 Maps (`render.*`, PyGMT): hillshade, channels (incl. colour-by log₁₀ k_sn),
 points (incl. size-by drainage area), basins, orthographic/aerial basemap,
-scale bar + colourbar. Stats (`stats.*`, matplotlib): chi profiles
+3D perspective relief (`render.relief3d`, `grdview`), scale bar + colourbar.
+Stats (`stats.*`, matplotlib): chi profiles
 (individual + stacked) and swath profiles. Plus IO (`io.*`), DEM download
 (`download.*`), the lsdtt3 driver (`driver.*`), and chained `workflows`.
 Deferred (raise `NotImplementedError`): `stats.plot_profile`,
