@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lsdviztools3"
+version = "0.1.0"
+description = "PyGMT-based visualisation tools for LSDTopoTools v3 (lsdtt3) output."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+    { name = "Simon M. Mudd", email = "simon.m.mudd@ed.ac.uk" },
+]
+keywords = ["geomorphology", "topography", "pygmt", "gmt", "lsdtopotools", "dem"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = [
+    # NOTE: `gmt` and `pygmt` are conda-only; install via conda-forge / pixi.
+    # They are listed here for completeness but pip cannot provide `gmt`.
+    "pygmt",
+    "rioxarray",
+    "xarray",
+    "geopandas",
+    "pandas",
+    "numpy",
+]
+
+[project.optional-dependencies]
+download = ["requests", "planetary-computer", "pystac-client"]
+stats = ["matplotlib"]
+test = ["pytest"]
+
+[project.scripts]
+lsdviz3-hillshade = "lsdviztools3.cli.plot_hillshade:main"
+lsdviz3-channels = "lsdviztools3.cli.plot_channels:main"
+lsdviz3-basins = "lsdviztools3.cli.plot_basins:main"
+lsdviz3-basemap = "lsdviztools3.cli.plot_basemap:main"
+lsdviz3-grabdem = "lsdviztools3.cli.grab_dem:main"
+lsdviz3-lsdtt = "lsdviztools3.cli.run_lsdtt:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["lsdviztools3"]

@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+
+# pixi / conda
+.pixi/
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Claude Code machine-local settings (a shared settings.json may be committed)
+.claude/settings.local.json
+
+# lsdtt3 echoed parameter files (regenerated each run)
+*_ingested_params.param
+
+# Secrets - never commit API keys
+*.key
+*api*key*.txt
+ot_api_key*.txt
+
+# Rendered output
+*.png
+*.pdf
+*.ps
+
+# Data (large rasters/vectors are not tracked)
+*.tif
+*.tiff
+*.bil
+*.hdr
+*.fgb
+*.gpkg
+
+# Downloaded/cached DEMs and demo output (never committed)
+tests/_cache/
+demo_output/

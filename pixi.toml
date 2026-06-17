@@ -1,0 +1,39 @@
+[workspace]
+name = "lsdviztools3"
+version = "0.1.0"
+description = "PyGMT-based visualisation tools for LSDTopoTools v3 (lsdtt3) output."
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
+
+[dependencies]
+python = "3.12.*"
+gmt = "*"
+pygmt = "*"
+rioxarray = "*"
+xarray = "*"
+geopandas = "*"
+pandas = "*"
+numpy = "*"
+pystac-client = "*"
+planetary-computer = "*"
+requests = "*"
+pytest = "*"
+pip = "*"
+proj = ">=9.7.1,<10"
+
+[pypi-dependencies]
+lsdviztools3 = { path = ".", editable = true }
+
+[tasks]
+install = "pip install -e ."
+test = "pytest"
+
+# Example tasks: download a small island DEM (keyless Planetary Computer) and
+# render shaded relief to PNG (headless). No data is committed.
+demo-eigg = "python examples/island_demo.py eigg"
+demo-rum = "python examples/island_demo.py rum"
+demo-fiji = "python examples/island_demo.py viti_levu"
+demo-solomon = "python examples/island_demo.py guadalcanal"
+
+# Full lsdtt3 -> render pipeline (needs lsdtt3 on LSDTT3_DIR / config / PATH).
+demo-lsdtt3 = "python examples/lsdtt3_workflow.py eigg"
