@@ -108,6 +108,9 @@ def display_frame(crs, style: MapStyle):
     """
     if style.frame is not None:
         return style.frame
+    if getattr(style, "clean", False):
+        # Plain border only: no annotations, ticks, or axis labels.
+        return ["wsen"]
     if is_projected(crs):
         return [
             "WSne",

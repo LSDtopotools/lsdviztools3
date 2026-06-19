@@ -70,20 +70,160 @@ def _ensure_overlay_figure(gdf_display, crs, style, fig):
     return fig
 
 
-def render_drape(base_raster, drape_raster, *, style: MapStyle, fig=None):
-    """Drape a coloured raster over a base (hillshade) raster.
+def render_drape(
+    base_raster,
+    drape_raster,
+    *,
+    coordinates: str = "local",
+    base_is_hillshade: bool = True,
+    log_color: bool = False,
+    transparency: float = 40.0,
+    cmap: Optional[str] = None,
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
+    percentile_min: Optional[float] = None,
+    percentile_max: Optional[float] = None,
+    out_of_bounds: str = "clamp",
+    colorbar: bool = False,
+    colorbar_label: Optional[str] = None,
+    colorbar_position: str = "bottom",
+    style: Optional[MapStyle] = None,
+    fig=None,
+):
+    """Drape a coloured, semi-transparent raster over a gray hillshade base.
+
+    Two layers: the base raster is drawn as a **gray** hillshade, then the drape
+    raster is drawn on top through ``cmap`` with ``transparency`` so the relief
+    texture shows through. The drape grid must share the base's CRS and grid (run
+    them through the same ``coordinates`` mode); reproject/resample beforehand if
+    they don't align.
 
     Args:
-        base_raster: Base grid (e.g. hillshade) — ``DataArray`` or path.
+        base_raster: Base grid — ``DataArray`` or path. With
+            ``base_is_hillshade=True`` (default) it is drawn flat through a gray
+            CPT (it is already a hillshade); with ``False`` it is treated as
+            elevation and given GMT hillshade illumination.
         drape_raster: Grid to colour-drape on top — ``DataArray`` or path.
-        style: Styling options (drape ``cmap`` etc.).
-        fig: Existing ``pygmt.Figure`` to compose onto, or ``None``.
+        coordinates: Coordinate mode for both layers (``"local"`` /
+            ``"geographic"`` / explicit CRS). See ``io.raster.to_coordinates``.
+        base_is_hillshade: Treat ``base_raster`` as a precomputed hillshade
+            (``True``) or as elevation to illuminate (``False``).
+        log_color: Colour the drape by ``log10`` of its values; values ``<= 0``
+            are clamped to NaN (drawn transparent), so the colourbar reads in
+            log10 units.
+        transparency: GMT layer transparency for the drape, 0 (opaque) to 100
+            (invisible). ~30–50 keeps both colour and terrain readable.
+        cmap: Colour map for the drape (defaults to ``style.cmap``). Accepts GMT
+            CPTs (``geo``, ``roma``, ``seis``, ...), matplotlib colour maps
+            (``cividis``, ``Spectral``, ...; converted on the fly), a single
+            named colour (``"black"``) for a solid mask, a ``colour,colour``
+            list, or a ``.cpt`` path. See ``render.colormaps.resolve_cmap``. The
+            base is always gray regardless of this.
+        vmin, vmax: Fixed lower/upper bounds for the colour scale. ``None`` uses
+            the data extent (or the percentile, if given). Override either side.
+        percentile_min, percentile_max: Derive the bound from a percentile of the
+            finite drape values (0–100), e.g. ``percentile_min=90`` starts the
+            scale at the 90th percentile. Ignored on a side where ``vmin``/
+            ``vmax`` is set.
+        out_of_bounds: How to treat values outside ``[vmin, vmax]``:
+            ``"clamp"`` (default) paints them the nearest end colour;
+            ``"clip"`` leaves them unrendered (transparent — the hillshade shows
+            through). Combine ``percentile_min`` + ``"clip"`` + a solid ``cmap``
+            to mask "values above the Nth percentile" in one colour.
+        colorbar: Add a colourbar for the drape CPT.
+        colorbar_label: Colourbar label (e.g. ``"log@-10@-curvature"``).
+        colorbar_position: Colourbar placement: ``"bottom"`` (default),
+            ``"top"``, ``"left"``, ``"right"``.
+        style: Styling options (drape ``cmap``, figure size, transparency of the
+            saved background, ...).
+        fig: Existing ``pygmt.Figure`` to compose onto, or ``None`` for a new one.
 
     Returns:
         The ``pygmt.Figure``.
     """
-    # TODO: grdimage base (shading) then grdimage drape with transparency/cmap.
-    raise NotImplementedError
+    import pygmt
+    from dataclasses import replace
+
+    from ..io.raster import (
+        get_crs as _get_crs,
+        load_raster as _load_raster,
+        to_coordinates as _raster_to_coordinates,
+        to_gmt_grid as _to_gmt_grid,
+    )
+    from .base import grid_to_display as _grid_to_display, set_grid_gtype as _set_gtype
+    from .colormaps import resolve_cmap
+    from .hillshade import render_hillshade
+
+    if out_of_bounds not in ("clamp", "clip"):
+        raise ValueError(
+            f"out_of_bounds must be 'clamp' or 'clip', got {out_of_bounds!r}."
+        )
+    style = style or MapStyle()
+
+    # 1) Gray hillshade base (flat if already a hillshade, else illuminated).
+    fig = render_hillshade(
+        base_raster,
+        coordinates=coordinates,
+        shade=not base_is_hillshade,
+        style=replace(style, cmap="gray"),
+        fig=fig,
+        decorate=False,  # clean scale bar (if any) is added on top, after the drape
+    )
+
+    # 2) Coloured, semi-transparent drape on top, through the same pipeline so it
+    #    lines up with the base.
+    grid = drape_raster if hasattr(drape_raster, "rio") else _load_raster(drape_raster)
+    grid = _to_gmt_grid(_raster_to_coordinates(grid, coordinates))
+    crs = _get_crs(grid)
+    grid, extent = _grid_to_display(grid, crs)
+
+    if log_color:
+        values = np.asarray(grid.values, dtype=float)
+        grid = grid.copy(data=np.log10(np.where(values > 0, values, np.nan)))
+    _set_gtype(grid, crs)
+
+    values = np.asarray(grid.values, dtype=float)
+    finite = values[np.isfinite(values)]
+    if finite.size == 0:
+        clamp = " (after clamping values <= 0 for log scale)" if log_color else ""
+        raise ValueError(f"Drape raster has no finite values to render{clamp}.")
+
+    # Colour-scale bounds: data extent, overridden by percentile, then by vmin/vmax.
+    lo, hi = float(finite.min()), float(finite.max())
+    if percentile_min is not None:
+        lo = float(np.percentile(finite, percentile_min))
+    if percentile_max is not None:
+        hi = float(np.percentile(finite, percentile_max))
+    if vmin is not None:
+        lo = float(vmin)
+    if vmax is not None:
+        hi = float(vmax)
+    if lo == hi:
+        hi = lo + 1.0
+
+    # "clip": drop out-of-range values so they render transparent (hillshade
+    # shows through). "clamp": keep them — GMT paints them the end colours.
+    if out_of_bounds == "clip":
+        grid = grid.where((grid >= lo) & (grid <= hi))
+
+    pygmt.makecpt(cmap=resolve_cmap(cmap or style.cmap), series=[lo, hi])
+
+    projection = style.projection or auto_projection(extent, crs, style.figure_size)
+    fig.grdimage(
+        grid=grid,
+        region=extent,
+        projection=projection,
+        cmap=True,
+        transparency=transparency,
+        nan_transparent=True,
+    )
+    if style.clean:
+        from .decorations import add_bar_scalebar
+
+        add_bar_scalebar(fig, extent, crs)
+    elif colorbar:
+        add_colourbar(fig, label=colorbar_label, placement=colorbar_position)
+    return fig
 
 
 def render_channels(

@@ -24,6 +24,7 @@ def render_hillshade(
     shade: bool = True,
     style: Optional[MapStyle] = None,
     fig=None,
+    decorate: bool = True,
 ):
     """Render an elevation grid as shaded relief, or a ready-made hillshade.
 
@@ -40,8 +41,13 @@ def render_hillshade(
             ``io.raster.to_coordinates``.
         shade: Apply hillshade illumination (elevation input) or not (the input
             is already a hillshade).
-        style: Styling options (colour map, figure size, projection/frame).
+        style: Styling options (colour map, figure size, projection/frame). With
+            ``style.clean`` the map furniture is stripped and a solid-rectangle
+            scale bar is drawn (see ``style.clean``).
         fig: Existing ``pygmt.Figure`` to draw onto, or ``None`` for a new one.
+        decorate: Add the "clean" scale bar when ``style.clean`` (default True).
+            Layering callers (e.g. ``render_drape``) set this ``False`` for the
+            base layer and add the scale bar themselves on top.
 
     Returns:
         The ``pygmt.Figure``.
@@ -80,5 +86,11 @@ def render_hillshade(
         shading=shade,
         nan_transparent=style.transparent,
     )
-    add_crs_label(fig, extent, crs)
+    if style.clean:
+        if decorate:
+            from .decorations import add_bar_scalebar
+
+            add_bar_scalebar(fig, extent, crs)
+    else:
+        add_crs_label(fig, extent, crs)
     return fig

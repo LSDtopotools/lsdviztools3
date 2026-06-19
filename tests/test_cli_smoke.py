@@ -11,6 +11,7 @@ from lsdviztools3.cli import (
     plot_basemap,
     plot_basins,
     plot_channels,
+    plot_drape,
     plot_hillshade,
     run_lsdtt,
 )
@@ -20,6 +21,7 @@ from lsdviztools3.cli import (
     "build_parser",
     [
         plot_hillshade.build_parser,
+        plot_drape.build_parser,
         plot_channels.build_parser,
         plot_basins.build_parser,
         plot_basemap.build_parser,
@@ -50,6 +52,37 @@ def test_plot_hillshade_main_smoke(monkeypatch):
     assert code == 0
     assert calls["render"][0] == "dem.tif"
     assert calls["save"][1] == "hill.png"
+
+
+def test_plot_drape_main_smoke(monkeypatch):
+    calls = {}
+
+    def fake_drape(base, drape, **kwargs):
+        calls["drape"] = (base, drape, kwargs)
+        return object()
+
+    def fake_save(fig, out_path, *, style, high_res=False):
+        calls["save"] = (fig, out_path, style, high_res)
+
+    monkeypatch.setattr(plot_drape, "render_drape", fake_drape)
+    monkeypatch.setattr(plot_drape._common, "save_figure", fake_save)
+
+    code = plot_drape.main([
+        "--base", "hs.tif",
+        "--drape", "curv.tif",
+        "--out", "drape.png",
+        "--cmap", "roma",
+        "--log",
+        "--transparency", "40",
+        "--colorbar",
+    ])
+    assert code == 0
+    assert calls["drape"][0] == "hs.tif"
+    assert calls["drape"][1] == "curv.tif"
+    assert calls["drape"][2]["log_color"] is True
+    assert calls["drape"][2]["transparency"] == 40.0
+    assert calls["drape"][2]["cmap"] == "roma"
+    assert calls["save"][1] == "drape.png"
 
 
 def test_plot_channels_main_smoke(monkeypatch):

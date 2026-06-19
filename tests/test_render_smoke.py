@@ -114,6 +114,130 @@ def test_render_channels_colour_by_writes_png(tmp_path):
     assert out.exists() and out.stat().st_size > 0
 
 
+def _synthetic_raster(values, crs="EPSG:32630"):
+    """Small projected DataArray with a CRS, for offline render tests."""
+    import xarray as xr
+    import rioxarray  # noqa: F401 - registers the .rio accessor
+
+    values = np.asarray(values, dtype=float)
+    ny, nx = values.shape
+    x = 400000.0 + np.arange(nx) * 30.0
+    y = 6300000.0 + np.arange(ny)[::-1] * 30.0
+    da = xr.DataArray(values, dims=("y", "x"), coords={"y": y, "x": x})
+    return da.rio.write_crs(crs)
+
+
+def test_render_drape_writes_png(tmp_path):
+    """render_drape layers a coloured drape over a gray hillshade base."""
+    base = _synthetic_raster(np.outer(np.linspace(0, 1, 8), np.linspace(0, 1, 8)))
+    drape = _synthetic_raster(np.outer(np.arange(1, 9), np.arange(1, 9)))
+    fig = channels.render_drape(
+        base, drape, coordinates="local", transparency=40,
+        cmap="roma", colorbar=True, colorbar_label="Curvature",
+        style=MapStyle(transparent=False),
+    )
+    out = tmp_path / "drape.png"
+    fig.savefig(out)
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_render_drape_log_clamps_nonpositive(tmp_path):
+    """log_color renders (zeros/negatives clamped to transparent, not crashing)."""
+    base = _synthetic_raster(np.ones((8, 8)))
+    # Mix of <=0 (clamped) and positive values.
+    drape = _synthetic_raster(np.linspace(-5, 100, 64).reshape(8, 8))
+    fig = channels.render_drape(
+        base, drape, coordinates="local", log_color=True,
+        style=MapStyle(transparent=False),
+    )
+    out = tmp_path / "drape_log.png"
+    fig.savefig(out)
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_render_drape_log_all_nonpositive_raises():
+    """All values <= 0 under log scale leaves nothing finite to render."""
+    base = _synthetic_raster(np.ones((4, 4)))
+    drape = _synthetic_raster(np.full((4, 4), -1.0))
+    with pytest.raises(ValueError, match="clamping values <= 0"):
+        channels.render_drape(base, drape, coordinates="local", log_color=True,
+                              style=MapStyle())
+
+
+def test_render_drape_bad_out_of_bounds_raises():
+    base = _synthetic_raster(np.ones((4, 4)))
+    drape = _synthetic_raster(np.arange(16.0).reshape(4, 4))
+    with pytest.raises(ValueError, match="clamp.*clip"):
+        channels.render_drape(base, drape, coordinates="local",
+                              out_of_bounds="nope", style=MapStyle())
+
+
+def test_render_drape_percentile_clip_threshold_mask(tmp_path):
+    """percentile_min + clip + solid colour = mask above the Nth percentile."""
+    base = _synthetic_raster(np.ones((16, 16)))
+    drape = _synthetic_raster(np.arange(256.0).reshape(16, 16))
+    fig = channels.render_drape(
+        base, drape, coordinates="local",
+        cmap="black", percentile_min=90, out_of_bounds="clip",
+        transparency=0, style=MapStyle(transparent=False),
+    )
+    out = tmp_path / "mask.png"
+    fig.savefig(out)
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_nice_bar_km_snaps_to_round_numbers():
+    """The clean scale bar picks the largest preferred length <= width/10."""
+    from lsdviztools3.render.decorations import _nice_bar_km
+
+    assert _nice_bar_km(8.5) == 8.0       # ~85 km map
+    assert _nice_bar_km(5.0) == 5.0
+    assert _nice_bar_km(1.2) == 1.0
+    assert _nice_bar_km(0.07) == 0.1      # below smallest -> smallest
+    assert _nice_bar_km(90.0) == 75.0
+
+
+def test_render_drape_clean_writes_png(tmp_path):
+    """clean drape: no colourbar/crs furniture, just map + solid scale bar."""
+    base = _synthetic_raster(np.outer(np.linspace(0, 1, 16), np.linspace(0, 1, 16)))
+    drape = _synthetic_raster(np.arange(256.0).reshape(16, 16))
+    fig = channels.render_drape(
+        base, drape, coordinates="local", cmap="Spectral",
+        colorbar=True,  # should be suppressed by clean
+        style=MapStyle(clean=True, transparent=False),
+    )
+    out = tmp_path / "clean_drape.png"
+    fig.savefig(out)
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_render_hillshade_clean_writes_png(tmp_path):
+    base = _synthetic_raster(np.outer(np.linspace(0, 1, 16), np.linspace(0, 1, 16)))
+    fig = hillshade.render_hillshade(
+        base, coordinates="local", shade=False,
+        style=MapStyle(cmap="gray", clean=True, transparent=False),
+    )
+    out = tmp_path / "clean_hs.png"
+    fig.savefig(out)
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_resolve_cmap_matplotlib_and_solid(tmp_path):
+    """Matplotlib-only names -> CPT file; GMT names pass through; colour -> CPT."""
+    from lsdviztools3.render.colormaps import resolve_cmap
+
+    # GMT-native names and colour-lists pass straight through.
+    assert resolve_cmap("geo") == "geo"
+    assert resolve_cmap("roma") == "roma"
+    assert resolve_cmap("red,blue") == "red,blue"
+    # Matplotlib-only map -> a generated .cpt file.
+    spectral = resolve_cmap("Spectral")
+    assert spectral.endswith(".cpt") and "Spectral" in spectral
+    # A single named colour -> a solid CPT file (for threshold masks).
+    black = resolve_cmap("black")
+    assert black.endswith(".cpt")
+
+
 @pytest.mark.network
 def test_render_hillshade_adds_crs_label_for_projected(monkeypatch, small_dem):
     calls = {"count": 0}

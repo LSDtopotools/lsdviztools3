@@ -82,6 +82,12 @@ def add_style_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Write an opaque background instead of transparent output.",
     )
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Clean map: no frame ticks/labels, no CRS title, no colourbar — "
+        "just the map with a small solid-rectangle scale bar.",
+    )
 
 
 def style_from_args(args: argparse.Namespace) -> MapStyle:
@@ -105,6 +111,7 @@ def style_from_args(args: argparse.Namespace) -> MapStyle:
         dpi=getattr(args, "dpi", MapStyle().dpi),
         high_res_dpi=MapStyle().high_res_dpi,
         transparent=not getattr(args, "opaque", False),
+        clean=getattr(args, "clean", False),
     )
 
 

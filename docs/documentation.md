@@ -18,6 +18,7 @@ Contents:
    - [Locator / orthographic basemap](#45-locator--orthographic-basemap)
    - [Decorations: scale bar and colourbar](#46-decorations-scale-bar-and-colourbar)
    - [3D perspective relief (rayshader-style)](#47-3d-perspective-relief-rayshader-style)
+   - [Draping a data raster over a precomputed hillshade](#48-draping-a-data-raster-over-a-precomputed-hillshade)
 5. [Statistics (x–y) plots](#5-statistics-xy-plots)
    - [Chi profiles (individual + stacked)](#51-chi-profiles)
    - [Swath profiles](#52-swath-profiles)
@@ -161,7 +162,15 @@ pixi run python -m lsdviztools3.cli.plot_hillshade \
 ```
 
 Flags: `--in`, `--out`, `--input-is-hillshade` (treat input as a precomputed
-hillshade), plus the shared style flags.
+hillshade), `--clean` (see below), plus the shared style flags.
+
+**Clean maps (`--clean` / `MapStyle(clean=True)`).** Strips all map furniture —
+frame ticks, tick marks, tick labels, axis labels, the CRS title, and the
+colourbar — leaving just the map inside a thin border, with a small **solid black
+rectangle scale bar** in the bottom-left. The bar length is the largest of a set
+of round numbers (0.1, 0.5, 1, 2, 3, 4, 5, 8, 10, 15, 20, 25, 40, 50, 75, 100,
+150, 200 km) that fits within 1/10 of the map width, labelled e.g. `8 km`. Works
+on `render_hillshade` and `render_drape` (and any map sharing `MapStyle`).
 
 **Python**
 
@@ -341,9 +350,12 @@ from lsdviztools3.render.decorations import add_scalebar, add_colourbar
   map width; `anchor` is `"BL"|"BR"|"TL"|"TR"`. `extent` is the display extent
   `[w, e, s, n]` (km for projected) — obtain it via `grid_to_display` (see
   [§4.2](#42-channel-network-coloured-by-log10-k_sn)).
-- `add_colourbar(fig, *, label=None, position=..., frame=None)` — colourbar for
-  the active CPT. `render_channels`/`render_points` call this for you when
-  `colorbar=True`; call it directly if you build a CPT yourself.
+- `add_colourbar(fig, *, label=None, placement="bottom", position=None, frame=None)`
+  — colourbar for the active CPT. `placement` is `"bottom"` (default), `"top"`,
+  `"left"`, or `"right"` (offsets are chosen to clear the axis labels); pass a
+  raw GMT `-D` string as `position` to override it. `render_channels`/
+  `render_points`/`render_drape` call this for you when `colorbar=True`; call it
+  directly if you build a CPT yourself.
 
 ### 4.7 3D perspective relief (rayshader-style)
 
@@ -396,6 +408,114 @@ render_chi_ksn_relief3d("work/eigg/eigg_remove_seas.tif", out["segment_lines"],
 coordinates="local", azimuth=135.0, elevation=30.0, vertical_exaggeration=2.0,
 cmap="viridis", width=MapStyle.MAX_WIDTH, high_res=False)`. `segment_lines` is
 the `*_chi_fit_segment_lines_mn_*.fgb` from `lsdtt3_chi_analysis`.
+
+### 4.8 Draping a data raster over a precomputed hillshade
+
+A common 2D figure is a continuous data raster — slope, curvature, a k_sn grid,
+relief, land cover — coloured by a CPT and laid *semi-transparently* over a
+grayscale hillshade, so the shaded-relief texture shows through the colour. This
+is the 2D analogue of the 3D `drape=` option ([§4.7](#47-3d-perspective-relief-rayshader-style)).
+
+`render_drape` builds the two layers for you: a **gray** hillshade base, then the
+data raster on top through your chosen `cmap` at a given `transparency`. The base
+is always gray (it provides texture, not colour); the drape carries the colour.
+
+Both rasters here are **precomputed and live in a different directory** from your
+working dir (e.g. an lsdtt3 output folder on another disk) — just point at them
+by path. They must share the same CRS and grid (lsdtt3 outputs for one DEM
+already do); reproject/resample the drape onto the hillshade grid first if not.
+
+**CLI**
+
+```bash
+pixi run python -m lsdviztools3.cli.plot_drape \
+  --base /data/lsdtt3_runs/eigg/eigg_hs.tif \
+  --drape /data/lsdtt3_runs/eigg/eigg_curvature.tif \
+  --out demo_output/eigg_curvature_drape.png \
+  --coordinates local --cmap roma --transparency 40 \
+  --colorbar --colorbar-label "Curvature" --opaque
+```
+
+Flags: `--base`, `--drape`, `--out`, `--shade-base` (treat `--base` as elevation
+to illuminate rather than as a precomputed hillshade), `--log` (colour by log10,
+clamping values <= 0 to transparent), `--transparency` (0 opaque … 100 invisible,
+default 40), `--vmin`/`--vmax` (fixed colour-scale bounds), `--percentile-min`/
+`--percentile-max` (bounds from data percentiles), `--out-of-bounds`
+(`clamp`/`clip`), `--colorbar`, `--colorbar-label`, `--colorbar-position`
+(`bottom`/`top`/`left`/`right`, default `bottom`), `--clean` (strip all furniture,
+draw just a solid scale bar — see [§4.1](#41-hillshade)), plus the shared style
+flags (`--cmap` sets the drape colour map; the base stays gray).
+
+**Colour maps.** `--cmap` accepts GMT's own maps (`geo`, `roma`, `batlow`,
+`viridis`, `seis`, …), **matplotlib colour maps** (`cividis`, `Spectral`, `RdBu`,
+`twilight`, … — converted to a GMT CPT on the fly; needs the `stats`/matplotlib
+extra), a single named colour (`black`, `red`) for a solid mask, a `colour,colour`
+list, or a `.cpt` path. Plain GMT cannot read matplotlib maps; this conversion is
+done by `render.colormaps.resolve_cmap`, which all drape calls route through.
+
+**Bounds and thresholding.** By default the colour scale spans the drape's data
+range. Narrow it with fixed `vmin`/`vmax`, or derive it from the data with
+`percentile_min`/`percentile_max` (0–100). `out_of_bounds` decides what happens
+to values outside the range: `"clamp"` (default) paints them the nearest end
+colour; `"clip"` leaves them **unrendered** (transparent — the hillshade shows
+through). Combining `percentile_min` + `clip` + a solid `cmap` gives a threshold
+mask, e.g. "paint everything above the 90th percentile black, show bare hillshade
+elsewhere":
+
+```bash
+pixi run python -m lsdviztools3.cli.plot_drape \
+  --base /data/rio_tucuy/rt_hillshade.tif \
+  --drape /data/rio_tucuy/rt_surf_direct_polyfit_curvedness.tif \
+  --out figures/curvedness_p90_black.png \
+  --coordinates local --cmap black \
+  --percentile-min 90 --out-of-bounds clip --transparency 0 --opaque
+```
+
+**Python**
+
+```python
+from pathlib import Path
+
+from lsdviztools3.render.channels import render_drape
+from lsdviztools3.render.base import save_figure
+from lsdviztools3.render.style import MapStyle
+
+data_dir = Path("/data/lsdtt3_runs/eigg")     # precomputed rasters elsewhere
+
+style = MapStyle(cmap="roma", figure_size="17c", transparent=False)
+fig = render_drape(
+    str(data_dir / "eigg_hs.tif"),            # gray hillshade base
+    str(data_dir / "eigg_curvature.tif"),     # coloured drape
+    coordinates="local",
+    base_is_hillshade=True,                   # base file is already a hillshade
+    transparency=40,                          # 0 opaque … 100 invisible
+    cmap="roma",                              # drape colour map
+    colorbar=True, colorbar_label="Curvature",
+    colorbar_position="bottom",               # or "top" / "left" / "right"
+    style=style,
+)
+save_figure(fig, "demo_output/eigg_curvature_drape.png", style=style)
+```
+
+`render_drape(base_raster, drape_raster, *, coordinates="local",
+base_is_hillshade=True, log_color=False, transparency=40.0, cmap=None,
+vmin=None, vmax=None, percentile_min=None, percentile_max=None,
+out_of_bounds="clamp", colorbar=False, colorbar_label=None,
+colorbar_position="bottom", style=None, fig=None)`.
+
+Notes:
+
+- `transparency` is the GMT blend of the colour layer over the hillshade. Lower
+  it for more colour, raise it for more terrain texture.
+- `log_color=True` (CLI `--log`) colours by `log10` of the drape values — useful
+  for k_sn or drainage-area grids — and **clamps values <= 0 to NaN** (drawn
+  transparent), so zeros/negatives never break the log. The colourbar then reads
+  in log10 units; label it accordingly (e.g. `"log@-10@-k@-sn@-"`).
+- For an *elevation* drape (colour by height with hillshade illumination from the
+  same DEM) you don't need this — a single
+  `render_hillshade(dem, shade=True, style=MapStyle(cmap="geo"))` colours by
+  height *and* illuminates. `render_drape` is for draping a **different** raster
+  than the one providing the shading.
 
 ---
 
@@ -503,7 +623,8 @@ interior (coastal) outlets upstream so island basins pass the completeness test
 
 | Command | Purpose | Key flags |
 |---------|---------|-----------|
-| `lsdviz3-hillshade` | shaded-relief PNG | `--in --out --input-is-hillshade` + style |
+| `lsdviz3-hillshade` | shaded-relief PNG | `--in --out --input-is-hillshade` + style (incl. `--clean`) |
+| `lsdviz3-drape` | gray hillshade + coloured semi-transparent drape | `--base --drape --out --shade-base --log --transparency --vmin --vmax --percentile-min --percentile-max --out-of-bounds --colorbar --colorbar-label --colorbar-position` + style (`--cmap` = drape; GMT or matplotlib maps, or a solid colour) |
 | `lsdviz3-channels` | hillshade + channel lines | `--base --lines --out` + style |
 | `lsdviz3-basins` | hillshade + basin polygons | `--base --basins --out --fill --transparency` + style |
 | `lsdviz3-basemap` | global/aerial locator | `--in --out --mode --elevation-km --view-limit-deg --look-bearing --look-vertical-angle --grid-spacing-deg --no-north-arrow` + style |

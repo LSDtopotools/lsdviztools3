@@ -154,6 +154,7 @@ absolute path:
 | Command            | Module                              |
 |--------------------|-------------------------------------|
 | `lsdviz3-hillshade`| `lsdviztools3.cli.plot_hillshade`   |
+| `lsdviz3-drape`    | `lsdviztools3.cli.plot_drape`       |
 | `lsdviz3-channels` | `lsdviztools3.cli.plot_channels`    |
 | `lsdviz3-basins`   | `lsdviztools3.cli.plot_basins`      |
 | `lsdviz3-basemap`  | `lsdviztools3.cli.plot_basemap`     |

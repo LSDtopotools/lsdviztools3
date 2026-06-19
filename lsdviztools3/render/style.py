@@ -35,6 +35,9 @@ class MapStyle:
         font_title: title font, e.g. the CRS label (default 11 pt).
         dpi / high_res_dpi: output resolution for low-/high-res saves.
         transparent: write a transparent background (with nodata transparent).
+        clean: strip all map furniture — frame ticks, tick labels, axis labels,
+            the CRS title, and the colourbar — leaving just the map with a small
+            solid-rectangle scale bar.
     """
 
     SINGLE_COLUMN: ClassVar[str] = "8.5c"
@@ -55,3 +58,4 @@ class MapStyle:
     dpi: int = 300
     high_res_dpi: int = 600
     transparent: bool = True
+    clean: bool = False

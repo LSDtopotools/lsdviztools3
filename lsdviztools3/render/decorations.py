@@ -22,11 +22,43 @@ _DEFERRED_MSG = (
 _CM_PER_PT = 0.0352778
 
 
+#: Bar dimensions (length/thickness) shared by all placements.
+_BAR_SIZE = "+w8c/0.35c"
+
+#: Named colourbar placements -> GMT ``-D`` position strings. Offsets are chosen
+#: to clear the map's axis labels (e.g. "Easting (km)") with a comfortable gap.
+#: Horizontal placements add ``+h``; vertical ones omit it.
+_PLACEMENTS = {
+    "bottom": "JBC+o0c/1.3c" + _BAR_SIZE + "+h",
+    "top": "JTC+o0c/1.4c" + _BAR_SIZE + "+h",
+    "right": "JMR+o1.4c/0c" + _BAR_SIZE,
+    "left": "JML+o1.4c/0c" + _BAR_SIZE,
+}
+#: Friendly aliases.
+_PLACEMENTS["below"] = _PLACEMENTS["bottom"]
+_PLACEMENTS["above"] = _PLACEMENTS["top"]
+
+
+def colourbar_position(placement: str) -> str:
+    """Resolve a named placement (or a raw GMT string) to a ``-D`` position.
+
+    Args:
+        placement: One of ``bottom``/``below``, ``top``/``above``, ``left``,
+            ``right``, or a raw GMT ``-D`` position string (used as-is if it
+            isn't a known name).
+
+    Returns:
+        A GMT ``-D`` position string.
+    """
+    return _PLACEMENTS.get(placement.lower(), placement)
+
+
 def add_colourbar(
     fig,
     *,
     label: Optional[str] = None,
-    position: str = "JBC+o0c/1.0c+w8c/0.35c+h",
+    placement: str = "bottom",
+    position: Optional[str] = None,
     frame=None,
     cmap=True,
 ):
@@ -34,21 +66,113 @@ def add_colourbar(
 
     Call after a ``makecpt`` (e.g. ``render_channels(color_by=...)`` leaves the
     log10 k_sn palette active). Default placement is a horizontal bar centred
-    below the map.
+    below the map, offset to clear the x-axis label.
 
     Args:
         fig: The ``pygmt.Figure``.
         label: Axis label (e.g. ``"log@-10@-k@-sn@-"``). Becomes ``x+l<label>``.
-        position: GMT ``-D`` position string.
+        placement: Named placement: ``"bottom"`` (default), ``"top"``,
+            ``"left"``, ``"right"`` (``"below"``/``"above"`` also accepted).
+            Ignored if ``position`` is given.
+        position: Explicit GMT ``-D`` position string; overrides ``placement``.
         frame: Explicit colourbar frame; overrides ``label`` when given.
         cmap: CPT to use (``True`` = the active one).
 
     Returns:
         The same ``pygmt.Figure``.
     """
+    if position is None:
+        position = colourbar_position(placement)
     if frame is None:
         frame = f'x+l{label}' if label else "af"
     fig.colorbar(cmap=cmap, position=position, frame=frame)
+    return fig
+
+
+#: Preferred scale-bar lengths in km (used by the "clean" solid scale bar).
+NICE_SCALEBAR_KM = (
+    0.1, 0.5, 1, 2, 3, 4, 5, 8, 10, 15, 20, 25, 40, 50, 75, 100, 150, 200,
+)
+
+
+def _nice_bar_km(max_km: float) -> float:
+    """Largest preferred length (NICE_SCALEBAR_KM) not exceeding ``max_km``."""
+    options = [v for v in NICE_SCALEBAR_KM if v <= max_km]
+    return float(options[-1]) if options else float(NICE_SCALEBAR_KM[0])
+
+
+def add_bar_scalebar(
+    fig,
+    extent,
+    crs,
+    *,
+    max_fraction: float = 0.1,
+    anchor: str = "BL",
+    color: str = "black",
+    font: str = "9p,Helvetica,black",
+    height_frac: float = 0.018,
+    pad_frac: float = 0.04,
+):
+    """Draw a small solid-rectangle scale bar (the "clean" map scale bar).
+
+    The bar length is the largest :data:`NICE_SCALEBAR_KM` value not exceeding
+    ``max_fraction`` of the map width (default 1/10), so it stays compact and
+    lands on a round number (e.g. 5 km, 25 km). A ``"<n> km"`` label sits above
+    the bar.
+
+    Args:
+        fig: The ``pygmt.Figure``.
+        extent: ``[west, east, south, north]`` in the map's display units (km for
+            projected, degrees for geographic).
+        crs: The map CRS (selects the km<->display-unit conversion).
+        max_fraction: Cap on bar length as a fraction of map width.
+        anchor: Corner: ``"BL"`` (default), ``"BR"``, ``"TL"``, ``"TR"``.
+        color: Fill/outline colour of the bar and label.
+        font: Label font.
+        height_frac: Bar height as a fraction of map height.
+        pad_frac: Inset from the chosen corner, as a fraction of map size.
+
+    Returns:
+        The same ``pygmt.Figure``.
+    """
+    west, east, south, north = extent
+    width = east - west
+    height = north - south
+
+    if is_projected(crs):
+        width_km = width  # display units are already km
+    else:
+        lat = 0.5 * (south + north)
+        width_km = 111.319 * width * math.cos(math.radians(lat))
+
+    bar_km = _nice_bar_km(width_km * max_fraction)
+    if is_projected(crs):
+        bar_len = bar_km
+    else:
+        lat = 0.5 * (south + north)
+        bar_len = bar_km / (111.319 * math.cos(math.radians(lat)))
+
+    px, py = pad_frac * width, pad_frac * height
+    bh = height_frac * height
+    x0 = west + px if "L" in anchor else east - px - bar_len
+    y0 = south + py if "B" in anchor else north - py - bh
+
+    fig.plot(
+        x=[x0, x0 + bar_len, x0 + bar_len, x0, x0],
+        y=[y0, y0, y0 + bh, y0 + bh, y0],
+        fill=color,
+        pen=f"0.5p,{color}",
+        no_clip=True,
+    )
+    label = f"{bar_km:g} km"
+    fig.text(
+        x=x0 + bar_len / 2.0,
+        y=y0 + bh + 0.012 * height,
+        text=label,
+        justify="CB",
+        font=font,
+        no_clip=True,
+    )
     return fig
 
 
