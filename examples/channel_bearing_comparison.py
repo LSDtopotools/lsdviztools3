@@ -76,9 +76,11 @@ def _paths(site: Site) -> dict:
         "fill": d / f"{s}_fill.tif",
         "hillshade": d / f"{s}_hillshade.tif",
         "links": d / f"{s}_channel_link_bearings.csv",
+        "net_lines": d / f"{s}_channel_network_lines.fgb",
         "angles": d / f"{s}_junction_angles.csv",
         "com": d / f"{s}_junction_com_bearings.csv",
         "hillshade_png": d / f"{site.key}_hillshade.png",
+        "channels_png": d / f"{site.key}_hillshade_channels.png",
     }
 
 
@@ -125,16 +127,36 @@ def compute_site(site: Site) -> dict:
         analysis.pop("only_complete_basins")
         run_lsdtt("lsdtt-channel-network-analysis", analysis,
                   directory=site_dir, lsdtt_dir=LSDTT_DIR)
+
+    print(f"[{site.key}] channel-extraction (network lines for plotting) ...")
+    run_lsdtt(
+        "lsdtt-channel-extraction",
+        dict(base, read_fname=f"{stem}_fill.tif", write_fname=stem,
+             raster_is_filled="true", source_pixels_threshold=SRC_THRESH,
+             write_channel_network_lines="true"),
+        directory=site_dir, lsdtt_dir=LSDTT_DIR,
+    )
     return p
 
 
 def render_site(site: Site, p: dict) -> None:
-    """Clean grey hillshade PNG from the precomputed hillshade raster."""
-    print(f"[{site.key}] rendering hillshade ...")
+    """Clean grey hillshade PNG, and a hillshade + channel-network overlay."""
+    from lsdviztools3.render.channels import render_channels
+
+    print(f"[{site.key}] rendering hillshade + channel network ...")
     style = MapStyle(cmap="gray", clean=True, transparent=False)
     fig = render_hillshade(str(p["hillshade"]), coordinates="local",
                            shade=False, style=style)
     save_figure(fig, p["hillshade_png"], style=style)
+
+    # Hillshade with the channel network drawn on top.
+    fig = render_hillshade(str(p["hillshade"]), coordinates="local",
+                           shade=False,
+                           style=MapStyle(cmap="gray", clean=True, transparent=False))
+    fig = render_channels(
+        str(p["net_lines"]), coordinates="local",
+        style=MapStyle(line_width="0.8p", line_color="dodgerblue4"), fig=fig)
+    save_figure(fig, p["channels_png"], style=MapStyle(transparent=False))
 
 
 def _savefig(fig, out: Path) -> None:
@@ -181,16 +203,43 @@ def plot_comparison(sites_paths) -> None:
     _savefig(fig, comp / "junction_angle_comparison.png")
     plt.close(fig)
 
-    # Channel-bearing distributions: circular comparison + Wasserstein.
+    # Channel-bearing distributions: circular comparison. The distance/p-value
+    # come from lsdtt3's authoritative `lsdtt-bearing-comparison` CLI; the plot
+    # only draws the empirical distributions and annotates those numbers.
     (site_a, pa), (site_b, pb) = sites_paths
     bearings_a = pd.read_csv(pa["links"])["bearing_deg"].to_numpy()
     bearings_b = pd.read_csv(pb["links"])["bearing_deg"].to_numpy()
+    annotation = _bearing_comparison_lsdtt(pa, pb, comp)
     fig, _ = plot_circular_comparison(
         bearings_a, bearings_b, labels=(site_a.name, site_b.name),
-        bin_width_deg=10, kind="both", rotation_invariant=False, annotate=True,
+        bin_width_deg=10, kind="both", annotation=annotation,
         title="Channel-bearing distributions")
     _savefig(fig, comp / "channel_bearing_circular_comparison.png")
     plt.close(fig)
+
+
+def _bearing_comparison_lsdtt(pa: dict, pb: dict, out_dir: Path):
+    """Run lsdtt3's lsdtt-bearing-comparison; return an annotation string.
+
+    Falls back to None (the plot then computes the distance in Python) if the
+    CLI is unavailable.
+    """
+    try:
+        run_lsdtt(
+            "lsdtt-bearing-comparison",
+            {"write_path": str(out_dir), "write_fname": "channel_bearings",
+             "bearing_file_1": str(pa["links"]), "bearing_file_2": str(pb["links"]),
+             "bearing_column": "bearing_deg"},
+            directory=out_dir, lsdtt_dir=LSDTT_DIR,
+        )
+        row = pd.read_csv(out_dir / "channel_bearings_bearing_comparison.csv").iloc[0]
+        return (f"circular $W_1$ = {row.circular_wasserstein_deg:.1f}$\\degree$\n"
+                f"Kuiper V = {row.kuiper_V:.3f}, p = {row.kuiper_p:.3g}\n"
+                f"(lsdtt-bearing-comparison)")
+    except Exception as exc:  # noqa: BLE001 - fall back to the Python mirror
+        print(f"  ! lsdtt-bearing-comparison unavailable ({exc}); "
+              f"using the Python circular stats")
+        return None
 
 
 def main(argv=None) -> int:

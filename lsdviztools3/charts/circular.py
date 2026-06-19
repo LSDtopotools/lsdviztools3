@@ -141,6 +141,7 @@ def plot_circular_comparison(
     kind: str = "both",
     period: float = 360.0,
     annotate: bool = True,
+    annotation: Optional[str] = None,
     rotation_invariant: bool = False,
     styles: Optional[dict] = None,
     title: Optional[str] = None,
@@ -156,6 +157,9 @@ def plot_circular_comparison(
         period: Circle period.
         annotate: Write the circular-Wasserstein distance (and Kuiper V/p) on the
             plot.
+        annotation: Use this text for the annotation instead of the
+            internally-computed one (e.g. values from lsdtt3's authoritative
+            ``lsdtt-bearing-comparison`` CLI). Implies ``annotate``.
         rotation_invariant: Passed to :func:`circular_wasserstein`.
         styles: Optional ``{label: matplotlib kwargs}`` for each series' line.
         title: Figure suptitle (``both``) or axes title.
@@ -171,11 +175,15 @@ def plot_circular_comparison(
     styles = styles or {}
 
     series = {labels[0]: _prep(a, period), labels[1]: _prep(b, period)}
-    dist = circular_wasserstein(a, b, period=period,
-                                rotation_invariant=rotation_invariant)
-    vstat, pval = kuiper_two_sample(a, b, period=period)
-    note = (f"circular $W_1$ = {dist:.1f}$\\degree$\n"
-            f"Kuiper V = {vstat:.3f}, p = {pval:.3g}")
+    if annotation is not None:
+        note = annotation
+        annotate = True
+    else:
+        dist = circular_wasserstein(a, b, period=period,
+                                    rotation_invariant=rotation_invariant)
+        vstat, pval = kuiper_two_sample(a, b, period=period)
+        note = (f"circular $W_1$ = {dist:.1f}$\\degree$\n"
+                f"Kuiper V = {vstat:.3f}, p = {pval:.3g}")
 
     def _draw_pdf(axp):
         edges = np.arange(0.0, period + bin_width_deg, bin_width_deg)
