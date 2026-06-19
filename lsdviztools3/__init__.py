@@ -2,7 +2,7 @@
 
 Version 1 provides a backend-agnostic IO/data core (``lsdviztools3.io``) and a
 thin PyGMT render layer (``lsdviztools3.render``). Statistics (x-y) plotting is
-deferred (see ``lsdviztools3.stats``).
+deferred (see ``lsdviztools3.charts``).
 """
 
 __version__ = "0.1.0"

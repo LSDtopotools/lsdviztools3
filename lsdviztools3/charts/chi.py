@@ -32,8 +32,8 @@ import numpy as np
 import pandas as pd
 
 _MPL_MSG = (
-    "Chi plotting needs matplotlib. Install the optional 'stats' extra, "
-    "e.g. `pip install lsdviztools3[stats]` or `pip install matplotlib`."
+    "Chi plotting needs matplotlib. Install the optional 'charts' extra, "
+    "e.g. `pip install lsdviztools3[charts]` or `pip install matplotlib`."
 )
 
 

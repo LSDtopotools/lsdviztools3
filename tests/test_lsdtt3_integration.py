@@ -80,7 +80,7 @@ def _run_and_check_chi(dem, workdir, *, stem, source_threshold, n_largest):
     from lsdviztools3.io.chi import (
         load_chi_fit, load_chi_points, load_chi_segment_lines,
     )
-    from lsdviztools3.stats import plot_chi_stacked
+    from lsdviztools3.charts import plot_chi_stacked
     from lsdviztools3.workflows import lsdtt3_chi_analysis, render_chi_profiles
 
     outputs = lsdtt3_chi_analysis(

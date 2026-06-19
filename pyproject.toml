@@ -34,7 +34,7 @@ dependencies = [
 
 [project.optional-dependencies]
 download = ["requests", "planetary-computer", "pystac-client"]
-stats = ["matplotlib"]
+charts = ["matplotlib"]
 test = ["pytest"]
 
 [project.scripts]

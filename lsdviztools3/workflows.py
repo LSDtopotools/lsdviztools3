@@ -211,7 +211,7 @@ def render_chi_profiles(
 
     Writes a stacked chi plot (all basins on one axis, offset and coloured by
     log10 k_sn) and one chi-elevation profile per basin. Uses the matplotlib
-    ``stats`` engine; requires the ``stats`` extra (matplotlib).
+    ``charts`` engine; requires the ``charts`` extra (matplotlib).
 
     Args:
         outputs: Dict from :func:`lsdtt3_chi_analysis` (needs ``fit_nodes`` and
@@ -226,7 +226,7 @@ def render_chi_profiles(
         List of written PNG Paths.
     """
     from .io.chi import load_chi_fit
-    from .stats import plot_chi_profile, plot_chi_stacked
+    from .charts import plot_chi_profile, plot_chi_stacked
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -506,7 +506,7 @@ def render_swath_profile(
     """Plot the swath envelope from :func:`lsdtt3_swath_profile` outputs.
 
     Writes a distance-vs-elevation swath plot (min/max envelope, IQR band,
-    median + mean). Uses the matplotlib ``stats`` engine.
+    median + mean). Uses the matplotlib ``charts`` engine.
 
     Args:
         outputs: Dict from :func:`lsdtt3_swath_profile` (needs ``swath_csv``).
@@ -518,7 +518,7 @@ def render_swath_profile(
         ``Path`` to the written PNG.
     """
     from .io.swath import load_swath
-    from .stats import plot_swath
+    from .charts import plot_swath
 
     df = load_swath(outputs["swath_csv"])
     fig, _ = plot_swath(df, value_label=value_label)

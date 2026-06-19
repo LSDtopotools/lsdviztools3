@@ -8,7 +8,7 @@ Welcome to `lsdviztools3`, the visualisation package for [`lsdtts3`](https://git
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 `lsdviztools3` is a ground-up rewrite of the `lsdviztools` plotting stack around
-[PyGMT](https://www.pygmt.org/) (maps) and matplotlib (x–y stats). It covers
+[PyGMT](https://www.pygmt.org/) (maps) and matplotlib (x–y charts). It covers
 hillshades, channel networks coloured by log₁₀ k_sn, points size-scaled by
 drainage area, basins, locator basemaps, chi profiles (individual + stacked),
 and swath profiles, and many other options.
@@ -200,10 +200,10 @@ of options for each (CLI flags and Python keyword arguments), see
 Maps (`render.*`, PyGMT): hillshade, channels (incl. colour-by log₁₀ k_sn),
 points (incl. size-by drainage area), basins, orthographic/aerial basemap,
 3D perspective relief (`render.relief3d`, `grdview`), scale bar + colourbar.
-Stats (`stats.*`, matplotlib): chi profiles
+Charts (`charts.*`, matplotlib): chi profiles
 (individual + stacked) and swath profiles. Plus IO (`io.*`), DEM download
 (`download.*`), the lsdtt3 driver (`driver.*`), and chained `workflows`.
-Deferred (raise `NotImplementedError`): `stats.plot_profile`,
-`stats.plot_slope_area`, `render.decorations.add_inset`. The matplotlib stats
-plots need the optional `stats` extra (`pip install lsdviztools3[stats]`); it is
+Deferred (raise `NotImplementedError`): `charts.plot_profile`,
+`charts.plot_slope_area`, `render.decorations.add_inset`. The matplotlib chart
+plots need the optional `charts` extra (`pip install lsdviztools3[charts]`); it is
 already in the pixi env.

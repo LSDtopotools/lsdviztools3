@@ -18,7 +18,7 @@ __all__ = [
 ]
 
 _DEFERRED_MSG = (
-    "This lsdviztools3.stats x-y plot is deferred to a later release and is "
+    "This lsdviztools3.charts x-y plot is deferred to a later release and is "
     "not implemented yet."
 )
 

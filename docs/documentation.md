@@ -19,7 +19,7 @@ Contents:
    - [Decorations: scale bar and colourbar](#46-decorations-scale-bar-and-colourbar)
    - [3D perspective relief (rayshader-style)](#47-3d-perspective-relief-rayshader-style)
    - [Draping a data raster over a precomputed hillshade](#48-draping-a-data-raster-over-a-precomputed-hillshade)
-5. [Statistics (x–y) plots](#5-statistics-xy-plots)
+5. [Charts (x–y plots)](#5-charts-xy-plots)
    - [Chi profiles (individual + stacked)](#51-chi-profiles)
    - [Swath profiles](#52-swath-profiles)
 6. [End-to-end workflows](#6-end-to-end-workflows)
@@ -467,7 +467,7 @@ flags (`--cmap` sets the drape colour map; the base stays gray).
 
 **Colour maps.** `--cmap` accepts GMT's own maps (`geo`, `roma`, `batlow`,
 `viridis`, `seis`, …), **matplotlib colour maps** (`cividis`, `Spectral`, `RdBu`,
-`twilight`, … — converted to a GMT CPT on the fly; needs the `stats`/matplotlib
+`twilight`, … — converted to a GMT CPT on the fly; needs the `charts`/matplotlib
 extra), a single named colour (`black`, `red`) for a solid mask, a `colour,colour`
 list, or a `.cpt` path. Plain GMT cannot read matplotlib maps; this conversion is
 done by `render.colormaps.resolve_cmap`, which all drape calls route through.
@@ -538,9 +538,9 @@ Notes:
 
 ---
 
-## 5. Statistics (x–y) plots
+## 5. Charts (x–y plots)
 
-These use **matplotlib** (the optional `stats` extra) and return
+These use **matplotlib** (the optional `charts` extra) and return
 `(fig, ax)`. They consume `lsdtt-chi-analysis` / `lsdtt-swath-profile` output.
 
 ### 5.1 Chi profiles
@@ -550,7 +550,7 @@ Two views: a single basin's chi–elevation profile, and the lsdviztools
 
 ```python
 from lsdviztools3.io.chi import load_chi_fit
-from lsdviztools3.stats import plot_chi_profile, plot_chi_stacked
+from lsdviztools3.charts import plot_chi_profile, plot_chi_stacked
 
 # Attach per-node k_sn from the segment table (one step):
 nodes = load_chi_fit("work/eigg/eigg_chi_fit_nodes_mn_0p450.csv",
@@ -605,7 +605,7 @@ Plot a swath table yourself:
 
 ```python
 from lsdviztools3.io.swath import load_swath
-from lsdviztools3.stats import plot_swath
+from lsdviztools3.charts import plot_swath
 df = load_swath("work/eigg_swath/eigg_swath_profile.csv")
 fig, ax = plot_swath(df, bands=((0, 100), (25, 75)), value_label="Elevation (m)")
 ```

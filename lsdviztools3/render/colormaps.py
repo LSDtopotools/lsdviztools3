@@ -94,7 +94,7 @@ def resolve_cmap(cmap: Optional[str]) -> Optional[str]:
     - ``None``, a comma-list (``"red,blue"``), or an existing file path: passed
       through unchanged.
     - A matplotlib colour-map name (e.g. ``"cividis"``, ``"Spectral"``): converted
-      to a GMT CPT file (matplotlib must be installed — the ``stats`` extra).
+      to a GMT CPT file (matplotlib must be installed — the ``charts`` extra).
     - A single named colour (e.g. ``"black"``, ``"red"``): expanded to a solid
       one-colour CPT — useful for threshold masks.
     - Anything else (``"geo"``, ``"roma"``, ``"seis"``, a GMT ``.cpt`` name):

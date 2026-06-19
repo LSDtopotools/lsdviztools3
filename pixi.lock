@@ -10656,6 +10656,6 @@ packages:
   - requests ; extra == 'download'
   - planetary-computer ; extra == 'download'
   - pystac-client ; extra == 'download'
-  - matplotlib ; extra == 'stats'
+  - matplotlib ; extra == 'charts'
   - pytest ; extra == 'test'
   requires_python: '>=3.11'
