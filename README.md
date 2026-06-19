@@ -1,14 +1,17 @@
 # lsdviztools3
 
+Welcome to `lsdviztools3`, the visualisation package for [`lsdtts3`](https://github.com/LSDtopotools/lsdtt3). `lsdtt3` is a software package for topographic analysis, landscape evolution modelling, and hydrology, which runs in a command line environment. Outputs from `lsdtt3` can be visualised in any GIS software package, but `lsdviztools3` has been built to 
+
+* Enable production of publication-ready figures from `lsdtt3` outputs. It can also work with other standard geographic outputs generated from alternative topographic analysis packages. 
+* Provide python based wrappers around `lsdtt3` command line programs so analysis can be run in python notebooks. 
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-PyGMT-based visualisation tools for LSDTopoTools v3 (`lsdtt3`) output.
-
-`lsdviztools3` is a ground-up rewrite of the plotting stack around
+`lsdviztools3` is a ground-up rewrite of the `lsdviztools` plotting stack around
 [PyGMT](https://www.pygmt.org/) (maps) and matplotlib (x–y stats). It covers
 hillshades, channel networks coloured by log₁₀ k_sn, points size-scaled by
 drainage area, basins, locator basemaps, chi profiles (individual + stacked),
-and swath profiles.
+and swath profiles, and many other options.
 
 **Full usage guide with examples for every plot (CLI and notebook):
 [`docs/documentation.md`](docs/documentation.md).** This README covers install
@@ -27,6 +30,34 @@ See [`DESIGN.md`](DESIGN.md) for the full design, the data-ingestion mapping,
 the secure key-handling spec, and the open questions for review.
 
 ## Install (pixi)
+
+We use the `pixi` package manager (it allows mixing of `conda/mamba` and `pip` python packages) for the installation environment. Testing of this package (i.e. pixi and the pixi environment) has been done in a WSL2 instance running Ubuntu 22.04. 
+
+### Installing pixi itself
+
+[pixi](https://pixi.sh) is a fast conda/PyPI package manager that handles the
+whole `lsdviztools3` environment for you. Install it once:
+
+```bash
+# Linux / macOS / WSL2
+curl -fsSL https://pixi.sh/install.sh | bash
+```
+
+```powershell
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm -useb https://pixi.sh/install.ps1 | iex"
+```
+
+Restart your shell (or `source ~/.bashrc`) and confirm it is on your `PATH`:
+
+```bash
+pixi --version
+```
+
+If `pixi: command not found`, see the [WSL2 notes](#wsl2-notes-ubuntu-2204-default)
+below for fixing your `PATH`.
+
+### Project setup
 
 ```bash
 # one-time install of project env + editable package
