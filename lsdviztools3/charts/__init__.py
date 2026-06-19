@@ -10,12 +10,17 @@ longitudinal profiles, slope-area) are still deferred and raise
 from __future__ import annotations
 
 from .chi import plot_chi_profile, plot_chi_stacked
+from .circular import (
+    circular_wasserstein, kuiper_two_sample, plot_circular_comparison,
+)
 from .distributions import plot_distributions
+from .rose import rose_diagram
 from .swath import plot_swath
 
 __all__ = [
     "plot_chi_profile", "plot_chi_stacked", "plot_swath",
-    "plot_distributions",
+    "plot_distributions", "rose_diagram",
+    "circular_wasserstein", "kuiper_two_sample", "plot_circular_comparison",
     "plot_profile", "plot_slope_area",
 ]
 
