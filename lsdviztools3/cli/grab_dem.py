@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 
+from . import _common
 from ..download.ot_scraper import download_dem
 
 
@@ -47,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="OpenTopography key file (ignored for planetary_computer).",
     )
+    _common.add_target_dir_arg(parser)
     return parser
 
 
@@ -65,6 +67,7 @@ def main(argv=None) -> int:
         source=args.source,
         dataset=args.dataset,
         out_file=args.out,
+        directory=args.directory,
         api_key_file=args.ot_api_key_file,
     )
     print(out)

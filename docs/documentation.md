@@ -77,6 +77,24 @@ from lsdviztools3.render.base import save_figure
 save_figure(fig, "out.png", style=style, high_res=False)  # 300 dpi (600 if high_res)
 ```
 
+### Target directory (`--dir`)
+
+Every CLI takes an optional `--dir DIR`: a single target directory for that run's
+outputs, **created (with parents) if it does not exist**. A relative `--out` is
+written inside it; an absolute `--out` is left where it points (but `DIR` is still
+created). For `lsdviz3-lsdtt`, `--dir` is also the default `--data-path` and
+`--cwd`, so lsdtt3 reads and writes there.
+
+```bash
+# download, run lsdtt3, and plot all into ./tucuy (made on first use)
+pixi run python -m lsdviztools3.cli.grab_dem --bbox -71.5 -13.6 -71.2 -13.3 \
+  --out rt.tif --dir tucuy
+pixi run python -m lsdviztools3.cli.plot_hillshade --in rt.tif --out hs.png --dir tucuy
+```
+
+In Python the same is `download_dem(..., directory="tucuy")`,
+`run_lsdtt(..., directory="tucuy")`, or `lsdviztools3.paths.resolve_in_dir`.
+
 ---
 
 ## 2. Getting data: download a DEM
@@ -93,8 +111,9 @@ pixi run python -m lsdviztools3.cli.grab_dem \
 ```
 
 `--bbox WEST SOUTH EAST NORTH` (WGS84 degrees), `--source
-{planetary_computer,opentopography}`, `--dataset` (optional), `--out`,
-`--ot-api-key-file` (OpenTopography only — the key is never a direct argument).
+{planetary_computer,opentopography}`, `--dataset` (optional), `--out`, `--dir`
+(target directory, see [§1](#1-conventions)), `--ot-api-key-file` (OpenTopography
+only — the key is never a direct argument).
 
 **Python**
 
@@ -628,12 +647,16 @@ interior (coastal) outlets upstream so island basins pass the completeness test
 | `lsdviz3-channels` | hillshade + channel lines | `--base --lines --out` + style |
 | `lsdviz3-basins` | hillshade + basin polygons | `--base --basins --out --fill --transparency` + style |
 | `lsdviz3-basemap` | global/aerial locator | `--in --out --mode --elevation-km --view-limit-deg --look-bearing --look-vertical-angle --grid-spacing-deg --no-north-arrow` + style |
-| `lsdviz3-grabdem` | download a DEM | `--bbox --source --dataset --out --ot-api-key-file` |
-| `lsdviz3-lsdtt` | run an lsdtt3 tool | `tool --params --data-path --lsdtt-dir --set-lsdtt-dir --cwd` |
+| `lsdviz3-grabdem` | download a DEM | `--bbox --source --dataset --out --dir --ot-api-key-file` |
+| `lsdviz3-lsdtt` | run an lsdtt3 tool | `tool --params --data-path --lsdtt-dir --set-lsdtt-dir --cwd --dir` |
 
 Shared **style flags** (all map CLIs): `--coordinates --cmap --projection
 --figure-size --line-width --line-color --font-annotation --font-label
---font-title --dpi --high-res --opaque`.
+--font-title --dpi --high-res --opaque --clean`.
+
+Every command also takes `--dir DIR` — a target directory created if absent, into
+which a relative `--out` (and, for `lsdviz3-lsdtt`, the lsdtt3 read/write/cwd)
+is placed. See [§1](#1-conventions).
 
 > Chi, swath, channel-by-k_sn, point, and 3D-relief plots currently have **no
 > dedicated CLI** — use the Python API / workflows above. The `lsdviz3-lsdtt`

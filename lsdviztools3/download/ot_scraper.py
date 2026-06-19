@@ -56,6 +56,7 @@ def download_dem(
     source: str = "planetary_computer",
     dataset: Optional[str] = None,
     out_file: PathLike,
+    directory: Optional[PathLike] = None,
     api_key_file: Optional[str] = None,
 ) -> Path:
     """Download a DEM for a bounding box.
@@ -66,13 +67,18 @@ def download_dem(
             ``"opentopography"``.
         dataset: Dataset/collection name. Defaults to ``"cop-dem-glo-30"`` for
             Planetary Computer and ``"COP30"`` for OpenTopography.
-        out_file: Output GeoTIFF path.
+        out_file: Output GeoTIFF path. Relative when ``directory`` is set.
+        directory: Target directory for the download (created if absent). A
+            relative ``out_file`` is written inside it.
         api_key_file: Optional OT key file (ignored for Planetary Computer).
             The key itself is resolved securely via ``apikey``.
 
     Returns:
         Path to the downloaded file.
     """
+    from ..paths import resolve_in_dir
+
+    out_file = resolve_in_dir(directory, out_file)
     west, south, east, north = _validate_bbox(bbox)
     if source == "planetary_computer":
         return _download_planetary_computer(

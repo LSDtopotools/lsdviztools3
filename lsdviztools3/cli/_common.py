@@ -11,6 +11,21 @@ import argparse
 from ..render.base import save_figure as _save_figure
 from ..render.style import MapStyle
 
+def add_target_dir_arg(parser: argparse.ArgumentParser) -> None:
+    """Add the shared ``--dir`` target-directory flag to a parser.
+
+    When set, outputs (and lsdtt3 read/write) are sent into this directory, which
+    is created if it does not exist. A relative ``--out`` is resolved inside it.
+    """
+    parser.add_argument(
+        "--dir",
+        dest="directory",
+        default=None,
+        help="Target directory for outputs (created if absent). A relative "
+        "--out is written inside it.",
+    )
+
+
 def add_style_args(parser: argparse.ArgumentParser) -> None:
     """Add shared styling flags (cmap, projection, figure size, ...) to a parser.
 
@@ -115,7 +130,14 @@ def style_from_args(args: argparse.Namespace) -> MapStyle:
     )
 
 
-def save_figure(fig, out_path: str, *, style: MapStyle, high_res: bool = False) -> None:
+def save_figure(
+    fig,
+    out_path: str,
+    *,
+    style: MapStyle,
+    high_res: bool = False,
+    directory=None,
+) -> None:
     """Save a figure to PNG (headless).
 
     Args:
@@ -123,5 +145,10 @@ def save_figure(fig, out_path: str, *, style: MapStyle, high_res: bool = False) 
         out_path: Output PNG path.
         style: Figure styling/output configuration.
         high_res: Use high-res output DPI.
+        directory: Optional target directory (created if absent). A relative
+            ``out_path`` is written inside it.
     """
+    from ..paths import resolve_in_dir
+
+    out_path = resolve_in_dir(directory, out_path)
     _save_figure(fig, out_path, style=style, high_res=high_res)

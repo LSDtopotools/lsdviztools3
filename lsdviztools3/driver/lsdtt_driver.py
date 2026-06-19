@@ -53,6 +53,7 @@ def run_lsdtt(
     tool: str,
     parameters: ParamSpec,
     *,
+    directory: Optional[PathLike] = None,
     data_path: Optional[PathLike] = None,
     lsdtt_dir: Optional[PathLike] = None,
     extra_args: Optional[Sequence[str]] = None,
@@ -66,12 +67,15 @@ def run_lsdtt(
         tool: lsdtt3 tool name, e.g. ``"lsdtt-channel-extraction"``.
         parameters: path to an existing parameter file, or a dict that is
             serialised to a temporary ``.driver`` file.
+        directory: target directory for the computation (created if absent). When
+            set it is the default for both ``data_path`` and ``cwd``, so lsdtt3
+            reads/writes there.
         data_path: the ``<path>`` argument lsdtt3 expects before the parameter
-            file. Defaults to the parameter file's own directory.
+            file. Defaults to ``directory``, else the parameter file's own dir.
         lsdtt_dir: directory containing the lsdtt-* executables; overrides the
             ``LSDTT3_DIR`` env var and config file for this call.
         extra_args: extra CLI flags appended to the invocation.
-        cwd: working directory for the subprocess.
+        cwd: working directory for the subprocess. Defaults to ``directory``.
         check: if True, raise ``CalledProcessError`` on a non-zero exit.
         clean_gdal_env: drop conda/pixi GDAL/PROJ env vars so the external
             lsdtt3 binary uses its own GDAL (avoids plugin/ABI clashes).
@@ -79,6 +83,15 @@ def run_lsdtt(
     Returns:
         The ``subprocess.CompletedProcess`` (stdout/stderr captured as text).
     """
+    if directory is not None:
+        from ..paths import ensure_dir
+
+        directory = ensure_dir(directory)
+        if data_path is None:
+            data_path = directory
+        if cwd is None:
+            cwd = directory
+
     exe = resolve_lsdtt_tool(tool, lsdtt_dir)
 
     tmp_to_clean: Optional[Path] = None

@@ -31,6 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Treat input as a pre-computed hillshade and disable extra shading.",
     )
     _common.add_style_args(parser)
+    _common.add_target_dir_arg(parser)
     return parser
 
 
@@ -51,7 +52,8 @@ def main(argv=None) -> int:
         shade=not args.input_is_hillshade,
         style=style,
     )
-    _common.save_figure(fig, args.out, style=style, high_res=args.high_res)
+    _common.save_figure(fig, args.out, style=style, high_res=args.high_res,
+                        directory=args.directory)
     return 0
 
 

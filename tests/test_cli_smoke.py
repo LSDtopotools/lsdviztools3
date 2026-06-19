@@ -42,7 +42,7 @@ def test_plot_hillshade_main_smoke(monkeypatch):
         calls["render"] = (path, kwargs)
         return object()
 
-    def fake_save(fig, out_path, *, style, high_res=False):
+    def fake_save(fig, out_path, *, style, high_res=False, directory=None):
         calls["save"] = (fig, out_path, style, high_res)
 
     monkeypatch.setattr(plot_hillshade, "render_hillshade", fake_render)
@@ -61,7 +61,7 @@ def test_plot_drape_main_smoke(monkeypatch):
         calls["drape"] = (base, drape, kwargs)
         return object()
 
-    def fake_save(fig, out_path, *, style, high_res=False):
+    def fake_save(fig, out_path, *, style, high_res=False, directory=None):
         calls["save"] = (fig, out_path, style, high_res)
 
     monkeypatch.setattr(plot_drape, "render_drape", fake_drape)
@@ -99,7 +99,7 @@ def test_plot_channels_main_smoke(monkeypatch):
         calls["channels"] = (path, kwargs)
         return kwargs["fig"]
 
-    def fake_save(fig, out_path, *, style, high_res=False):
+    def fake_save(fig, out_path, *, style, high_res=False, directory=None):
         calls["save"] = (fig, out_path, style, high_res)
 
     monkeypatch.setattr(plot_channels, "render_hillshade", fake_hillshade)
@@ -135,7 +135,7 @@ def test_plot_basins_main_smoke(monkeypatch):
         calls["basins"] = (path, kwargs)
         return kwargs["fig"]
 
-    def fake_save(fig, out_path, *, style, high_res=False):
+    def fake_save(fig, out_path, *, style, high_res=False, directory=None):
         calls["save"] = (fig, out_path, style, high_res)
 
     monkeypatch.setattr(plot_basins, "render_hillshade", fake_hillshade)
@@ -164,7 +164,7 @@ def test_plot_basemap_main_smoke(monkeypatch):
         calls["basemap"] = (path, kwargs)
         return object()
 
-    def fake_save(fig, out_path, *, style, high_res=False):
+    def fake_save(fig, out_path, *, style, high_res=False, directory=None):
         calls["save"] = (fig, out_path, style, high_res)
 
     monkeypatch.setattr(plot_basemap, "render_orthographic_basemap", fake_basemap)

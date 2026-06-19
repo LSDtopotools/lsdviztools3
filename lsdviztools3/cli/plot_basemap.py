@@ -58,6 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Disable north arrow.",
     )
     _common.add_style_args(parser)
+    _common.add_target_dir_arg(parser)
     return parser
 
 
@@ -76,7 +77,8 @@ def main(argv=None) -> int:
         grid_spacing_deg=args.grid_spacing_deg,
         show_north_arrow=not args.no_north_arrow,
     )
-    _common.save_figure(fig, args.out, style=style, high_res=args.high_res)
+    _common.save_figure(fig, args.out, style=style, high_res=args.high_res,
+                        directory=args.directory)
     return 0
 
 

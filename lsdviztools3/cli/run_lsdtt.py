@@ -40,6 +40,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Persist the lsdtt3 bin directory to the user config file and exit.",
     )
     parser.add_argument("--cwd", help="Working directory to run the tool in.")
+    parser.add_argument(
+        "--dir",
+        dest="directory",
+        default=None,
+        help="Target directory for the computation (created if absent). Used as "
+        "the default for --data-path and --cwd so lsdtt3 reads/writes there.",
+    )
     return parser
 
 
@@ -58,6 +65,7 @@ def main(argv=None) -> int:
     result = run_lsdtt(
         args.tool,
         args.params,
+        directory=args.directory,
         data_path=args.data_path,
         lsdtt_dir=args.lsdtt_dir,
         cwd=args.cwd,

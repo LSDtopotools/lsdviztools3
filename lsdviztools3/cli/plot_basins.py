@@ -37,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fill transparency percent (0 opaque, 100 invisible).",
     )
     _common.add_style_args(parser)
+    _common.add_target_dir_arg(parser)
     return parser
 
 
@@ -68,7 +69,8 @@ def main(argv=None) -> int:
         style=style,
         fig=fig,
     )
-    _common.save_figure(fig, args.out, style=style, high_res=args.high_res)
+    _common.save_figure(fig, args.out, style=style, high_res=args.high_res,
+                        directory=args.directory)
     return 0
 
 
