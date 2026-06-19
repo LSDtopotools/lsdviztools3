@@ -10,10 +10,12 @@ longitudinal profiles, slope-area) are still deferred and raise
 from __future__ import annotations
 
 from .chi import plot_chi_profile, plot_chi_stacked
+from .distributions import plot_distributions
 from .swath import plot_swath
 
 __all__ = [
     "plot_chi_profile", "plot_chi_stacked", "plot_swath",
+    "plot_distributions",
     "plot_profile", "plot_slope_area",
 ]
 
