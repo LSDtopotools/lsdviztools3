@@ -11,7 +11,8 @@ Welcome to `lsdviztools3`, the visualisation package for [`lsdtts3`](https://git
 [PyGMT](https://www.pygmt.org/) (maps) and matplotlib (x–y charts). It covers
 hillshades, channel networks coloured by log₁₀ k_sn, points size-scaled by
 drainage area, basins, locator basemaps, chi profiles (individual + stacked),
-and swath profiles, and many other options.
+swath profiles, rose diagrams and circular comparison of bearings, and many
+other options.
 
 **Full usage guide with examples for every plot (CLI and notebook):
 [`docs/documentation.md`](docs/documentation.md).** This README covers install
@@ -201,7 +202,10 @@ Maps (`render.*`, PyGMT): hillshade, channels (incl. colour-by log₁₀ k_sn),
 points (incl. size-by drainage area), basins, orthographic/aerial basemap,
 3D perspective relief (`render.relief3d`, `grdview`), scale bar + colourbar.
 Charts (`charts.*`, matplotlib): chi profiles
-(individual + stacked) and swath profiles. Plus IO (`io.*`), DEM download
+(individual + stacked), swath profiles, rose diagrams of bearings (North-up,
+grouped/stacked by e.g. stream order), and circular/directional comparison of
+two bearing samples (`circular_wasserstein`, `kuiper_two_sample`,
+`plot_circular_comparison`). Plus IO (`io.*`), DEM download
 (`download.*`), the lsdtt3 driver (`driver.*`), and chained `workflows`.
 Deferred (raise `NotImplementedError`): `charts.plot_profile`,
 `charts.plot_slope_area`, `render.decorations.add_inset`. The matplotlib chart

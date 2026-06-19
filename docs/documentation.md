@@ -22,6 +22,8 @@ Contents:
 5. [Charts (x–y plots)](#5-charts-xy-plots)
    - [Chi profiles (individual + stacked)](#51-chi-profiles)
    - [Swath profiles](#52-swath-profiles)
+   - [Rose diagrams (bearings)](#53-rose-diagrams-bearings)
+   - [Circular / directional comparison](#54-circular--directional-comparison)
 6. [End-to-end workflows](#6-end-to-end-workflows)
 7. [CLI reference](#7-cli-reference)
 
@@ -541,7 +543,9 @@ Notes:
 ## 5. Charts (x–y plots)
 
 These use **matplotlib** (the optional `charts` extra) and return
-`(fig, ax)`. They consume `lsdtt-chi-analysis` / `lsdtt-swath-profile` output.
+`(fig, ax)`. They consume `lsdtt-chi-analysis` / `lsdtt-swath-profile` output,
+and the bearing/junction outputs of `lsdtt-channel-network-analysis` (rose and
+circular-comparison charts, [§5.3](#53-rose-diagrams-bearings)–[§5.4](#54-circular--directional-comparison)).
 
 ### 5.1 Chi profiles
 
@@ -613,6 +617,96 @@ fig, ax = plot_swath(df, bands=((0, 100), (25, 75)), value_label="Elevation (m)"
 `plot_swath(df, *, bands=((0,100),(25,75)), show_median=True, show_mean=True,
 distance_units="km", value_label="Elevation (m)", color="tab:blue", ax=None)`.
 
+### 5.3 Rose diagrams (bearings)
+
+A polar **rose / wind-rose** of bearings in degrees, drawn North-up and
+clockwise (geographic convention). Pass either a flat `bearings` array for a
+single rose, or `groups={label: bearings}` to compare/stack sub-populations —
+e.g. channel-link bearings split by Strahler stream order.
+
+```python
+import pandas as pd
+from lsdviztools3.charts import rose_diagram
+
+links = pd.read_csv("work/site/site_channel_link_bearings.csv")
+
+# one rose per stream order, stacked
+groups = {f"order {o}": links.loc[links.stream_order == o, "bearing_deg"].to_numpy()
+          for o in sorted(links.stream_order.unique())}
+fig, ax = rose_diagram(groups=groups, bin_width_deg=10, mode="directional",
+                       stacked=True, title="Channel bearings by order")
+fig.savefig("demo_output/rose_bearings.png", dpi=300, bbox_inches="tight")
+
+# a single rose from a flat array
+fig, ax = rose_diagram(links["bearing_deg"].to_numpy(), bin_width_deg=15)
+```
+
+`rose_diagram(bearings=None, *, groups=None, bin_width_deg=15.0,
+mode="directional", density=False, stacked=True, cmap="viridis", colors=None,
+label_fmt="{}", title=None, ax=None)`. Returns `(fig, ax)` with `ax` a North-up,
+clockwise `PolarAxes`.
+
+- `mode="directional"` (default) keeps the full 360° (e.g. upstream→downstream
+  channel links, outlet→centroid bearings); `mode="axial"` folds bearings to
+  180° and mirrors each petal (orientation only, e.g. lineaments).
+- `stacked=True` stacks grouped petals (low order at the base); `stacked=False`
+  draws overlaid outline-only petals.
+- `density=True` normalises each group to fractions so shapes can be compared
+  regardless of sample size. `bin_width_deg` sets the angular bin width.
+- `cmap` samples per-group colours; pass `colors={label: colour}` to override.
+
+### 5.4 Circular / directional comparison
+
+Compare two angular samples (e.g. channel bearings from two DEMs) with circular
+statistics and an overlay plot. These mirror the authoritative C++ circular
+tests in lsdtt3's `lsdtt_statistical_tests`; for publication numbers, run
+lsdtt3's `lsdtt-bearing-comparison` CLI (see below) and feed its result into the
+plot.
+
+```python
+import pandas as pd
+from lsdviztools3.charts import (
+    circular_wasserstein, kuiper_two_sample, plot_circular_comparison,
+)
+
+a = pd.read_csv("work/site_a/site_a_channel_link_bearings.csv")["bearing_deg"].to_numpy()
+b = pd.read_csv("work/site_b/site_b_channel_link_bearings.csv")["bearing_deg"].to_numpy()
+
+dist = circular_wasserstein(a, b)        # degrees; a true metric, handles wraparound
+v, p = kuiper_two_sample(a, b)           # rotation-invariant circular KS analogue
+
+fig, (ax_pdf, ax_cdf) = plot_circular_comparison(
+    a, b, labels=("dendritic", "trellis"), bin_width_deg=10, kind="both")
+fig.savefig("demo_output/bearing_comparison.png", dpi=300, bbox_inches="tight")
+```
+
+- `circular_wasserstein(a, b, *, period=360.0, rotation_invariant=False,
+  rotation_step=1.0)` — circular 1-Wasserstein (earth-mover) distance in the
+  input units (degrees). A true metric, handles wraparound (359° ≈ 1°); 0 for
+  identical distributions, bounded by `period / 2`. No p-value. Use
+  `period=180` for axial data; `rotation_invariant=True` also minimises over a
+  rigid rotation of `b` (shape only, ignoring absolute orientation).
+- `kuiper_two_sample(a, b, *, period=360.0) -> (V, p_value)` — two-sample
+  Kuiper test, the rotation-invariant circular analogue of the
+  Kolmogorov–Smirnov test, giving significance (`V = D⁺ + D⁻`, small `p` ⇒ the
+  distributions differ).
+- `plot_circular_comparison(a, b, *, labels=("A","B"), bin_width_deg=15.0,
+  kind="both", period=360.0, annotate=True, annotation=None,
+  rotation_invariant=False, styles=None, title=None, ax=None)` — overlays the
+  two samples' PDFs and/or CDFs and annotates the distance. `kind="both"`
+  returns `(fig, (ax_pdf, ax_cdf))`; `kind="pdf"` or `"cdf"` returns
+  `(fig, ax)`. Pass `annotation=<str>` to inject externally-computed stats
+  (e.g. from lsdtt3's `lsdtt-bearing-comparison` CLI, called via the driver)
+  instead of the internally-computed Wasserstein/Kuiper note.
+
+These bearing analyses depend on a recent **lsdtt3** build (see
+[§3](#3-running-lsdtt3)): `lsdtt-channel-network-analysis` gained
+`only_complete_basins` / `minimum_basin_pixels` to restrict bearing/junction
+outputs to complete basins, and there is a new `lsdtt-bearing-comparison` CLI
+that computes the authoritative circular-Wasserstein distance and Kuiper test
+between two bearing files. See the worked example in
+[§6](#6-end-to-end-workflows).
+
 ---
 
 ## 6. End-to-end workflows
@@ -635,6 +729,35 @@ paths (or a Figure/PNG path).
 interior (coastal) outlets upstream so island basins pass the completeness test
 — see the lsdtt3 switches `n_largest_basins` and
 `n_pixels_move_outlet_upstream`.
+
+### Worked example: channel-bearing comparison (dendritic vs trellis)
+
+`examples/channel_bearing_comparison.py` is an end-to-end script that compares
+drainage-network *orientation* between two sites: an Allegheny Plateau tile
+(dendritic) and a Valley and Ridge tile (trellis, strongly structurally
+aligned). For each site it downloads a COP30 tile, fills and hillshades it
+(`lsdtt-raster-preprocessing` with `write_fill_raster` / `write_hillshade_raster`),
+then runs `lsdtt-channel-network-analysis` with `only_complete_basins=true` to
+get channel-link bearings, junction angles, and outlet→centroid bearings
+restricted to complete basins, plus `lsdtt-channel-extraction` for the plottable
+network lines. It then renders a clean hillshade + channel-network overlay per
+site and produces:
+
+- a rose of channel bearings by Strahler stream order ([§5.3](#53-rose-diagrams-bearings)),
+- a rose of outlet→centroid bearings,
+- a junction-angle distribution comparison (`plot_distributions`),
+- a circular channel-bearing comparison ([§5.4](#54-circular--directional-comparison))
+  annotated with lsdtt3's authoritative `lsdtt-bearing-comparison` result.
+
+Outputs land under `../data/channel_bearing_comparison` (one subdirectory per
+site, plus a `comparison/` dir). A recent lsdtt3 build is required for the
+`only_complete_basins` switch and the `lsdtt-bearing-comparison` CLI; the script
+falls back gracefully (Python circular stats) if either is missing.
+
+```bash
+pixi run python examples/channel_bearing_comparison.py
+pixi run python examples/channel_bearing_comparison.py --skip-compute  # replot only
+```
 
 ---
 
