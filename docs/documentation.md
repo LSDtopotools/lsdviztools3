@@ -759,6 +759,36 @@ pixi run python examples/channel_bearing_comparison.py
 pixi run python examples/channel_bearing_comparison.py --skip-compute  # replot only
 ```
 
+### Worked example: basin geometry vs a fault (Parkfield, San Andreas)
+
+`examples/fault_basin_deformation.py` compares basin geometry to a baseline
+structure — here the San Andreas Fault. It downloads a COP30 tile around
+Parkfield, fills + hillshades it, clips the global GEM active-fault database to
+the footprint, then extracts the basins whose channels cross the fault using
+`lsdtt-basin-extraction`'s `select_basins_from_line_crossings` mode. **All the
+analysis is done in lsdtt3 (C++)** — the tool reprojects the fault internally and
+writes `..._line_crossing_basins.csv` with each basin's outlet, centre of mass,
+area, outlet→COM bearing, local fault azimuth, side of the fault, and bearing
+relative to the fault-orthogonal. The script is purely orchestration + plotting:
+it reads that CSV (and the basin polygons) and draws
+
+- the hillshade with the fault trace, with basins, and with outlet→COM vectors;
+- a rose of outlet→COM bearings ([§5.3](#53-rose-diagrams-bearings)) with the
+  fault direction marked;
+- the deflection-from-fault-orthogonal distribution split by side of the fault
+  ([§5.4](#54-circular--directional-comparison) / `plot_distributions`), to test
+  for shear-related bending.
+
+This illustrates the intended division of labour: **lsdtt3 computes, lsdviztools3
+plots**. See the lsdtt3 basin-extraction reference for the
+`select_basins_from_line_crossings` parameters and the CSV columns. Outputs land
+under `../data/parkfield`.
+
+```bash
+pixi run python examples/fault_basin_deformation.py
+pixi run python examples/fault_basin_deformation.py --skip-compute  # replot only
+```
+
 ---
 
 ## 7. CLI reference
