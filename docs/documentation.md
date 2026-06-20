@@ -789,6 +789,25 @@ pixi run python examples/fault_basin_deformation.py
 pixi run python examples/fault_basin_deformation.py --skip-compute  # replot only
 ```
 
+### Worked example: basins draining into a single channel (Nujiang)
+
+`examples/single_channel_basins.py` demonstrates lsdtt3's
+`extract_basins_from_single_channel` mode. From an upstream point (and an optional
+downstream point) lsdtt-basin-extraction builds **one main channel** by following
+D8 — the upstream point is identified by D8 reachability and the channel is
+truncated at the common-downstream point where the downstream point's flow joins
+— then extracts the side-tributary basins draining into that channel (complete +
+minimum-size filtered). All analysis is in lsdtt3; the script preprocesses the
+DEM, runs the mode, and plots the single channel (blue) with the side basins
+(orange), outlets, and the input points. Test site: a stretch of the Nujiang
+(Nu/Salween) gorge; outputs under `../data/nujang`. See the lsdtt3 basin-extraction
+reference for the mode's parameters.
+
+```bash
+pixi run python examples/single_channel_basins.py
+pixi run python examples/single_channel_basins.py --skip-compute  # replot only
+```
+
 ---
 
 ## 7. CLI reference
