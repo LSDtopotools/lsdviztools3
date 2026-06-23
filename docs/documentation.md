@@ -19,6 +19,7 @@ Contents:
    - [Decorations: scale bar and colourbar](#46-decorations-scale-bar-and-colourbar)
    - [3D perspective relief (rayshader-style)](#47-3d-perspective-relief-rayshader-style)
    - [Draping a data raster over a precomputed hillshade](#48-draping-a-data-raster-over-a-precomputed-hillshade)
+   - [Overlaying several vector layers on a hillshade](#49-overlaying-several-vector-layers-on-a-hillshade)
 5. [Charts (x–y plots)](#5-charts-xy-plots)
    - [Chi profiles (individual + stacked)](#51-chi-profiles)
    - [Swath profiles](#52-swath-profiles)
@@ -537,6 +538,79 @@ Notes:
   `render_hillshade(dem, shade=True, style=MapStyle(cmap="geo"))` colours by
   height *and* illuminates. `render_drape` is for draping a **different** raster
   than the one providing the shading.
+
+### 4.9 Overlaying several vector layers on a hillshade
+
+`hillshade_with_vectors` is a general, dataset-agnostic map builder: give it a
+base raster and a list of vector layers (any mix of **lines, points and
+polygons**) and it draws a hillshade, overlays each layer in its own style,
+reprojects everything to a common CRS so the layers line up, and adds a legend.
+Use it for any overlay job — channel networks, faults, sample sites, roads,
+basins — not just the stream-burning case it grew out of. It dispatches each
+layer to `render_channels` / `render_points` / `render_basins` by geometry type,
+so plain GeoDataFrames draw reliably (a bare `fig.plot(data=gdf)` does **not**).
+
+Each layer is a dict. Only `path` is required; the rest fall back to sensible
+defaults:
+
+| key | applies to | default | meaning |
+|-----|-----------|---------|---------|
+| `path` | all | — | vector file path, or a `GeoDataFrame` |
+| `layer` | all | `None` | sub-layer name for multi-layer files (GeoPackage) |
+| `kind` | all | `"auto"` | `"auto"` (detect) / `"line"` / `"point"` / `"polygon"` |
+| `label` | all | — | legend entry (omit to leave the layer out of the legend) |
+| `color` | all | `"black"` | line / outline / point colour |
+| `width` | line, polygon outline | `"1p"` | pen width |
+| `size` | point | `"0.15c"` | symbol size |
+| `symbol` | point | `"c"` | GMT symbol code (`c` circle, `s` square, `t` triangle…) |
+| `fill` | point, polygon | `= color` | fill colour |
+| `transparency` | polygon | `60` | fill transparency (0 opaque … 100 invisible) |
+
+Layers draw in list order (first = bottom).
+
+**Python**
+
+```python
+from lsdviztools3.workflows import hillshade_with_vectors
+
+hillshade_with_vectors(
+    "dem.tif",
+    [
+        {"path": "basins.fgb", "kind": "polygon", "fill": "green",
+         "transparency": 60, "label": "basins"},
+        {"path": "channels.fgb", "kind": "line", "color": "red",
+         "width": "0.8p", "label": "channels"},
+        {"path": "sites.gpkg", "layer": "samples", "kind": "point",
+         "color": "yellow", "symbol": "c", "size": "0.18c", "label": "samples"},
+    ],
+    "overlay.png",
+    region=[xmin, xmax, ymin, ymax],   # optional zoom, in the raster's native CRS
+)
+```
+
+`hillshade_with_vectors(base_raster, layers, savepath=None, *,
+coordinates="local", shade=True, base_cmap=None, width=MapStyle.DOUBLE_COLUMN,
+region=None, clip_to_valid=False, legend=True, legend_position="JTR+jTR+o0.2c",
+high_res=False, fig=None)`.
+
+Notes:
+
+- `shade=True` treats `base_raster` as elevation (shaded relief); `shade=False`
+  draws a pre-computed hillshade. `base_cmap` defaults to `"gray"` for a neutral
+  backdrop that makes coloured overlays pop; pass `"geo"` for a coloured
+  elevation base.
+- `region=[xmin, xmax, ymin, ymax]` (in the raster's **native** CRS) zooms by
+  cropping the base raster to a temp GeoTIFF, so the hillshade extent and the
+  overlays all follow the zoom.
+- `clip_to_valid=True` clips overlays to the raster's finite-data footprint —
+  handy when a vector tile is larger than the DEM.
+- `savepath=None` returns the `pygmt.Figure` without writing (e.g. for
+  `fig.show()` in a notebook, or further layering via `fig=`).
+
+**Stream-burning preset.** `compare_stream_networks(base_raster, networks,
+png_path, **kwargs)` is a thin wrapper over `hillshade_with_vectors` for
+stream-burn QC — overlaying a flow-routed network against the vector layers that
+conditioned the DEM (it just defaults `clip_to_valid=True`).
 
 ---
 

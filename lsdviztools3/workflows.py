@@ -22,6 +22,7 @@ from .render.base import save_figure
 from .render.basins import render_basins
 from .render.channels import render_channels
 from .render.hillshade import render_hillshade
+from .render.points import render_points
 from .render.style import MapStyle
 
 PathLike = Union[str, Path]
@@ -587,3 +588,169 @@ def render_hillshade_channels_basin(
         high_res=high_res,
     )
     return fig
+
+
+def _infer_layer_kind(gdf) -> str:
+    """Guess a layer's geometry kind ("polygon"/"line"/"point") from a gdf."""
+    types = set(gdf.geom_type.dropna().unique())
+    if any("Polygon" in t for t in types):
+        return "polygon"
+    if any("Line" in t for t in types):
+        return "line"
+    return "point"
+
+
+def hillshade_with_vectors(
+    base_raster: PathLike,
+    layers: list,
+    savepath: Optional[PathLike] = None,
+    *,
+    coordinates: str = "local",
+    shade: bool = True,
+    base_cmap: Optional[str] = None,
+    width: str = MapStyle.DOUBLE_COLUMN,
+    region=None,
+    clip_to_valid: bool = False,
+    legend: bool = True,
+    legend_position: str = "JTR+jTR+o0.2c",
+    high_res: bool = False,
+    fig=None,
+):
+    """Render a hillshade and overlay any number of vector layers.
+
+    A general, dataset-agnostic map builder: give it a base raster and a list of
+    vector layers (lines, points, and/or polygons, in any mix) and it draws each
+    in its own style with an optional legend. Reusable for any dataset — channel
+    networks, faults, basins, sample sites, roads, etc.
+
+    Args:
+        base_raster: path to a DEM (``shade=True``; shaded relief) or a
+            pre-computed hillshade (``shade=False``).
+        layers: list of layer dicts. Recognised keys::
+
+                path        vector file path (or a GeoDataFrame)         [required]
+                layer       sub-layer name for multi-layer files (gpkg)  [optional]
+                kind        "auto" (default) | "line" | "point" | "polygon"
+                label       legend label (omit to skip in legend)
+                color       line/outline/point colour          (default "black")
+                width       line / outline width               (default "1p")
+                size        point symbol size                  (default "0.15c")
+                symbol      GMT point symbol code (c,s,t,...)   (default "c")
+                fill        polygon/point fill colour          (default = color)
+                transparency  polygon fill transparency %      (default 60)
+
+            Layers are drawn in list order (first = bottom).
+        savepath: write a PNG here (``None`` = don't save, just return the fig).
+        coordinates: ``"local"`` (native UTM, default) / ``"geographic"`` /
+            explicit CRS. Base and all layers are put in this CRS so they align.
+        shade: treat ``base_raster`` as elevation (True) or a ready hillshade.
+        base_cmap: colour map for the base (default ``"gray"`` for a clean
+            backdrop; pass e.g. ``"geo"`` for a coloured elevation base).
+        region: ``[xmin, xmax, ymin, ymax]`` in the raster's NATIVE CRS to zoom;
+            crops the base raster and everything follows.
+        clip_to_valid: clip overlays to the base raster's finite-data footprint
+            (useful when a vector tile is larger than the raster).
+        legend: draw a legend from the layers that have a ``label``.
+        legend_position: GMT legend position string.
+        fig: existing ``pygmt.Figure`` to compose onto (``None`` = new).
+
+    Returns:
+        The ``pygmt.Figure``.
+    """
+    # Optional zoom: crop the base raster (region in its NATIVE CRS) to a temp
+    # GeoTIFF so the hillshade region and the valid-data clip follow the zoom.
+    if region is not None:
+        import tempfile
+        xmin, xmax, ymin, ymax = region
+        da = load_raster(str(base_raster)).rio.clip_box(xmin, ymin, xmax, ymax)
+        tmp = tempfile.NamedTemporaryFile(suffix=".tif", delete=False)
+        da.rio.to_raster(tmp.name)
+        base_raster = tmp.name
+
+    valid_union = (
+        _valid_data_union(base_raster, coordinates) if clip_to_valid else None
+    )
+
+    fig = render_hillshade(
+        str(base_raster),
+        coordinates=coordinates,
+        shade=shade,
+        style=MapStyle(cmap=base_cmap or "gray", figure_size=width,
+                       transparent=False),
+        fig=fig,
+    )
+
+    legend_rows = []
+    for layer in layers:
+        src = layer["path"]
+        gdf = load_vector(str(src), layer.get("layer")) if not hasattr(
+            src, "geometry") else src
+        gdf = to_vector_coordinates(gdf, coordinates)
+        if valid_union is not None:
+            gdf = _clip_to_valid(gdf, valid_union)
+        if gdf.empty:
+            continue
+
+        kind = layer.get("kind", "auto")
+        if kind == "auto":
+            kind = _infer_layer_kind(gdf)
+
+        color = layer.get("color", "black")
+        lw = layer.get("width", "1p")
+        size = layer.get("size", "0.15c")
+        symbol = layer.get("symbol", "c")
+        fill = layer.get("fill", color)
+        transp = layer.get("transparency", 60)
+
+        if kind == "polygon":
+            fig = render_basins(
+                gdf, coordinates=coordinates, fill=fill, transparency=transp,
+                style=MapStyle(line_width=lw, line_color=color,
+                               figure_size=width), fig=fig)
+            legend_rows.append(
+                (layer.get("label"), f"S 0.3c s 0.35c {fill} {lw},{color}"))
+        elif kind == "point":
+            fig = render_points(
+                gdf, coordinates=coordinates,
+                style=MapStyle(point_size=size, line_color=color, cmap=base_cmap
+                               or "gray", figure_size=width), fig=fig)
+            legend_rows.append(
+                (layer.get("label"), f"S 0.3c {symbol} {size} {fill} {lw},{color}"))
+        else:  # line
+            fig = render_channels(
+                gdf, coordinates=coordinates,
+                style=MapStyle(line_width=lw, line_color=color,
+                               figure_size=width), fig=fig)
+            legend_rows.append((layer.get("label"), f"S 0.3c - 0.6c - {lw},{color}"))
+
+    rows = [f"{sym} 0.9c {lbl}" for lbl, sym in legend_rows if lbl]
+    if legend and rows:
+        import io as _io
+        fig.legend(spec=_io.StringIO("\n".join(rows)), position=legend_position,
+                   box="+gwhite@20+p0.5p,black")
+
+    if savepath is not None:
+        save_figure(fig, savepath,
+                    style=MapStyle(figure_size=width, transparent=False),
+                    high_res=high_res)
+    return fig
+
+
+def compare_stream_networks(
+    base_raster: PathLike,
+    networks: list,
+    png_path: PathLike,
+    *,
+    clip_to_valid: bool = True,
+    **kwargs,
+):
+    """Stream-burning preset over :func:`hillshade_with_vectors`.
+
+    Thin wrapper that overlays a set of stream networks on a hillshade to see
+    where the flow-routed network departs from the conditioning vectors. Each
+    entry of ``networks`` is a layer dict (see ``hillshade_with_vectors``);
+    ``clip_to_valid`` defaults True because vector tiles usually exceed the DEM.
+    """
+    return hillshade_with_vectors(
+        base_raster, networks, png_path,
+        clip_to_valid=clip_to_valid, **kwargs)

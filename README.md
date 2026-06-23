@@ -10,9 +10,10 @@ Welcome to `lsdviztools3`, the visualisation package for [`lsdtts3`](https://git
 `lsdviztools3` is a ground-up rewrite of the `lsdviztools` plotting stack around
 [PyGMT](https://www.pygmt.org/) (maps) and matplotlib (x–y charts). It covers
 hillshades, channel networks coloured by log₁₀ k_sn, points size-scaled by
-drainage area, basins, locator basemaps, chi profiles (individual + stacked),
-swath profiles, rose diagrams and circular comparison of bearings, and many
-other options.
+drainage area, basins, locator basemaps, general multi-layer vector overlays on
+a hillshade (lines/points/polygons), chi profiles (individual + stacked), swath
+profiles, rose diagrams and circular comparison of bearings, and many other
+options.
 
 **Full usage guide with examples for every plot (CLI and notebook):
 [`docs/documentation.md`](docs/documentation.md).** This README covers install
