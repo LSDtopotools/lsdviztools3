@@ -1,9 +1,10 @@
 # lsdviztools3 — Usage documentation
 
-Worked examples for every plot type, with the options each one accepts, shown
-both as **command-line** invocations (headless PNG output) and as **Python /
+Welcome to lsdviztools3 documention. `lsdviztools3` is an update to `lsdviztools`, and is designed to produce plots from the outputs of `lsdtt3`, a topographic analysis software package. 
+
+This documentation includes worked examples for different plot types, with the options each one accepts, shown both as **command-line** invocations (headless PNG output) and as **Python /
 notebook** code. For installation and a one-line quick start, see the
-[README](../README.md). For the architecture, see [DESIGN.md](../DESIGN.md).
+[README](../README.md). 
 
 Contents:
 
@@ -72,6 +73,8 @@ style = MapStyle(
 The CLIs expose these as flags: `--cmap`, `--figure-size`, `--line-width`,
 `--line-color`, `--projection`, `--font-annotation`, `--font-label`,
 `--font-title`, `--dpi`, `--high-res`, `--opaque`, `--coordinates`.
+
+Colourmaps can use both `matplotlib` and `pyGMT` colourmaps.  
 
 ### Saving
 
@@ -611,6 +614,30 @@ Notes:
 png_path, **kwargs)` is a thin wrapper over `hillshade_with_vectors` for
 stream-burn QC — overlaying a flow-routed network against the vector layers that
 conditioned the DEM (it just defaults `clip_to_valid=True`).
+
+**Segment-classification preset.** `plot_segment_classification(base_raster,
+segments, png_path=None, *, status_field="status", followed_value=0,
+burned_gaps=None, flow_traces=None, extra_layers=None, clip_to_valid=True,
+**kwargs)` maps the `lsdtt-stream-burning` trace-divergence burn
+(`snap_to_accumulation` mode) segment by segment. It splits the `_segments.fgb`
+diagnostic layer (written when `write_burn_diagnostics: true`) on its `status`
+field and draws each fixed-length vector segment by how the burn treated it —
+**followed** (`status == 0`; the D8 trace already carried the channel) vs
+**unresolved** (still diverging after every pass, the cases to investigate) —
+optionally with the burned trenches (`_burned_gaps.fgb`) and sampled D8 traces
+(`_flow_traces.fgb`) on top. Forwards `region=` etc. to `hillshade_with_vectors`,
+so the same call zooms to a road crossing. This is the most useful QC view for
+the accurate-vector (VectorMap Local) burn.
+
+```python
+from lsdviztools3.workflows import plot_segment_classification
+
+plot_segment_classification(
+    "sd_acc_burned.tif", "sd_acc_segments.fgb", "qc_segments.png",
+    burned_gaps="sd_acc_burned_gaps.fgb",
+    flow_traces="sd_acc_flow_traces.fgb",
+    region=[171600, 172400, 634200, 634800])  # native-CRS zoom
+```
 
 ---
 

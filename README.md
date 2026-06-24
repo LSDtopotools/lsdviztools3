@@ -61,6 +61,8 @@ below for fixing your `PATH`.
 
 ### Project setup
 
+Once you have cloned `lsdviztools3`, navigate into that directory and run:
+
 ```bash
 # one-time install of project env + editable package
 pixi install
@@ -74,6 +76,8 @@ pixi run demo-eigg
 ```
 
 GMT and PyGMT are conda-only; use the provided `pixi.toml` (conda-forge).
+
+Users will be pleased to know that this will work on a server even if you do not have install permissions: `pixi` only requires you to have a writable file system. 
 
 ## lsdtt3 requirement for driver/workflows
 

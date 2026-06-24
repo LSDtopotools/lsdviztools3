@@ -754,3 +754,85 @@ def compare_stream_networks(
     return hillshade_with_vectors(
         base_raster, networks, png_path,
         clip_to_valid=clip_to_valid, **kwargs)
+
+
+def plot_segment_classification(
+    base_raster: PathLike,
+    segments,
+    png_path: Optional[PathLike] = None,
+    *,
+    status_field: str = "status",
+    followed_value=0,
+    burned_gaps=None,
+    flow_traces=None,
+    extra_layers=None,
+    followed_color="dodgerblue4",
+    unresolved_color="red",
+    gap_color="orange",
+    trace_color="green",
+    clip_to_valid: bool = True,
+    **kwargs,
+):
+    """Map the trace-divergence burn segment-by-segment over a hillshade.
+
+    The single most useful QC plot for ``lsdtt-stream-burning``'s
+    ``snap_to_accumulation`` mode. It colours each fixed-length vector segment
+    by how the burn treated it, so you can see at a glance where the LiDAR
+    already carried the channel and where the burn could not fix the flow:
+
+    - **followed** (``status == followed_value``): the D8 trace stayed within
+      tolerance of the vector; nothing was burned.
+    - **unresolved** (otherwise): the trace still diverged after all passes —
+      the cases to investigate.
+
+    Args:
+        base_raster: DEM (shaded relief) or hillshade for the backdrop.
+        segments: path to (or GeoDataFrame of) the ``_segments.fgb`` written by
+            ``write_burn_diagnostics``; must carry ``status_field``.
+        png_path: output PNG (``None`` = return the figure only).
+        status_field: attribute holding the per-segment status code.
+        followed_value: status value that means "followed".
+        burned_gaps: optional ``_burned_gaps.fgb`` (the carved trenches) to draw.
+        flow_traces: optional ``_flow_traces.fgb`` (sampled D8 traces) to draw.
+        extra_layers: optional list of additional ``hillshade_with_vectors``
+            layer dicts drawn on top (e.g. the source vector network).
+        followed_color, unresolved_color, gap_color, trace_color: line colours.
+        clip_to_valid: clip overlays to the raster footprint (default True).
+        **kwargs: forwarded to :func:`hillshade_with_vectors` (e.g. ``region=``).
+
+    Returns:
+        The ``pygmt.Figure``.
+    """
+    gdf = load_vector(str(segments)) if not hasattr(segments, "geometry") \
+        else segments
+    if status_field not in gdf.columns:
+        raise KeyError(
+            f"segments layer has no '{status_field}' field; columns: "
+            f"{list(gdf.columns)}")
+
+    followed = gdf[gdf[status_field] == followed_value]
+    unresolved = gdf[gdf[status_field] != followed_value]
+
+    layers = []
+    if flow_traces is not None:
+        layers.append({"path": flow_traces, "kind": "line",
+                       "color": trace_color, "width": "0.6p",
+                       "label": "D8 flow trace"})
+    if not followed.empty:
+        layers.append({"path": followed, "kind": "line",
+                       "color": followed_color, "width": "1.2p",
+                       "label": "followed (LiDAR carries it)"})
+    if burned_gaps is not None:
+        layers.append({"path": burned_gaps, "kind": "line",
+                       "color": gap_color, "width": "2p",
+                       "label": "burned trench"})
+    if not unresolved.empty:
+        layers.append({"path": unresolved, "kind": "line",
+                       "color": unresolved_color, "width": "2p",
+                       "label": "unresolved (still diverging)"})
+    if extra_layers:
+        layers.extend(extra_layers)
+
+    return hillshade_with_vectors(
+        base_raster, layers, png_path,
+        clip_to_valid=clip_to_valid, **kwargs)
