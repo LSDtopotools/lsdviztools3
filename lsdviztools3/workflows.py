@@ -836,3 +836,237 @@ def plot_segment_classification(
     return hillshade_with_vectors(
         base_raster, layers, png_path,
         clip_to_valid=clip_to_valid, **kwargs)
+
+
+def plot_algoviz(
+    base_raster: PathLike,
+    d8_traces,
+    source_path,
+    png_path: Optional[PathLike] = None,
+    *,
+    burns=None,
+    pass_filter: Optional[int] = 0,
+    outcome_field: str = "outcome",
+    zoom_pad_m: float = 150.0,
+    label_iterations: bool = True,
+    clip_to_valid: bool = False,
+    **kwargs,
+):
+    """Replay the snap_to_accumulation source-path burn for one channel.
+
+    Visualises the per-iteration behaviour of ``burn_vectormap_source_paths``
+    (the ``_algoviz_jXX_*`` layers): the vector source path, the D8 flow traces
+    used to test divergence (coloured by outcome), and the segments that were
+    burned. This is the diagnostic for "why does this channel fail downstream":
+    you can see segment by segment where the D8 follows the vector, where it
+    strays (and to what), and where a burn was (or was not) applied.
+
+    Args:
+        base_raster: DEM (shaded relief) or hillshade for the backdrop.
+        d8_traces: path to (or GeoDataFrame of) ``_algoviz_jXX_d8.fgb``. Must
+            carry ``pass``, ``iteration`` and ``outcome`` fields.
+        source_path: path to ``_algoviz_jXX_source.fgb`` (the vector source line).
+        png_path: output PNG (``None`` = return the figure only).
+        burns: optional ``_algoviz_jXX_burns.fgb`` (carved segments).
+        pass_filter: keep only this re-flow ``pass`` (``None`` = all passes). The
+            burn re-traces every pass, so a single pass is usually clearest.
+        outcome_field: trace attribute; 0 followed, 1 burned, 2 skip-conflict.
+        zoom_pad_m: pad (m) around the source path bbox for the map region
+            (``region=`` in kwargs overrides this).
+        label_iterations: annotate each D8 trace start with its iteration index.
+        clip_to_valid: clip overlays to the raster footprint (default False).
+        **kwargs: forwarded to :func:`hillshade_with_vectors`.
+
+    Returns:
+        The ``pygmt.Figure``.
+    """
+    traces = load_vector(str(d8_traces)) if not hasattr(d8_traces, "geometry") \
+        else d8_traces
+    src = load_vector(str(source_path)) if not hasattr(source_path, "geometry") \
+        else source_path
+    if pass_filter is not None and "pass" in traces.columns:
+        traces = traces[traces["pass"] == pass_filter]
+
+    # Auto-zoom to the source path unless the caller fixed a region.
+    if "region" not in kwargs or kwargs["region"] is None:
+        minx, miny, maxx, maxy = src.total_bounds
+        kwargs["region"] = [minx - zoom_pad_m, maxx + zoom_pad_m,
+                            miny - zoom_pad_m, maxy + zoom_pad_m]
+
+    foll = traces[traces[outcome_field] == 0]
+    burned = traces[traces[outcome_field] == 1]
+    conflict = traces[traces[outcome_field] == 2]
+
+    layers = [
+        {"path": src, "kind": "line", "color": "cyan", "width": "3p",
+         "label": "VML source path"},
+    ]
+    if not foll.empty:
+        layers.append({"path": foll, "kind": "line", "color": "green",
+                       "width": "1p", "label": "D8 trace: follows"})
+    if not conflict.empty:
+        layers.append({"path": conflict, "kind": "line", "color": "red",
+                       "width": "1.2p", "label": "D8 trace: diverged, skipped"})
+    if not burned.empty:
+        layers.append({"path": burned, "kind": "line", "color": "orange",
+                       "width": "1.2p", "label": "D8 trace: diverged -> burned"})
+    if burns is not None:
+        bg = load_vector(str(burns)) if not hasattr(burns, "geometry") else burns
+        if not bg.empty:
+            layers.append({"path": bg, "kind": "line", "color": "magenta",
+                           "width": "3p", "label": "burned segment"})
+
+    fig = hillshade_with_vectors(
+        base_raster, layers, None, clip_to_valid=clip_to_valid, **kwargs)
+
+    # Annotate each trace's start point with its iteration number.
+    if label_iterations and "iteration" in traces.columns and not traces.empty:
+        coords = kwargs.get("coordinates", "local")
+        tr = to_vector_coordinates(traces, coords)
+        for _, row in tr.iterrows():
+            geom = row.geometry
+            if geom is None or geom.is_empty:
+                continue
+            pt = geom.coords[0]
+            fig.text(x=pt[0], y=pt[1], text=str(int(row["iteration"])),
+                     font="6p,Helvetica-Bold,black", fill="white@30",
+                     offset="0.1c/0.1c")
+
+    if png_path is not None:
+        save_figure(fig, png_path,
+                    style=MapStyle(figure_size=MapStyle.DOUBLE_COLUMN,
+                                   transparent=False),
+                    high_res=kwargs.get("high_res", True))
+    return fig
+
+
+def sample_dem_along_line(dem_path, line, step=None):
+    """Sample a DEM's elevation at regular spacing along a polyline.
+
+    Args:
+        dem_path: path to a single-band raster (DEM).
+        line: a shapely LineString (in the DEM's CRS).
+        step: spacing in map units (default = the DEM cell size).
+
+    Returns:
+        ``(dist, elev)`` numpy arrays: cumulative distance (m) and elevation,
+        with DEM nodata converted to ``np.nan``.
+    """
+    import numpy as np
+    import rasterio
+    with rasterio.open(str(dem_path)) as ds:
+        if step is None:
+            step = abs(ds.transform.a)
+        nod = ds.nodata
+        L = line.length
+        dist = np.arange(0.0, L + step, step)
+        pts = [(line.interpolate(d).x, line.interpolate(d).y) for d in dist]
+        elev = np.array([v[0] for v in ds.sample(pts)], dtype=float)
+    if nod is not None:
+        elev[elev == nod] = np.nan
+    return dist, elev
+
+
+def trace_d8_flowpath(dem_path, start_xy, max_steps=200000):
+    """Trace a D8 steepest-descent path from a start point over a DEM.
+
+    A lightweight follower for QC long profiles: from the start cell it steps to
+    the lowest of the 8 neighbours while one is strictly lower, accumulating map
+    distance (diagonals * sqrt(2)). Stops at a pit/flat (no lower neighbour), the
+    grid edge, or nodata. Best run on a hydrologically conditioned (burned/filled)
+    DEM, where the descent is well defined.
+
+    Args:
+        dem_path: path to a single-band DEM.
+        start_xy: ``(x, y)`` start point in the DEM CRS.
+        max_steps: safety cap on the number of cells walked.
+
+    Returns:
+        ``(line, dist, elev)``: a shapely LineString of the path and the
+        cumulative-distance / elevation arrays along it.
+    """
+    import numpy as np
+    import rasterio
+    from shapely.geometry import LineString
+    with rasterio.open(str(dem_path)) as ds:
+        Z = ds.read(1).astype(float)
+        nod = ds.nodata
+        if nod is not None:
+            Z[Z == nod] = np.nan
+        tr = ds.transform
+        cs_x, cs_y = abs(tr.a), abs(tr.e)
+        nrow, ncol = Z.shape
+        r, c = ds.index(start_xy[0], start_xy[1])
+        if not (0 <= r < nrow and 0 <= c < ncol):
+            raise ValueError("start point outside the DEM")
+        xs, ys, zs = [], [], []
+        seen = set()
+        nbrs = [(-1, -1), (-1, 0), (-1, 1), (0, -1),
+                (0, 1), (1, -1), (1, 0), (1, 1)]
+        for _ in range(max_steps):
+            if (r, c) in seen:
+                break
+            seen.add((r, c))
+            x, y = ds.xy(r, c)
+            xs.append(x); ys.append(y); zs.append(Z[r, c])
+            best = None; best_z = Z[r, c]
+            for dr, dc in nbrs:
+                rr, cc = r + dr, c + dc
+                if not (0 <= rr < nrow and 0 <= cc < ncol):
+                    continue
+                z = Z[rr, cc]
+                if np.isnan(z):
+                    continue
+                if z < best_z:
+                    best_z = z; best = (rr, cc)
+            if best is None:
+                break
+            r, c = best
+    xs = np.array(xs); ys = np.array(ys); zs = np.array(zs)
+    if len(xs) < 2:
+        return None, np.array([0.0]), zs
+    seg = np.hypot(np.diff(xs), np.diff(ys))
+    dist = np.concatenate([[0.0], np.cumsum(seg)])
+    return LineString(np.column_stack([xs, ys])), dist, zs
+
+
+def plot_long_profile(series, png_path=None, *, title=None,
+                      xlabel="Distance downstream (m)",
+                      ylabel="Elevation (m)", figsize=(11, 5),
+                      annotations=None, dpi=200):
+    """Plot one or more elevation-vs-distance long profiles on shared axes.
+
+    Args:
+        series: list of dicts, each ``{"dist": arr, "elev": arr, "label": str,
+            "color": str?, "ls": str?, "lw": float?}``.
+        png_path: output PNG (``None`` = just return the matplotlib fig/ax).
+        title, xlabel, ylabel, figsize, dpi: usual plot controls.
+        annotations: optional list of ``{"x": float, "text": str, "color": str?}``
+            drawn as labelled vertical lines (e.g. a road crossing location).
+
+    Returns:
+        ``(fig, ax)``.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    fig, ax = plt.subplots(figsize=figsize)
+    for s in series:
+        ax.plot(s["dist"], s["elev"], label=s.get("label"),
+                color=s.get("color"), linestyle=s.get("ls", "-"),
+                lw=s.get("lw", 1.6))
+    if annotations:
+        for a in annotations:
+            ax.axvline(a["x"], color=a.get("color", "0.4"), ls=":", lw=1.0)
+            ax.text(a["x"], ax.get_ylim()[1], a["text"], rotation=90,
+                    va="top", ha="right", fontsize=8, color=a.get("color", "0.4"))
+    ax.set_xlabel(xlabel); ax.set_ylabel(ylabel)
+    if title:
+        ax.set_title(title)
+    ax.legend(loc="best", fontsize=9)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    if png_path is not None:
+        fig.savefig(str(png_path), dpi=dpi)
+        plt.close(fig)
+    return fig, ax

@@ -87,6 +87,23 @@ def build_parser() -> argparse.ArgumentParser:
         "'clip' to leave unrendered (transparent).",
     )
     parser.add_argument(
+        "--categorical-gt-breaks",
+        default=None,
+        help=(
+            "Comma-separated thresholds for categorical rendering using strictly "
+            "greater-than classes (e.g. '0.05,0.12,0.21'). Values <= first "
+            "threshold remain nodata/transparent."
+        ),
+    )
+    parser.add_argument(
+        "--categorical-colors",
+        default=None,
+        help=(
+            "Comma-separated colours matching --categorical-gt-breaks "
+            "(e.g. 'yellow,orange,red')."
+        ),
+    )
+    parser.add_argument(
         "--colorbar",
         action="store_true",
         help="Add a colourbar for the drape colour scale.",
@@ -118,6 +135,13 @@ def main(argv=None) -> int:
     """
     args = build_parser().parse_args(argv)
     style = _common.style_from_args(args)
+    cat_breaks = None
+    cat_colors = None
+    if args.categorical_gt_breaks:
+        cat_breaks = [float(v.strip()) for v in args.categorical_gt_breaks.split(",") if v.strip()]
+    if args.categorical_colors:
+        cat_colors = [v.strip() for v in args.categorical_colors.split(",") if v.strip()]
+
     fig = render_drape(
         args.base_raster,
         args.drape_raster,
@@ -131,6 +155,8 @@ def main(argv=None) -> int:
         percentile_min=args.percentile_min,
         percentile_max=args.percentile_max,
         out_of_bounds=args.out_of_bounds,
+        categorical_gt_breaks=cat_breaks,
+        categorical_colors=cat_colors,
         colorbar=args.colorbar,
         colorbar_label=args.colorbar_label,
         colorbar_position=args.colorbar_position,

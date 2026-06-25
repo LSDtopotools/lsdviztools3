@@ -84,6 +84,8 @@ def render_drape(
     percentile_min: Optional[float] = None,
     percentile_max: Optional[float] = None,
     out_of_bounds: str = "clamp",
+    categorical_gt_breaks=None,
+    categorical_colors=None,
     colorbar: bool = False,
     colorbar_label: Optional[str] = None,
     colorbar_position: str = "bottom",
@@ -130,6 +132,12 @@ def render_drape(
             ``"clip"`` leaves them unrendered (transparent — the hillshade shows
             through). Combine ``percentile_min`` + ``"clip"`` + a solid ``cmap``
             to mask "values above the Nth percentile" in one colour.
+        categorical_gt_breaks: Optional list of thresholds for discrete classes
+            based on strict ``value > threshold`` tests. Provide with
+            ``categorical_colors``. Values not exceeding the smallest threshold
+            remain nodata/transparent.
+        categorical_colors: Optional list of colours matching
+            ``categorical_gt_breaks`` (same length).
         colorbar: Add a colourbar for the drape CPT.
         colorbar_label: Colourbar label (e.g. ``"log@-10@-curvature"``).
         colorbar_position: Colourbar placement: ``"bottom"`` (default),
@@ -142,6 +150,7 @@ def render_drape(
         The ``pygmt.Figure``.
     """
     import pygmt
+    import tempfile
     from dataclasses import replace
 
     from ..io.raster import (
@@ -159,6 +168,16 @@ def render_drape(
             f"out_of_bounds must be 'clamp' or 'clip', got {out_of_bounds!r}."
         )
     style = style or MapStyle()
+
+    if categorical_gt_breaks is not None or categorical_colors is not None:
+        if not categorical_gt_breaks or not categorical_colors:
+            raise ValueError(
+                "Categorical drape needs both categorical_gt_breaks and categorical_colors."
+            )
+        if len(categorical_gt_breaks) != len(categorical_colors):
+            raise ValueError(
+                "categorical_gt_breaks and categorical_colors must have the same length."
+            )
 
     # 1) Gray hillshade base (flat if already a hillshade, else illuminated).
     fig = render_hillshade(
@@ -188,25 +207,56 @@ def render_drape(
         clamp = " (after clamping values <= 0 for log scale)" if log_color else ""
         raise ValueError(f"Drape raster has no finite values to render{clamp}.")
 
-    # Colour-scale bounds: data extent, overridden by percentile, then by vmin/vmax.
-    lo, hi = float(finite.min()), float(finite.max())
-    if percentile_min is not None:
-        lo = float(np.percentile(finite, percentile_min))
-    if percentile_max is not None:
-        hi = float(np.percentile(finite, percentile_max))
-    if vmin is not None:
-        lo = float(vmin)
-    if vmax is not None:
-        hi = float(vmax)
-    if lo == hi:
-        hi = lo + 1.0
+    if categorical_gt_breaks is not None:
+        breaks = [float(v) for v in categorical_gt_breaks]
+        pairs = sorted(zip(breaks, categorical_colors), key=lambda p: p[0])
+        sorted_breaks = [p[0] for p in pairs]
+        sorted_colors = [p[1] for p in pairs]
 
-    # "clip": drop out-of-range values so they render transparent (hillshade
-    # shows through). "clamp": keep them — GMT paints them the end colours.
-    if out_of_bounds == "clip":
-        grid = grid.where((grid >= lo) & (grid <= hi))
+        values = np.asarray(grid.values, dtype=float)
+        classes = np.full(values.shape, np.nan, dtype=float)
+        for idx, threshold in enumerate(sorted_breaks, start=1):
+            classes[values > threshold] = float(idx)
+        grid = grid.copy(data=classes)
 
-    pygmt.makecpt(cmap=resolve_cmap(cmap or style.cmap), series=[lo, hi])
+        cpt_lines = ["# COLOR_MODEL = RGB", "# Discrete categories for > threshold classes"]
+        for idx, color in enumerate(sorted_colors, start=1):
+            lo = idx - 0.5
+            hi = idx + 0.5
+            cpt_lines.append(f"{lo:.1f} {color} {hi:.1f} {color}")
+        cpt_lines.append(f"B {sorted_colors[0]}")
+        cpt_lines.append(f"F {sorted_colors[-1]}")
+        cpt_lines.append("N 255/255/255")
+
+        with tempfile.NamedTemporaryFile("w", suffix=".cpt", delete=False) as tf:
+            tf.write("\n".join(cpt_lines) + "\n")
+            cpt_path = tf.name
+
+        pygmt.makecpt(
+            cmap=cpt_path,
+            series=[0.5, len(sorted_colors) + 0.5, 1],
+            continuous=False,
+        )
+    else:
+        # Colour-scale bounds: data extent, overridden by percentile, then by vmin/vmax.
+        lo, hi = float(finite.min()), float(finite.max())
+        if percentile_min is not None:
+            lo = float(np.percentile(finite, percentile_min))
+        if percentile_max is not None:
+            hi = float(np.percentile(finite, percentile_max))
+        if vmin is not None:
+            lo = float(vmin)
+        if vmax is not None:
+            hi = float(vmax)
+        if lo == hi:
+            hi = lo + 1.0
+
+        # "clip": drop out-of-range values so they render transparent (hillshade
+        # shows through). "clamp": keep them — GMT paints them the end colours.
+        if out_of_bounds == "clip":
+            grid = grid.where((grid >= lo) & (grid <= hi))
+
+        pygmt.makecpt(cmap=resolve_cmap(cmap or style.cmap), series=[lo, hi])
 
     projection = style.projection or auto_projection(extent, crs, style.figure_size)
     fig.grdimage(
