@@ -234,7 +234,7 @@ def render_drape(
 
         pygmt.makecpt(
             cmap=cpt_path,
-            series=[0.5, len(sorted_colors) + 0.5, 1],
+            series=[0.5, len(sorted_colors) + 0.5],
             continuous=False,
         )
     else:

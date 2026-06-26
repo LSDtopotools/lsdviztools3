@@ -86,14 +86,15 @@ def lsdtt3_hillshade_channels_basin(
     run_lsdtt(
         "lsdtt-raster-preprocessing",
         dict(base, read_path=str(dem.parent), read_fname=dem.name,
-             minimum_elevation=0.0, write_hillshade_raster="true"),
+             minimum_elevation=0.0, write_fill_raster="true", write_hillshade_raster="true"),
         data_path=str(workdir), lsdtt_dir=lsdtt_dir,
     )
-    sea_removed = f"{stem}_remove_seas.tif"
+    processed_dem = f"{stem}_fill.tif"
 
     run_lsdtt(
         "lsdtt-channel-extraction",
-        dict(base, read_path=str(workdir), read_fname=sea_removed,
+        dict(base, read_path=str(workdir), read_fname=processed_dem,
+             raster_is_filled="true",
              source_pixels_threshold=source_threshold,
              write_channel_network_lines="true"),
         data_path=str(workdir), lsdtt_dir=lsdtt_dir,
@@ -112,6 +113,88 @@ def lsdtt3_hillshade_channels_basin(
         "hillshade": workdir / f"{stem}_hillshade.tif",
         "channels": workdir / f"{stem}_channel_network_lines.fgb",
         "basin": workdir / f"{stem}_junction_basin_polygons.fgb",
+    }
+
+
+def lsdtt3_stream_order_basins(
+    dem_path: PathLike,
+    workdir: PathLike,
+    *,
+    stem: str = "dem",
+    source_threshold: int = 150,
+    stream_order: int = 2,
+    include_incomplete: bool = False,
+    lsdtt_dir: Optional[PathLike] = None,
+) -> dict:
+    """Extract all junction basins of one Strahler order and write polygons.
+
+    Steps: preprocessing (hillshade + sea mask), channel extraction, then
+    ``lsdtt-basin-extraction`` with stream-order filtering.
+
+    Args:
+        dem_path: Input DEM.
+        workdir: Directory for lsdtt3 outputs.
+        stem: Output filename stem.
+        source_threshold: Contributing-pixel threshold for channels.
+        stream_order: Exact Strahler order to keep (e.g. 2 for 2nd-order basins).
+        include_incomplete: Keep basins that touch nodata/edge. Defaults false.
+        lsdtt_dir: Optional explicit lsdtt3 bin directory.
+
+    Returns:
+        Dict with keys ``hillshade``, ``channels``, ``basin`` and ``basin_order``.
+    """
+    dem = Path(dem_path)
+    workdir = Path(workdir)
+    workdir.mkdir(parents=True, exist_ok=True)
+
+    base = {"write_path": str(workdir), "write_fname": stem}
+
+    run_lsdtt(
+        "lsdtt-raster-preprocessing",
+        dict(
+            base,
+            read_path=str(dem.parent),
+            read_fname=dem.name,
+            minimum_elevation=0.0,
+            write_fill_raster="true",
+            write_hillshade_raster="true",
+        ),
+        data_path=str(workdir), lsdtt_dir=lsdtt_dir,
+    )
+    processed_dem = f"{stem}_fill.tif"
+
+    run_lsdtt(
+        "lsdtt-channel-extraction",
+        dict(base, read_path=str(workdir), read_fname=processed_dem,
+             raster_is_filled="true",
+             source_pixels_threshold=source_threshold,
+             write_channel_network_lines="true"),
+        data_path=str(workdir), lsdtt_dir=lsdtt_dir,
+    )
+
+    run_lsdtt(
+        "lsdtt-basin-extraction",
+        dict(
+            base,
+            read_path=str(workdir), read_fname=processed_dem,
+            raster_is_filled="true",
+            source_pixels_threshold=source_threshold,
+            select_all_basins="true",
+            filter_basins_by_stream_order="true",
+            basins_min_stream_order=stream_order,
+            basins_max_stream_order=stream_order,
+            filter_incomplete_basins="false" if include_incomplete else "true",
+            write_basin_outlines="true",
+            write_basin_outlines_as_polygon="true",
+        ),
+        data_path=str(workdir), lsdtt_dir=lsdtt_dir,
+    )
+
+    return {
+        "hillshade": workdir / f"{stem}_hillshade.tif",
+        "channels": workdir / f"{stem}_channel_network_lines.fgb",
+        "basin": workdir / f"{stem}_junction_basin_polygons.fgb",
+        "basin_order": stream_order,
     }
 
 
@@ -590,6 +673,70 @@ def render_hillshade_channels_basin(
     return fig
 
 
+def render_hillshade_stream_order_basins(
+    outputs: dict,
+    png_path: PathLike,
+    *,
+    coordinates: str = "local",
+    width: str = MapStyle.SINGLE_COLUMN,
+    high_res: bool = False,
+):
+    """Render hillshade + channels + all selected-order basin polygons.
+
+    Works with outputs from :func:`lsdtt3_stream_order_basins`.
+    """
+    order = outputs.get("basin_order", "selected")
+    valid_union = _valid_data_union(outputs["hillshade"], coordinates)
+
+    channels = _clip_to_valid(
+        to_vector_coordinates(load_vector(outputs["channels"]), coordinates),
+        valid_union,
+    )
+    basins = _clip_to_valid(
+        to_vector_coordinates(load_vector(outputs["basin"]), coordinates),
+        valid_union,
+    )
+    if not basins.empty:
+        basins = basins.copy()
+        basins.geometry = basins.geometry.buffer(0)
+        basins = basins[(~basins.geometry.isna()) & (~basins.geometry.is_empty)]
+
+    fig = render_hillshade(
+        str(outputs["hillshade"]),
+        coordinates=coordinates,
+        shade=False,
+        style=MapStyle(cmap="gray", figure_size=width, transparent=False),
+    )
+
+    if not channels.empty:
+        fig = render_channels(
+            channels,
+            coordinates=coordinates,
+            style=MapStyle(line_width="0.6p", line_color="deepskyblue4", figure_size=width),
+            fig=fig,
+        )
+
+    if not basins.empty:
+        fig = render_basins(
+            basins,
+            coordinates=coordinates,
+            fill="orange",
+            transparency=60,
+            style=MapStyle(line_width="0.8p", line_color="darkred", figure_size=width),
+            fig=fig,
+        )
+
+    from .render.decorations import add_colourbar
+    add_colourbar(fig, label=f"Hillshade; order {order} basins", placement="right")
+    save_figure(
+        fig,
+        png_path,
+        style=MapStyle(figure_size=width, transparent=False),
+        high_res=high_res,
+    )
+    return fig
+
+
 def _infer_layer_kind(gdf) -> str:
     """Guess a layer's geometry kind ("polygon"/"line"/"point") from a gdf."""
     types = set(gdf.geom_type.dropna().unique())
@@ -1009,7 +1156,11 @@ def trace_d8_flowpath(dem_path, start_xy, max_steps=200000):
             seen.add((r, c))
             x, y = ds.xy(r, c)
             xs.append(x); ys.append(y); zs.append(Z[r, c])
+            # Prefer the steepest strictly-lower neighbour; if none (a flat or a
+            # gentle burned trench), step to the lowest neighbour that is <=
+            # current and unvisited so the trace crosses flats instead of stopping.
             best = None; best_z = Z[r, c]
+            flat = None; flat_z = np.inf
             for dr, dc in nbrs:
                 rr, cc = r + dr, c + dc
                 if not (0 <= rr < nrow and 0 <= cc < ncol):
@@ -1019,9 +1170,12 @@ def trace_d8_flowpath(dem_path, start_xy, max_steps=200000):
                     continue
                 if z < best_z:
                     best_z = z; best = (rr, cc)
-            if best is None:
+                if z <= Z[r, c] + 1e-6 and (rr, cc) not in seen and z < flat_z:
+                    flat_z = z; flat = (rr, cc)
+            nxt = best if best is not None else flat
+            if nxt is None:
                 break
-            r, c = best
+            r, c = nxt
     xs = np.array(xs); ys = np.array(ys); zs = np.array(zs)
     if len(xs) < 2:
         return None, np.array([0.0]), zs
