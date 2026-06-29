@@ -25,6 +25,7 @@ def render_hillshade(
     style: Optional[MapStyle] = None,
     fig=None,
     decorate: bool = True,
+    clim: Optional[tuple] = None,
 ):
     """Render an elevation grid as shaded relief, or a ready-made hillshade.
 
@@ -48,6 +49,10 @@ def render_hillshade(
         decorate: Add the "clean" scale bar when ``style.clean`` (default True).
             Layering callers (e.g. ``render_drape``) set this ``False`` for the
             base layer and add the scale bar themselves on top.
+        clim: Optional ``(zmin, zmax)`` colour limits. When given, the colour map
+            is built against this fixed range instead of the per-raster min/max.
+            Use this to keep one colour scale across a sequence of frames (e.g.
+            an animation of a transient model run).
 
     Returns:
         The ``pygmt.Figure``.
@@ -68,11 +73,14 @@ def render_hillshade(
 
     fig = fig or new_figure(style)
 
-    values = np.asarray(grid.values, dtype=float)
-    if not np.isfinite(values).any():
-        raise ValueError("Hillshade raster has no finite values to render.")
-    zmin = float(np.nanmin(values))
-    zmax = float(np.nanmax(values))
+    if clim is not None:
+        zmin, zmax = float(clim[0]), float(clim[1])
+    else:
+        values = np.asarray(grid.values, dtype=float)
+        if not np.isfinite(values).any():
+            raise ValueError("Hillshade raster has no finite values to render.")
+        zmin = float(np.nanmin(values))
+        zmax = float(np.nanmax(values))
     if zmin == zmax:
         zmax = zmin + 1.0
     pygmt.makecpt(cmap=style.cmap, series=[zmin, zmax])
