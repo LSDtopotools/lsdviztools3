@@ -28,6 +28,15 @@ def _matplotlib_to_cpt(name: str, n: int = 256) -> str:
 
     cmap = colormaps[name]
     rgb = (np.asarray([cmap(i / (n - 1))[:3] for i in range(n)]) * 255).round().astype(int)
+
+    # Break pure-grey rows (r == g == b). A grey CPT (e.g. "gray", "Greys",
+    # "binary") combined with a white NaN slot makes GMT's nan_transparent paint
+    # NaN cells solid red — the same quirk documented in _solid_cpt. A +-1/255
+    # nudge on blue is visually invisible but keeps every row non-grey so NaN
+    # stays transparent.
+    grey = (rgb[:, 0] == rgb[:, 1]) & (rgb[:, 1] == rgb[:, 2])
+    rgb[grey, 2] = np.where(rgb[grey, 2] >= 255, 254, rgb[grey, 2] + 1)
+
     z = np.linspace(0.0, 1.0, n)
     lines = ["# COLOR_MODEL = RGB", f"# Generated from matplotlib colormap {name!r}"]
     for i in range(n - 1):

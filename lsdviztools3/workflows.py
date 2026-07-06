@@ -857,9 +857,12 @@ def hillshade_with_vectors(
             legend_rows.append(
                 (layer.get("label"), f"S 0.3c s 0.35c {fill} {lw},{color}"))
         elif kind == "point":
+            # line_color carries the symbol fill; pen (color) draws the outline
+            # and is what outline-only symbols (x, +, ...) render with.
             fig = render_points(
-                gdf, coordinates=coordinates,
-                style=MapStyle(point_size=size, line_color=color, cmap=base_cmap
+                gdf, coordinates=coordinates, symbol=symbol,
+                pen=f"{lw},{color}",
+                style=MapStyle(point_size=size, line_color=fill, cmap=base_cmap
                                or "gray", figure_size=width), fig=fig)
             legend_rows.append(
                 (layer.get("label"), f"S 0.3c {symbol} {size} {fill} {lw},{color}"))

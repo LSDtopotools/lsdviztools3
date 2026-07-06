@@ -95,6 +95,45 @@ def test_render_points_size_and_colour_writes_png(tmp_path):
     assert out.exists() and out.stat().st_size > 0
 
 
+def _fixed_size_points_are_visible(fig, tmp_path, name, rgb_match):
+    """Return True if the rendered figure contains pixels close to rgb_match."""
+    try:
+        from PIL import Image
+    except ImportError:
+        pytest.skip("Pillow not available")
+    out = tmp_path / name
+    fig.savefig(out)
+    arr = np.array(Image.open(out).convert("RGB")).reshape(-1, 3)
+    r, g, b = rgb_match
+    near = (
+        (np.abs(arr[:, 0].astype(int) - r) < 60)
+        & (np.abs(arr[:, 1].astype(int) - g) < 60)
+        & (np.abs(arr[:, 2].astype(int) - b) < 60)
+    )
+    return bool(near.any())
+
+
+def test_render_points_fixed_size_filled_visible(tmp_path):
+    """A fixed-size filled symbol must actually render (regression: a scalar
+    size= passed to fig.plot drew nothing)."""
+    fig = points.render_points(
+        _point_gdf(), coordinates="geographic",
+        style=MapStyle(point_size="0.5c", line_color="yellow"),
+    )
+    assert _fixed_size_points_are_visible(
+        fig, tmp_path, "pts_fixed_c.png", (255, 255, 0))
+
+
+def test_render_points_outline_only_symbol_visible(tmp_path):
+    """An outline-only symbol (x) renders with its pen, not a fill."""
+    fig = points.render_points(
+        _point_gdf(), coordinates="geographic", symbol="x",
+        pen="3p,red", style=MapStyle(point_size="0.6c"),
+    )
+    assert _fixed_size_points_are_visible(
+        fig, tmp_path, "pts_x.png", (255, 0, 0))
+
+
 def test_render_channels_colour_by_writes_png(tmp_path):
     """render_channels colours lines by a column through a CPT."""
     gdf = gpd.GeoDataFrame(
@@ -253,14 +292,18 @@ def test_render_hillshade_adds_crs_label_for_projected(monkeypatch, small_dem):
 
 
 @pytest.mark.network
-def test_render_hillshade_transparent_pixels_are_not_red(small_dem, tmp_path):
+@pytest.mark.parametrize("cmap", ["geo", "gray"])
+def test_render_hillshade_transparent_pixels_are_not_red(small_dem, tmp_path, cmap):
     try:
         from PIL import Image
     except ImportError:
         pytest.skip("Pillow not available")
 
-    fig = hillshade.render_hillshade(load_raster(small_dem), coordinates="local", style=MapStyle())
-    out = tmp_path / "hillshade_transparency.png"
+    # cmap="gray" is the regression case: GMT's native grey CPT with
+    # nan_transparent paints NaN cells red unless the CPT is made non-pure-grey.
+    fig = hillshade.render_hillshade(
+        load_raster(small_dem), coordinates="local", style=MapStyle(cmap=cmap))
+    out = tmp_path / f"hillshade_transparency_{cmap}.png"
     fig.savefig(out, transparent=True)
 
     rgba = np.array(Image.open(out).convert("RGBA"))

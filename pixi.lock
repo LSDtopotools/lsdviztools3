@@ -10653,6 +10653,7 @@ packages:
   - geopandas
   - pandas
   - numpy
+  - pillow
   - requests ; extra == 'download'
   - planetary-computer ; extra == 'download'
   - pystac-client ; extra == 'download'

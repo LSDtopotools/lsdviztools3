@@ -41,6 +41,11 @@ def _log_scaled_sizes(values, size_range: Tuple[float, float]) -> np.ndarray:
     return sizes_pt * _CM_PER_PT
 
 
+#: GMT symbols that draw an outline only (no fill area). These are styled with a
+#: pen rather than a fill.
+_OUTLINE_ONLY_SYMBOLS = frozenset({"x", "y", "+", "-"})
+
+
 def render_points(
     df,
     *,
@@ -48,6 +53,8 @@ def render_points(
     size_by: Optional[str] = None,
     log_color: bool = True,
     size_range: Tuple[float, float] = (1.0, 3.0),
+    symbol: str = "c",
+    pen: Optional[str] = None,
     cmap: Optional[str] = None,
     colorbar: bool = False,
     colorbar_label: Optional[str] = None,
@@ -66,6 +73,12 @@ def render_points(
             so larger channels render as larger/thicker points.
         log_color: Colour by log10 of ``color_by`` (default True).
         size_range: ``(min_pt, max_pt)`` point sizes for ``size_by`` (default 1–3).
+        symbol: GMT point-symbol code — ``"c"`` circle (default), ``"s"`` square,
+            ``"t"`` triangle, ``"x"`` cross, ``"+"`` plus, etc. Outline-only
+            symbols (``x``, ``y``, ``+``, ``-``) are drawn with a pen.
+        pen: Outline pen (e.g. ``"1p,black"``). Defaults to ``style.line_width``
+            + ``style.line_color`` for outline-only symbols; ``None`` = no
+            outline on filled symbols.
         cmap: CPT name (defaults to ``style.cmap``).
         colorbar: Add a colourbar for the colour scale.
         colorbar_label: Colourbar label.
@@ -88,15 +101,23 @@ def render_points(
     xs = gdf_display.geometry.x.to_numpy()
     ys = gdf_display.geometry.y.to_numpy()
 
-    # Per-point size from log10(size_by), else the fixed style size.
+    outline_only = symbol in _OUTLINE_ONLY_SYMBOLS
+
+    # Per-point size from log10(size_by) (numeric cm array passed via size=),
+    # else a fixed size baked into the symbol string. A scalar size= does not
+    # render, so a fixed size MUST be part of the style token (e.g. "c0.2c").
     if size_by is not None:
         if size_by not in gdf_display.columns:
             raise KeyError(f"size_by={size_by!r} not in point attributes.")
         size = _log_scaled_sizes(gdf_display[size_by].to_numpy(), size_range)
+        plot_kwargs = dict(x=xs, y=ys, style=symbol, size=size)
     else:
-        size = style.point_size
+        plot_kwargs = dict(x=xs, y=ys, style=f"{symbol}{style.point_size}")
 
-    plot_kwargs = dict(x=xs, y=ys, style="c", size=size)
+    # Outline-only symbols carry a pen rather than a fill.
+    outline_pen = pen or (
+        f"{style.line_width},{style.line_color}" if outline_only else None
+    )
 
     if color_by is not None:
         if color_by not in gdf_display.columns:
@@ -113,10 +134,15 @@ def render_points(
         if vmin == vmax:
             vmax = vmin + 1.0
         pygmt.makecpt(cmap=cmap or style.cmap, series=[vmin, vmax])
-        fig.plot(fill=z, cmap=True, **plot_kwargs)
+        if outline_only:
+            fig.plot(cmap=True, pen=outline_pen, **plot_kwargs)
+        else:
+            fig.plot(fill=z, cmap=True, **plot_kwargs)
         if colorbar:
             add_colourbar(fig, label=colorbar_label)
+    elif outline_only:
+        fig.plot(pen=outline_pen, **plot_kwargs)
     else:
-        fig.plot(fill=style.line_color, **plot_kwargs)
+        fig.plot(fill=style.line_color, pen=outline_pen, **plot_kwargs)
 
     return fig

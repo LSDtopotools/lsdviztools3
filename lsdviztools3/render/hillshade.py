@@ -83,7 +83,11 @@ def render_hillshade(
         zmax = float(np.nanmax(values))
     if zmin == zmax:
         zmax = zmin + 1.0
-    pygmt.makecpt(cmap=style.cmap, series=[zmin, zmax])
+    # Route through resolve_cmap so matplotlib names work and, crucially, a grey
+    # map ("gray") becomes a non-pure-grey CPT — GMT's native grey CPT with
+    # nan_transparent paints NaN cells red (see colormaps._matplotlib_to_cpt).
+    from .colormaps import resolve_cmap
+    pygmt.makecpt(cmap=resolve_cmap(style.cmap) or style.cmap, series=[zmin, zmax])
 
     fig.grdimage(
         grid=grid,
