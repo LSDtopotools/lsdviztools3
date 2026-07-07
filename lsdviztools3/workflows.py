@@ -611,6 +611,45 @@ def render_swath_profile(
     return png_path
 
 
+def render_hanc_profile(
+    hanc_profile_csv: PathLike,
+    png_path: PathLike,
+    *,
+    band_breaks_csv: Optional[PathLike] = None,
+    dpi: int = 300,
+    **kwargs,
+):
+    """Plot HANC vs distance along the channel for classified pixels.
+
+    Reads the per-pixel ``*_hanc_profile.csv`` written by
+    ``lsdtt-flat-surface-finder`` (``write_hanc_profile_csv``) and draws the
+    floodplain / terrace HANC populations along the channel; optionally
+    overlays the reach-relative band break levels from
+    ``*_hanc_band_breaks.csv``. Uses the matplotlib ``charts`` engine.
+
+    Args:
+        hanc_profile_csv: Per-pixel HANC profile table.
+        png_path: Output PNG path.
+        band_breaks_csv: Optional band-breaks table to overlay.
+        dpi: Save resolution.
+        **kwargs: Passed through to
+            :func:`lsdviztools3.charts.plot_hanc_distance` (e.g. ``source_id``,
+            ``log_y``, ``max_points``).
+
+    Returns:
+        ``Path`` to the written PNG.
+    """
+    from .io.table import load_table
+    from .charts import plot_hanc_distance
+
+    df = load_table(hanc_profile_csv)
+    breaks = load_table(band_breaks_csv) if band_breaks_csv else None
+    fig, _ = plot_hanc_distance(df, breaks=breaks, **kwargs)
+    png_path = Path(png_path)
+    fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
+    return png_path
+
+
 def render_hillshade_channels_basin(
     outputs: dict,
     png_path: PathLike,

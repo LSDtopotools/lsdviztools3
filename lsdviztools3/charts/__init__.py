@@ -14,11 +14,13 @@ from .circular import (
     circular_wasserstein, kuiper_two_sample, plot_circular_comparison,
 )
 from .distributions import plot_distributions
+from .hanc import plot_hanc_distance
 from .rose import rose_diagram
 from .swath import plot_swath
 
 __all__ = [
     "plot_chi_profile", "plot_chi_stacked", "plot_swath",
+    "plot_hanc_distance",
     "plot_distributions", "rose_diagram",
     "circular_wasserstein", "kuiper_two_sample", "plot_circular_comparison",
     "plot_profile", "plot_slope_area",

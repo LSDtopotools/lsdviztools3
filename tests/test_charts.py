@@ -122,3 +122,58 @@ def test_plot_circular_comparison_both_returns_two_axes():
         rng.uniform(0, 360, 200), rng.uniform(0, 360, 200),
         labels=("X", "Y"), kind="both", annotate=True)
     assert len(axes) == 2
+
+
+def _hanc_frame(n=300, seed=5):
+    import pandas as pd
+
+    rng = np.random.default_rng(seed)
+    d = rng.uniform(0, 20_000, n)
+    cls = rng.choice([1, 2], n)
+    hanc = np.where(cls == 1, rng.uniform(0, 2, n), rng.uniform(5, 15, n))
+    return pd.DataFrame({
+        "channel_flow_distance_m": d, "hanc_m": hanc,
+        "class": cls, "source_id": rng.choice([0, 1], n),
+    })
+
+
+def test_plot_hanc_distance_two_classes_legended():
+    from lsdviztools3.charts import plot_hanc_distance
+
+    fig, ax = plot_hanc_distance(_hanc_frame())
+    texts = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert texts == ["floodplain", "terrace"]
+    assert ax.get_xlabel() == "Distance along channel (km)"
+    assert ax.get_ylabel() == "Height above channel (m)"
+
+
+def test_plot_hanc_distance_source_filter_and_breaks():
+    import pandas as pd
+    from lsdviztools3.charts import plot_hanc_distance
+
+    breaks = pd.DataFrame({
+        "source_id": [0, 0], "window_centre_m": [5_000.0, 15_000.0],
+        "breaks_m": ["3.5", "2.5;8.0"],
+    })
+    fig, ax = plot_hanc_distance(
+        _hanc_frame(), source_id=0, breaks=breaks, distance_units="m")
+    texts = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert texts == ["floodplain", "terrace", "band break"]
+    assert ax.get_xlabel() == "Distance along channel (m)"
+
+
+def test_plot_hanc_distance_subsamples_to_cap():
+    from lsdviztools3.charts import plot_hanc_distance
+
+    fig, ax = plot_hanc_distance(_hanc_frame(2_000), max_points=100)
+    # Two scatter collections (one per class), each capped at 100 points.
+    sizes = [len(c.get_offsets()) for c in ax.collections]
+    assert sizes == [100, 100]
+
+
+def test_plot_hanc_distance_empty_raises():
+    from lsdviztools3.charts import plot_hanc_distance
+
+    df = _hanc_frame(50)
+    with pytest.raises(ValueError, match="No plottable pixels"):
+        plot_hanc_distance(df[df["class"] == 99])
