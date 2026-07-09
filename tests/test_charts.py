@@ -265,3 +265,65 @@ def test_plot_valley_cross_sections_missing_source_raises():
 
     with pytest.raises(ValueError, match="No cross-section stations"):
         plot_valley_cross_sections(_cross_section_frame(4), source_id=9)
+
+
+# --- plot_valley_break_metric -----------------------------------------------
+
+def _break_metric_frame():
+    import pandas as pd
+
+    rows = []
+    bins = np.logspace(-1.3, 2, 128)
+
+    def add(scope, wc, break_bin, boundary_bin, peak_bins, raw=True):
+        # Bimodal smoothed metric: a small valley-floor mode + a big wall mode.
+        sm = (300 * np.exp(-0.5 * ((np.log10(bins) - 0.2) / 0.25) ** 2)
+              + 1000 * np.exp(-0.5 * ((np.log10(bins) - 1.3) / 0.3) ** 2))
+        for i, b in enumerate(bins):
+            rows.append({
+                "source_id": 0, "scope": scope, "window_centre_m": wc,
+                "hanc_m": b,
+                "raw_count": int(sm[i]) if raw else 0,
+                "smoothed": float(sm[i]),
+                "is_peak": 1 if i in peak_bins else 0,
+                "is_boundary": 1 if i == boundary_bin else 0,
+                "is_break": 1 if i == break_bin else 0,
+            })
+
+    # Global: no clean break (reach-adaptive used).
+    add("global", -1.0, break_bin=-1, boundary_bin=-1, peak_bins=[])
+    # Two windows: one own break, one with none (inherits).
+    add("window", 1000.0, break_bin=60, boundary_bin=60, peak_bins=[30, 100],
+        raw=False)
+    add("window", 3000.0, break_bin=-1, boundary_bin=-1, peak_bins=[], raw=False)
+    return pd.DataFrame(rows)
+
+
+def test_plot_valley_break_metric_panels_and_applied_break():
+    import pandas as pd
+    from lsdviztools3.charts import plot_valley_break_metric
+
+    breaks = pd.DataFrame({
+        "source_id": [0, 0],
+        "window_centre_m": [1000.0, 3000.0],
+        "break_m": [5.0, 2.0],
+        "own_break": [True, False],
+    })
+    fig, axes = plot_valley_break_metric(
+        _break_metric_frame(), breaks_df=breaks, source_id=0)
+    # Global panel + 2 window panels.
+    assert len(axes) == 3
+    # Global panel notes the reach-adaptive fallback.
+    assert "reach-adaptive" in axes[0].get_title()
+    # Window panels are tagged own / inherited from breaks_df.
+    assert "(own)" in axes[1].get_title()
+    assert "(inherited)" in axes[2].get_title()
+    # Metric axis is logarithmic.
+    assert axes[1].get_xscale() == "log"
+
+
+def test_plot_valley_break_metric_missing_source_raises():
+    from lsdviztools3.charts import plot_valley_break_metric
+
+    with pytest.raises(ValueError, match="No break-metric rows"):
+        plot_valley_break_metric(_break_metric_frame(), source_id=9)
