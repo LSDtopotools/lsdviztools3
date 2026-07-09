@@ -151,3 +151,95 @@ def plot_hanc_distance(
     for handle in legend.legend_handles:
         handle.set_alpha(1.0)
     return fig, ax
+
+
+def plot_hanc_window_populations(
+    hist_df: pd.DataFrame,
+    *,
+    breaks_df: Optional[pd.DataFrame] = None,
+    source_id: int = 0,
+    hanc_col: str = "hanc_m",
+    count_col: str = "n_pixels",
+    window_col: str = "window_centre_m",
+    smooth_bins: int = 5,
+    max_windows: int = 12,
+    n_cols: int = 3,
+):
+    """Per-window HANC populations with the selected valley break.
+
+    Draws one panel per along-channel window from the
+    ``*_valley_hanc_window_hist.csv`` table written by
+    ``lsdtt-valley-centreline``, so users can see the population each
+    reach-adaptive threshold was selected from. When ``breaks_df`` (the
+    companion ``*_valley_breaks.csv``) is given, the chosen break is drawn
+    on each panel, marked inherited when the window did not produce its own.
+
+    Args:
+        hist_df: Per-window histogram table (``source_id``, window centre,
+            bin-centre HANC, pixel count).
+        breaks_df: Optional per-window break table (``source_id``,
+            ``window_centre_m``, ``break_m``, ``own_break``).
+        source_id: Channel to plot.
+        hanc_col: Bin-centre column (m).
+        count_col: Pixel-count column.
+        window_col: Window-centre column (m along the channel).
+        smooth_bins: Moving-average width (bins) for the drawn density.
+        max_windows: Cap on the number of panels.
+        n_cols: Panels per row.
+
+    Returns:
+        ``(fig, axes)`` — axes as a flat list, one per window drawn.
+
+    Raises:
+        ValueError: if the table holds no windows for ``source_id``.
+    """
+    plt = _import_mpl()
+
+    data = hist_df[hist_df["source_id"] == source_id]
+    windows = sorted(data[window_col].unique())[:max_windows]
+    if not windows:
+        raise ValueError(
+            f"No HANC window histograms for source_id={source_id}.")
+
+    n_rows = (len(windows) + n_cols - 1) // n_cols
+    fig, axarr = plt.subplots(
+        n_rows, n_cols, figsize=(4.6 * n_cols, 2.9 * n_rows),
+        sharex=True, squeeze=False)
+    axes = []
+    for k, w in enumerate(windows):
+        ax = axarr[k // n_cols][k % n_cols]
+        axes.append(ax)
+        g = data[data[window_col] == w].sort_values(hanc_col)
+        counts = g[count_col].to_numpy(dtype=float)
+        if smooth_bins > 1 and counts.size > smooth_bins:
+            kernel = np.ones(smooth_bins) / smooth_bins
+            pad = smooth_bins // 2
+            padded = np.pad(counts, pad, mode="edge")
+            counts = np.convolve(padded, kernel, mode="valid")[:len(g)]
+        ax.plot(g[hanc_col].to_numpy(), counts, color="0.15", lw=1.0)
+        ax.set_xscale("log")
+        ax.set_title(f"window {w / 1000:.1f} km", fontsize=9)
+
+        if breaks_df is not None:
+            row = breaks_df[
+                (breaks_df["source_id"] == source_id)
+                & np.isclose(breaks_df[window_col], w)]
+            if len(row):
+                own = bool(row["own_break"].iloc[0])
+                ax.axvline(
+                    row["break_m"].iloc[0], color="crimson", ls="--", lw=1.2,
+                    label=f"break {row['break_m'].iloc[0]:.1f} m"
+                          + ("" if own else " (inherited)"))
+                ax.legend(fontsize=7, frameon=False)
+
+    for k in range(len(windows), n_rows * n_cols):
+        axarr[k // n_cols][k % n_cols].set_axis_off()
+    for ax in axes[-n_cols:]:
+        ax.set_xlabel("HANC (m)")
+    for r in range(n_rows):
+        axarr[r][0].set_ylabel("pixel count")
+    fig.suptitle(
+        f"channel {source_id}: corridor HANC populations per reach window",
+        fontsize=11)
+    fig.tight_layout()
+    return fig, axes

@@ -650,6 +650,46 @@ def render_hanc_profile(
     return png_path
 
 
+def render_hanc_window_populations(
+    window_hist_csv: PathLike,
+    png_path: PathLike,
+    *,
+    breaks_csv: Optional[PathLike] = None,
+    source_id: int = 0,
+    dpi: int = 300,
+    **kwargs,
+):
+    """Plot per-window HANC populations with the selected valley breaks.
+
+    Reads the ``*_valley_hanc_window_hist.csv`` (and optionally the
+    ``*_valley_breaks.csv``) written by ``lsdtt-valley-centreline`` and draws
+    one panel per along-channel window, so the reach-adaptive threshold
+    selection is inspectable. Uses the matplotlib ``charts`` engine.
+
+    Args:
+        window_hist_csv: Per-window HANC histogram table.
+        png_path: Output PNG path.
+        breaks_csv: Optional per-window break table to overlay.
+        source_id: Channel to plot.
+        dpi: Save resolution.
+        **kwargs: Passed through to
+            :func:`lsdviztools3.charts.plot_hanc_window_populations`.
+
+    Returns:
+        ``Path`` to the written PNG.
+    """
+    from .io.table import load_table
+    from .charts import plot_hanc_window_populations
+
+    hist_df = load_table(window_hist_csv)
+    breaks_df = load_table(breaks_csv) if breaks_csv else None
+    fig, _ = plot_hanc_window_populations(
+        hist_df, breaks_df=breaks_df, source_id=source_id, **kwargs)
+    png_path = Path(png_path)
+    fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
+    return png_path
+
+
 def render_hillshade_channels_basin(
     outputs: dict,
     png_path: PathLike,

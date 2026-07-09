@@ -177,3 +177,91 @@ def test_plot_hanc_distance_empty_raises():
     df = _hanc_frame(50)
     with pytest.raises(ValueError, match="No plottable pixels"):
         plot_hanc_distance(df[df["class"] == 99])
+
+
+def _window_hist_frame():
+    import pandas as pd
+
+    rows = []
+    rng = np.random.default_rng(7)
+    for w in (1000.0, 3000.0, 5000.0):
+        bins = np.logspace(-1, 2, 60)
+        counts = (1000 * np.exp(-0.5 * ((np.log10(bins) - 0.5) / 0.2) ** 2)
+                  + rng.integers(0, 5, 60))
+        for b, c in zip(bins, counts):
+            rows.append({"source_id": 0, "window_centre_m": w,
+                         "hanc_m": b, "n_pixels": int(c)})
+    return pd.DataFrame(rows)
+
+
+def test_plot_hanc_window_populations_panels_and_breaks():
+    import pandas as pd
+    from lsdviztools3.charts import plot_hanc_window_populations
+
+    breaks = pd.DataFrame({
+        "source_id": [0, 0, 0],
+        "window_centre_m": [1000.0, 3000.0, 5000.0],
+        "break_m": [5.0, 7.5, 6.0],
+        "own_break": [True, False, True],
+    })
+    fig, axes = plot_hanc_window_populations(
+        _window_hist_frame(), breaks_df=breaks, source_id=0)
+    assert len(axes) == 3
+    # Each panel carries a break line legend; inherited window is marked.
+    legends = [ax.get_legend() for ax in axes]
+    assert all(lg is not None for lg in legends)
+    assert "(inherited)" in legends[1].get_texts()[0].get_text()
+
+
+def test_plot_hanc_window_populations_missing_source_raises():
+    from lsdviztools3.charts import plot_hanc_window_populations
+
+    with pytest.raises(ValueError, match="No HANC window histograms"):
+        plot_hanc_window_populations(_window_hist_frame(), source_id=9)
+
+
+# --- plot_valley_cross_sections ---------------------------------------------
+
+def _cross_section_frame(n_stations=8, n_samples=41):
+    import pandas as pd
+
+    rows = []
+    offs = np.linspace(-500.0, 500.0, n_samples)
+    for st in range(n_stations):
+        lo, ro = -200.0, 220.0            # valley sides (offset metres)
+        for off in offs:
+            in_valley = 1 if lo <= off <= ro else 0
+            elev = 100.0 + 0.02 * abs(off) + (0.0 if in_valley else 30.0)
+            rows.append({
+                "source_id": 0, "station_seq": st,
+                "along_distance_m": 500.0 * st, "offset_m": off,
+                "x": off, "y": 500.0 * st, "elevation": elev,
+                "in_valley": in_valley,
+                "left_offset_m": lo, "right_offset_m": ro,
+                "valley_width_m": ro - lo,
+            })
+    return pd.DataFrame(rows)
+
+
+def test_plot_valley_cross_sections_panel_per_station():
+    from lsdviztools3.charts import plot_valley_cross_sections
+
+    fig, axes = plot_valley_cross_sections(_cross_section_frame(6), source_id=0)
+    assert len(axes) == 6
+    # Panel title reports the along-distance and the valley width (ro - lo).
+    assert "w=420 m" in axes[0].get_title()
+
+
+def test_plot_valley_cross_sections_subsamples_to_cap():
+    from lsdviztools3.charts import plot_valley_cross_sections
+
+    fig, axes = plot_valley_cross_sections(
+        _cross_section_frame(50), source_id=0, max_panels=12)
+    assert len(axes) <= 12
+
+
+def test_plot_valley_cross_sections_missing_source_raises():
+    from lsdviztools3.charts import plot_valley_cross_sections
+
+    with pytest.raises(ValueError, match="No cross-section stations"):
+        plot_valley_cross_sections(_cross_section_frame(4), source_id=9)
