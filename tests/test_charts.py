@@ -267,6 +267,74 @@ def test_plot_valley_cross_sections_missing_source_raises():
         plot_valley_cross_sections(_cross_section_frame(4), source_id=9)
 
 
+def test_combine_width_steps_long_wall_not_oversegmented():
+    from lsdviztools3.charts import combine_width_steps
+
+    # Smooth widening wall: old cumulative logic split every ~2 m; we want one
+    # merged step unless there are prominent widening events.
+    stage = np.arange(312.5, 330.0, 0.1)
+    width = 1000.0 + 6.0 * (stage - stage.min())
+    boundaries, mids = combine_width_steps(
+        stage, width, ds=30.0, min_step_height_m=2.0, min_step_width_px=3)
+
+    assert len(boundaries) == 2
+    assert len(mids) == 1
+
+
+def test_combine_width_steps_keeps_major_widening_jumps():
+    from lsdviztools3.charts import combine_width_steps
+
+    stage = np.arange(300.0, 330.0, 0.1)
+    # Two sharp widening events separated by broad near-plateaux.
+    jump1 = 550.0 / (1.0 + np.exp(-(stage - 308.0) / 0.09))
+    jump2 = 650.0 / (1.0 + np.exp(-(stage - 320.0) / 0.09))
+    width = 700.0 + jump1 + jump2
+
+    boundaries, _ = combine_width_steps(
+        stage, width, ds=30.0, min_step_height_m=2.0, min_step_width_px=3)
+
+    assert len(boundaries) >= 3
+    assert any(abs(b - 308.0) < 1.0 for b in boundaries)
+    assert any(abs(b - 320.0) < 1.0 for b in boundaries)
+
+
+def test_optimize_step_midpoint_reduces_crossings_within_bounds():
+    from lsdviztools3.charts.cross_sections import (
+        _water_line_crossings, _optimize_step_midpoint,
+    )
+
+    off = np.linspace(-200.0, 200.0, 2001)
+    # Concave section with a central hump: some levels give 4 crossings,
+    # nearby levels give 2.
+    elev = 100.0 + 0.0008 * off**2 + 1.8 * np.exp(-(off / 20.0) ** 2)
+    zlo, zhi = 100.95, 102.0
+    zmid = 0.5 * (zlo + zhi)
+
+    n0 = len(_water_line_crossings(off, elev, zmid))
+    zopt = _optimize_step_midpoint(off, elev, zmid, zlo, zhi)
+    n1 = len(_water_line_crossings(off, elev, zopt))
+
+    assert zlo < zopt < zhi
+    assert n1 < n0
+
+
+def test_adjust_step_midpoints_for_crossings_preserves_count_and_order():
+    from lsdviztools3.charts.cross_sections import (
+        _adjust_step_midpoints_for_crossings,
+    )
+
+    off = np.linspace(-200.0, 200.0, 2001)
+    elev = 100.0 + 0.0008 * off**2 + 1.8 * np.exp(-(off / 20.0) ** 2)
+    boundaries = [100.9, 102.0, 104.0]
+    mids = [101.45, 103.0]
+
+    adj = _adjust_step_midpoints_for_crossings(off, elev, boundaries, mids)
+
+    assert len(adj) == 2
+    assert boundaries[0] < adj[0] < boundaries[1]
+    assert boundaries[1] < adj[1] < boundaries[2]
+
+
 # --- plot_valley_break_metric -----------------------------------------------
 
 def _break_metric_frame():
@@ -453,6 +521,48 @@ def test_plot_valley_cross_section_map_missing_source_raises(tmp_path):
     with pytest.raises(ValueError, match="No cross-section stations"):
         plot_valley_cross_section_map(
             _cross_section_frame(4), _nodes_frame(), hs, source_id=9)
+
+
+def test_plot_valley_cross_section_features_map_with_mask_and_boundaries(tmp_path):
+    import pandas as pd
+    pytest.importorskip("rasterio")
+    from lsdviztools3.charts import plot_valley_cross_section_features_map
+
+    hs = _tiny_hillshade_tif(tmp_path)
+    # Valley mask encoded as source_id + 1.
+    vm = np.zeros((280, 70), dtype=float)
+    vm[80:220, 20:50] = 1.0
+    _write_geotiff(tmp_path / "valley_mask.tif", vm)
+
+    # One channel feature + two hydraulic boundaries (with step labels).
+    feats = pd.DataFrame({
+        "source_id": [0],
+        "feature_type": ["channel"],
+        "x": [0.0],
+        "y": [2000.0],
+    })
+    bounds = pd.DataFrame({
+        "source_id": [0, 0],
+        "station_seq": [2, 3],
+        "boundary_type": ["hydraulic_edge", "hydraulic_edge"],
+        "step": [0, 1],
+        "x": [-60.0, 65.0],
+        "y": [1000.0, 1500.0],
+    })
+
+    fig, ax = plot_valley_cross_section_features_map(
+        feats,
+        _cross_section_frame(8),
+        _nodes_frame(),
+        hs,
+        source_id=0,
+        boundaries_df=bounds,
+        valley_mask_path=str(tmp_path / "valley_mask.tif"),
+        hydraulic_label_every=1,
+        label_every=0,
+    )
+    assert "features" in ax.get_title()
+    assert len(ax.texts) >= 2
 
 
 # --- plot_valley_reach_map --------------------------------------------------

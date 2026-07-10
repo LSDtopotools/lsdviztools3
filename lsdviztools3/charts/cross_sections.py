@@ -514,6 +514,8 @@ def plot_valley_cross_section_features_map(
     hillshade_path: str,
     *,
     source_id: int = 0,
+    boundaries_df: Optional[pd.DataFrame] = None,
+    valley_mask_path: Optional[str] = None,
     flat_edges_df: Optional[pd.DataFrame] = None,
     transform=None,
     source_col: str = "source_id",
@@ -522,9 +524,13 @@ def plot_valley_cross_section_features_map(
     x_col: str = "x",
     y_col: str = "y",
     feature_type_col: str = "feature_type",
+    boundary_type_col: str = "boundary_type",
+    step_col: str = "step",
     node_x_col: str = "x",
     node_y_col: str = "y",
     label_every: int = 1,
+    hydraulic_label_every: int = 0,
+    valley_mask_alpha: float = 0.28,
     centreline_color: str = "crimson",
     transect_color: str = "0.75",
     crop_margin_frac: float = 0.08,
@@ -536,16 +542,22 @@ def plot_valley_cross_section_features_map(
     ``label_every`` labels every Nth transect with its station number (all
     transect lines are always drawn); 0 disables labels.
 
-    Draws the hillshade, the centreline, every transect line (from the
-    per-sample endpoints), the D8 channel crossings and the original left/right
-    valley-wall boundaries, and — if ``flat_edges_df`` is supplied — the
-    terrace/floodplain edges from the flow-width step midpoints (magenta
-    diamonds; a mid-valley ridge gives 4 per step). Curvature and hillshade
-    peaks are intentionally NOT shown.
+    Draws the hillshade, optional valley-mask overlay, the centreline, every
+    transect line (from the per-sample endpoints), channel crossings and wall
+    boundaries, and hydraulic step-midpoint boundaries. If
+    ``hydraulic_label_every`` > 0, hydraulic edges are labelled (station:step)
+    every N points.
 
     Args:
         features_df: detected-feature table with ``feature_type`` and world
-            ``x``/``y`` columns (channel + valley walls are used).
+            ``x``/``y`` columns (channel and legacy wall points are used).
+        boundaries_df: optional boundary table from
+            ``*_valley_cross_section_boundaries.fgb`` with
+            ``boundary_type``/``step`` and world ``x``/``y`` columns. When
+            supplied, walls and hydraulic edges are read from here.
+        valley_mask_path: optional path to the original
+            ``*_valley_mask.tif``. For source ``k`` this overlays pixels equal
+            to ``k+1`` (or non-zero in per-channel masks).
         flat_edges_df: output of :func:`compute_flat_surface_edges` (world
             ``x``/``y`` of the step-midpoint edges); optional.
         samples_df, nodes_df, hillshade_path: as in
@@ -580,6 +592,24 @@ def plot_valley_cross_section_features_map(
     else:
         fig = ax.figure
     ax.imshow(hs, cmap="gray", interpolation="nearest")
+
+    # Optional valley-mask overlay (original extracted valley raster).
+    if valley_mask_path:
+        with rasterio.open(valley_mask_path) as src:
+            vm = src.read(1).astype(float)
+            if src.nodata is not None:
+                vm[vm == src.nodata] = np.nan
+        vmax = np.nanmax(vm) if np.isfinite(vm).any() else np.nan
+        if np.isfinite(vmax) and vmax <= 1.5:
+            in_src = vm > 0.5
+        else:
+            in_src = np.isclose(vm, float(source_id + 1))
+        rgba = np.zeros((hs.shape[0], hs.shape[1], 4), dtype=float)
+        rgba[..., 1] = 0.70
+        rgba[..., 2] = 0.62
+        rgba[..., 3] = np.where(in_src, max(0.0, min(1.0, valley_mask_alpha)),
+                                0.0)
+        ax.imshow(rgba, interpolation="nearest", zorder=1)
 
     all_rows, all_cols = [], []
 
@@ -623,6 +653,46 @@ def plot_valley_cross_section_features_map(
                     color=colr, zorder=4, label=ftype.replace("_", " "))
             all_rows.append(rr); all_cols.append(cc)
 
+    # Prefer explicit boundary FGB for walls/hydraulic edges when available.
+    bd = boundaries_df[boundaries_df[source_col] == source_id] \
+        if boundaries_df is not None else None
+    if bd is not None and len(bd):
+        style = {
+            "wall_left": ("tab:green", "|", 7, 1.4),
+            "wall_right": ("tab:red", "|", 7, 1.4),
+            "hydraulic_edge": ("magenta", "D", 5, 0.8),
+        }
+        for btype, (colr, mk, ms, mew) in style.items():
+            sub = bd[bd[boundary_type_col] == btype]
+            if not len(sub):
+                continue
+            rr, cc = rasterio.transform.rowcol(
+                tr, sub[x_col].to_numpy(), sub[y_col].to_numpy())
+            rr = np.asarray(rr, dtype=float)
+            cc = np.asarray(cc, dtype=float)
+            if btype == "hydraulic_edge":
+                ax.plot(cc, rr, linestyle="none", marker=mk, ms=ms, mew=mew,
+                        mfc=colr, mec="black", zorder=6,
+                        label="hydraulic edge")
+                if hydraulic_label_every and hydraulic_label_every > 0:
+                    sub = sub.reset_index(drop=True)
+                    for i in range(0, len(sub), int(hydraulic_label_every)):
+                        st = int(sub.loc[i, station_col]) \
+                            if station_col in sub.columns else -1
+                        if step_col in sub.columns and pd.notna(sub.loc[i, step_col]):
+                            sp = int(sub.loc[i, step_col])
+                            txt = f"{st}:{sp}"
+                        else:
+                            txt = str(st)
+                        ax.text(cc[i] + 2.0, rr[i] + 2.0, txt, fontsize=5.5,
+                                color="yellow", ha="left", va="bottom",
+                                zorder=7, path_effects=_label_stroke)
+            else:
+                ax.plot(cc, rr, linestyle="none", marker=mk, ms=ms, mew=mew,
+                        color=colr, zorder=5,
+                        label=btype.replace("_", " "))
+            all_rows.append(rr); all_cols.append(cc)
+
     if flat_edges_df is not None and len(flat_edges_df):
         ed = flat_edges_df[flat_edges_df[source_col] == source_id]
         if len(ed):
@@ -647,15 +717,31 @@ def plot_valley_cross_section_features_map(
                       label="centreline"),
                Line2D([0], [0], color=transect_color, lw=1.0,
                       label="cross section")]
+    if valley_mask_path:
+        handles.append(Line2D([0], [0], color="#2cb3a0", lw=3,
+                              label="original valley mask"))
     for ftype in _MAP_FEATURE_TYPES:
         colr, mk = _FEATURE_STYLE[ftype]
         handles.append(Line2D([0], [0], color=colr, lw=0, marker=mk, ms=6,
                               label=ftype.replace("_", " ")))
+    if bd is not None and len(bd):
+        handles.extend([
+            Line2D([0], [0], color="tab:green", lw=0, marker="|", ms=8,
+                   label="wall left"),
+            Line2D([0], [0], color="tab:red", lw=0, marker="|", ms=8,
+                   label="wall right"),
+            Line2D([0], [0], color="magenta", lw=0, marker="D", ms=6,
+                   mec="black", label="hydraulic edge"),
+        ])
     if flat_edges_df is not None and len(flat_edges_df):
         handles.append(Line2D([0], [0], color="magenta", lw=0, marker="D",
                               ms=6, mec="black",
                               label="terrace / floodplain edge"))
-    ax.legend(handles=handles, loc="upper right", fontsize=7, frameon=True,
+    # Keep legend unique while preserving insertion order.
+    uniq = {}
+    for h in handles:
+        uniq[h.get_label()] = h
+    ax.legend(handles=list(uniq.values()), loc="upper right", fontsize=7, frameon=True,
               framealpha=0.7)
     ax.set_title(f"channel {source_id}: cross-section features", fontsize=11)
     ax.set_axis_off()
@@ -788,12 +874,13 @@ def combine_width_steps(stage, width, ds, min_step_height_m=2.0,
                         min_step_width_px=3):
     """Combine the steps of a (monotonic) flow-width curve into flat surfaces.
 
-    Walking up from the lowest stage, accumulate the flow width and the height
-    gained since the last step boundary. A step is only significant enough to
-    open a NEW boundary once, since the last boundary, the flow width has grown
-    by at least ``min_step_width_px`` pixels AND the stage has risen by at least
-    ``min_step_height_m`` — smaller steps are merged into the running one. The
-    first boundary is the lowest stage; the last is the highest.
+    Candidate boundaries come from PROMINENT peaks of ``dW/dh`` (rapid widening
+    of the flooded section), then adjacent candidates are merged unless they
+    collectively clear both thresholds since the previous accepted boundary:
+    ``>= min_step_width_px`` pixels of added width AND ``>= min_step_height_m``
+    of stage rise. This avoids periodic over-splitting on long smooth walls
+    where cumulative width growth can otherwise trigger a boundary every few
+    metres.
 
     Args:
         stage: ascending stage elevations (m) from
@@ -810,19 +897,47 @@ def combine_width_steps(stage, width, ds, min_step_height_m=2.0,
     """
     stage = np.asarray(stage, dtype=float)
     width = np.asarray(width, dtype=float)
+    ok = np.isfinite(stage) & np.isfinite(width)
+    stage = stage[ok]
+    width = width[ok]
     if len(stage) < 2 or not np.isfinite(ds) or ds <= 0:
         return [], []
+
+    order = np.argsort(stage)
+    stage = stage[order]
+    width = width[order]
+
     min_w = min_step_width_px * ds
-    zmin, zmax = float(stage[0]), float(stage[-1])
-    boundaries = [zmin]
-    w_ref, h_ref = float(width[0]), zmin
-    for i in range(len(stage)):
-        if (width[i] - w_ref) >= min_w and (stage[i] - h_ref) >= min_step_height_m:
-            b = float(stage[i])
-            boundaries.append(b)
-            w_ref, h_ref = float(width[i]), b
-    if zmax - boundaries[-1] > 1e-9:
-        boundaries.append(zmax)
+
+    # Candidate boundaries = prominent widening events (dW/dh peaks), bounded
+    # by the lowest and highest stage.
+    if len(stage) >= 3:
+        dW = np.gradient(width, stage)
+        pk = _prominent_peaks(dW, min_prom_frac=0.10)
+    else:
+        pk = []
+    cand_idx = [0] + [i for i in pk if 0 < i < len(stage) - 1] + [len(stage) - 1]
+    cand_idx = sorted(set(cand_idx))
+
+    keep_idx = [cand_idx[0]]
+    ref_idx = cand_idx[0]
+    for i in cand_idx[1:-1]:
+        if ((width[i] - width[ref_idx]) >= min_w
+                and (stage[i] - stage[ref_idx]) >= min_step_height_m):
+            keep_idx.append(i)
+            ref_idx = i
+    if keep_idx[-1] != cand_idx[-1]:
+        keep_idx.append(cand_idx[-1])
+
+    boundaries = []
+    for i in keep_idx:
+        z = float(stage[i])
+        if not boundaries or (z - boundaries[-1]) > 1e-9:
+            boundaries.append(z)
+
+    if len(boundaries) < 2:
+        return [], []
+
     mids = [0.5 * (boundaries[k] + boundaries[k + 1])
             for k in range(len(boundaries) - 1)]
     return boundaries, mids
@@ -855,6 +970,68 @@ def _water_line_crossings(offset, elevation, level):
     return out
 
 
+def _optimize_step_midpoint(
+    offset,
+    elevation,
+    zmid,
+    zlo,
+    zhi,
+    *,
+    n_candidates=81,
+    min_crossings=2,
+):
+    """Nudge a step midpoint within ``(zlo, zhi)`` to reduce crossings.
+
+    The candidate level is searched only inside its own step interval so it
+    never crosses adjacent step boundaries.
+    """
+    if not np.isfinite(zlo) or not np.isfinite(zhi) or zhi <= zlo:
+        return float(zmid)
+
+    eps = max(1e-9, 1e-6 * (zhi - zlo))
+    lo, hi = zlo + eps, zhi - eps
+    if hi <= lo:
+        return float(0.5 * (zlo + zhi))
+
+    z0 = float(zmid) if np.isfinite(zmid) else float(0.5 * (lo + hi))
+    z0 = float(np.clip(z0, lo, hi))
+
+    n = max(5, int(n_candidates))
+    cands = np.linspace(lo, hi, n)
+    cands = np.unique(np.concatenate((cands, np.array([z0], dtype=float))))
+    counts = np.array([
+        len(_water_line_crossings(offset, elevation, float(z)))
+        for z in cands
+    ], dtype=int)
+
+    # Prefer levels with at least one bank pair when available; then minimise
+    # crossings and, on ties, keep the level closest to the original midpoint.
+    valid = counts >= int(min_crossings)
+    if np.any(valid):
+        idx_all = np.where(valid)[0]
+        best_local = min(
+            range(len(idx_all)),
+            key=lambda j: (counts[idx_all[j]], abs(cands[idx_all[j]] - z0)),
+        )
+        return float(cands[idx_all[best_local]])
+
+    best = min(range(len(cands)), key=lambda i: (counts[i], abs(cands[i] - z0)))
+    return float(cands[best])
+
+
+def _adjust_step_midpoints_for_crossings(offset, elevation, boundaries, mids):
+    """Adjust each step midpoint to reduce multi-crossing artifacts."""
+    boundaries = np.asarray(boundaries, dtype=float)
+    if len(boundaries) < 2:
+        return []
+    out = []
+    for k in range(len(boundaries) - 1):
+        zlo, zhi = float(boundaries[k]), float(boundaries[k + 1])
+        zmid = float(mids[k]) if k < len(mids) else 0.5 * (zlo + zhi)
+        out.append(_optimize_step_midpoint(offset, elevation, zmid, zlo, zhi))
+    return out
+
+
 def compute_flat_surface_edges(
     samples_df: pd.DataFrame,
     *,
@@ -872,9 +1049,10 @@ def compute_flat_surface_edges(
     """Terrace / floodplain edges from flow-width step midpoints, per station.
 
     For each cross section, floods the profile (:func:`cross_section_hydraulics`),
-    combines the width steps (:func:`combine_width_steps`), then at the
-    MID-ELEVATION of each step records every water-line crossing of the profile
-    (:func:`_water_line_crossings`) with its interpolated world coordinate.
+    combines the width steps (:func:`combine_width_steps`), nudges each
+    step-mid elevation within its own step bounds to reduce excessive
+    water-line crossings, then records every crossing of the profile
+    (:func:`_water_line_crossings`) with interpolated world coordinates.
 
     Returns:
         DataFrame with columns ``source_id, station_seq, step, stage, offset_m,
@@ -892,10 +1070,11 @@ def compute_flat_surface_edges(
         hyd = cross_section_hydraulics(off, elev, stage_step=stage_step)
         if not len(hyd["stage"]):
             continue
-        _, mids = combine_width_steps(
+        boundaries, mids = combine_width_steps(
             hyd["stage"], hyd["width"], hyd["ds"],
             min_step_height_m=min_step_height_m,
             min_step_width_px=min_step_width_px)
+        mids = _adjust_step_midpoints_for_crossings(off, elev, boundaries, mids)
         okxy = np.isfinite(off) & np.isfinite(xw) & np.isfinite(yw)
         offc, xc, yc = off[okxy], xw[okxy], yw[okxy]
         for step_idx, zmid in enumerate(mids):
@@ -930,9 +1109,9 @@ def plot_valley_cross_section_hydraulics(
     the flow-width curve ``W(h)`` ROTATED so stage/elevation is the vertical
     axis (shared with the profile). The width curve is segmented into flat
     surfaces with :func:`combine_width_steps`; step boundaries are dotted grey
-    lines on both panels, and at the MID-ELEVATION of each step the water-line
-    crossings of the profile are marked as terrace/floodplain edges (magenta
-    diamonds; a mid-valley ridge gives 4 edges instead of 2).
+    lines on both panels. Mid-elevations are then nudged within their step
+    bounds to minimise excessive crossings before marking terrace/floodplain
+    edges (magenta diamonds).
 
     Args:
         samples_df: per-sample cross-section table.
@@ -987,6 +1166,8 @@ def plot_valley_cross_section_hydraulics(
                 hyd["stage"], hyd["width"], hyd["ds"],
                 min_step_height_m=min_step_height_m,
                 min_step_width_px=min_step_width_px)
+            mids = _adjust_step_midpoints_for_crossings(
+                off, elev, boundaries, mids)
         else:
             boundaries, mids = [], []
         results[int(sseq)] = list(map(float, mids))
