@@ -13,10 +13,18 @@ from .chi import plot_chi_profile, plot_chi_stacked
 from .circular import (
     circular_wasserstein, kuiper_two_sample, plot_circular_comparison,
 )
-from .cross_sections import plot_valley_cross_sections
+from .cross_sections import (
+    plot_valley_cross_section_map, plot_valley_cross_sections,
+    plot_valley_cross_section_features,
+    plot_valley_cross_section_features_map,
+    plot_valley_cross_section_hydraulics,
+    cross_section_hydraulics, detect_hydraulic_flats,
+    combine_width_steps, compute_flat_surface_edges,
+)
 from .distributions import plot_distributions
 from .hanc import (
     plot_hanc_distance, plot_hanc_window_populations, plot_valley_break_metric,
+    plot_valley_break_fraction, plot_valley_floor_map, plot_valley_reach_map,
 )
 from .rose import rose_diagram
 from .swath import plot_swath
@@ -24,7 +32,16 @@ from .swath import plot_swath
 __all__ = [
     "plot_chi_profile", "plot_chi_stacked", "plot_swath",
     "plot_hanc_distance", "plot_hanc_window_populations",
-    "plot_valley_break_metric", "plot_valley_cross_sections",
+    "plot_valley_break_metric", "plot_valley_break_fraction",
+    "plot_valley_cross_sections",
+    "plot_valley_cross_section_map",
+    "plot_valley_cross_section_features",
+    "plot_valley_cross_section_features_map",
+    "plot_valley_cross_section_hydraulics",
+    "cross_section_hydraulics", "detect_hydraulic_flats",
+    "combine_width_steps", "compute_flat_surface_edges",
+    "plot_valley_reach_map",
+    "plot_valley_floor_map",
     "plot_distributions", "rose_diagram",
     "circular_wasserstein", "kuiper_two_sample", "plot_circular_comparison",
     "plot_profile", "plot_slope_area",

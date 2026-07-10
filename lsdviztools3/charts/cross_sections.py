@@ -26,12 +26,26 @@ _MPL_MSG = (
 )
 
 
+_RASTERIO_MSG = (
+    "The cross-section map needs rasterio to read the hillshade. Install it "
+    "e.g. `pip install rasterio`."
+)
+
+
 def _import_mpl():
     try:
         import matplotlib.pyplot as plt  # noqa: F401
     except ImportError as exc:  # pragma: no cover - exercised only without mpl
         raise ImportError(_MPL_MSG) from exc
     return plt
+
+
+def _import_rasterio():
+    try:
+        import rasterio  # noqa: F401
+    except ImportError as exc:  # pragma: no cover - exercised only without rio
+        raise ImportError(_RASTERIO_MSG) from exc
+    return rasterio
 
 
 def plot_valley_cross_sections(
@@ -146,3 +160,895 @@ def plot_valley_cross_sections(
         fontsize=11, y=0.999)
     fig.tight_layout(rect=[0, 0, 1, 0.97])
     return fig, axes
+
+
+def plot_valley_cross_section_map(
+    samples_df: pd.DataFrame,
+    nodes_df: pd.DataFrame,
+    hillshade_path: str,
+    *,
+    source_id: int = 0,
+    transform=None,
+    sides_df: Optional[pd.DataFrame] = None,
+    source_col: str = "source_id",
+    station_col: str = "station_seq",
+    offset_col: str = "offset_m",
+    x_col: str = "x",
+    y_col: str = "y",
+    node_x_col: str = "x",
+    node_y_col: str = "y",
+    label_every: int = 1,
+    centreline_color: str = "crimson",
+    transect_color: str = "yellow",
+    side_color: str = "deepskyblue",
+    crop_margin_frac: float = 0.08,
+    ax=None,
+):
+    """Map of the numbered cross-section transects over a hillshade.
+
+    A companion to :func:`plot_valley_cross_sections`: instead of the transect
+    profiles, this shows WHERE each transect sits. It draws the hillshade, the
+    valley centreline, and every cross-section transect as a line labelled with
+    its station number, so a reader can match a numbered panel in the profile
+    grid to its location on the ground.
+
+    Transect endpoints are taken from the per-sample table: for each station
+    the samples at the minimum and maximum signed offset are the two ends of
+    the line. World coordinates are mapped to raster pixel space with the
+    hillshade's affine transform (the plot is drawn in pixel/image space, as
+    ``imshow`` requires).
+
+    Args:
+        samples_df: Per-sample cross-section table
+            (``*_valley_cross_section_samples.csv``) with the source, station,
+            offset and world ``x``/``y`` columns.
+        nodes_df: Valley-centreline nodes table
+            (``*_valley_centreline_nodes.csv``) with source and world
+            ``x``/``y`` columns, ordered upstream→downstream.
+        hillshade_path: Path to the hillshade GeoTIFF (read with rasterio).
+        source_id: Channel source to map.
+        transform: Optional affine transform for the world→pixel mapping. When
+            ``None`` the hillshade's own transform is used (the normal case);
+            pass one only if ``samples_df`` is georeferenced to a different
+            grid than the hillshade.
+        sides_df: Optional detected valley-side points (loaded from
+            ``*_valley_cross_section_sides.fgb``) with ``x``/``y`` columns, to
+            dot the left/right valley margins. ``None`` skips them.
+        source_col, station_col, offset_col, x_col, y_col: Column names in
+            ``samples_df``.
+        node_x_col, node_y_col: World-coordinate columns in ``nodes_df``.
+        label_every: Label every Nth station (all transect lines are always
+            drawn; this only thins the number labels). 1 labels every station.
+        centreline_color, transect_color, side_color: Line/point colours.
+        crop_margin_frac: Fraction of the data bounding-box size added as a
+            margin when cropping the map to the channel. 0 or negative shows
+            the full hillshade.
+        ax: Existing matplotlib ``Axes`` or ``None`` for a new one.
+
+    Returns:
+        ``(fig, ax)``.
+
+    Raises:
+        ValueError: if the table holds no stations for ``source_id``.
+    """
+    plt = _import_mpl()
+    rasterio = _import_rasterio()
+    from matplotlib.lines import Line2D
+    import matplotlib.patheffects as pe
+
+    _label_stroke = [pe.withStroke(linewidth=1.4, foreground="black")]
+
+    ch = samples_df[samples_df[source_col] == source_id]
+    stations = sorted(ch[station_col].unique())
+    if not stations:
+        raise ValueError(
+            f"No cross-section stations for {source_col}={source_id}.")
+
+    with rasterio.open(hillshade_path) as src:
+        hs = src.read(1).astype(float)
+        if src.nodata is not None:
+            hs[hs == src.nodata] = np.nan
+        tr = transform if transform is not None else src.transform
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(11, 9))
+    else:
+        fig = ax.figure
+    ax.imshow(hs, cmap="gray", interpolation="nearest")
+
+    all_rows, all_cols = [], []
+
+    # Centreline.
+    g = nodes_df[nodes_df[source_col] == source_id]
+    if len(g):
+        rows, cols = rasterio.transform.rowcol(
+            tr, g[node_x_col].to_numpy(), g[node_y_col].to_numpy())
+        rows = np.asarray(rows, dtype=float)
+        cols = np.asarray(cols, dtype=float)
+        ax.plot(cols, rows, "-", lw=1.6, color=centreline_color,
+                zorder=3, label="centreline")
+        ax.plot(cols[0], rows[0], "o", ms=6, color="black", zorder=4)
+        ax.plot(cols[-1], rows[-1], "s", ms=6, color="purple", zorder=4)
+        all_rows.append(rows)
+        all_cols.append(cols)
+
+    # Transects: each station's two endpoints are its min/max-offset samples.
+    for k, sseq in enumerate(stations):
+        s = ch[ch[station_col] == sseq].sort_values(offset_col)
+        ends = s.iloc[[0, -1]]
+        rr, cc = rasterio.transform.rowcol(
+            tr, ends[x_col].to_numpy(), ends[y_col].to_numpy())
+        rr = np.asarray(rr, dtype=float)
+        cc = np.asarray(cc, dtype=float)
+        ax.plot(cc, rr, "-", lw=0.9, color=transect_color, alpha=0.9, zorder=2)
+        all_rows.append(rr)
+        all_cols.append(cc)
+        if label_every > 0 and (k % label_every == 0):
+            # Label at the first endpoint, nudged along the transect.
+            dx, dy = cc[0] - cc[-1], rr[0] - rr[-1]
+            norm = float(np.hypot(dx, dy)) or 1.0
+            lx = cc[0] + 8.0 * dx / norm
+            ly = rr[0] + 8.0 * dy / norm
+            ax.text(lx, ly, str(int(sseq)), fontsize=6.5, color=transect_color,
+                    ha="center", va="center", zorder=5,
+                    path_effects=_label_stroke)
+
+    # Optional valley-side points.
+    if sides_df is not None and len(sides_df):
+        sd = sides_df
+        if source_col in sd.columns:
+            sd = sd[sd[source_col] == source_id]
+        if len(sd):
+            srow, scol = rasterio.transform.rowcol(
+                tr, sd[x_col].to_numpy(), sd[y_col].to_numpy())
+            ax.plot(np.asarray(scol, dtype=float), np.asarray(srow, dtype=float),
+                    ".", ms=3, color=side_color, zorder=3, label="valley side")
+
+    # Crop to the channel with a margin.
+    if crop_margin_frac and crop_margin_frac > 0 and all_rows:
+        rr = np.concatenate(all_rows)
+        cc = np.concatenate(all_cols)
+        r0, r1 = np.nanmin(rr), np.nanmax(rr)
+        c0, c1 = np.nanmin(cc), np.nanmax(cc)
+        mr = crop_margin_frac * max(r1 - r0, 1.0)
+        mc = crop_margin_frac * max(c1 - c0, 1.0)
+        ax.set_xlim(max(c0 - mc, 0), min(c1 + mc, hs.shape[1]))
+        # y inverted (row 0 at top) — imshow default.
+        ax.set_ylim(min(r1 + mr, hs.shape[0]), max(r0 - mr, 0))
+
+    handles = [
+        Line2D([0], [0], color=centreline_color, lw=1.6, label="centreline"),
+        Line2D([0], [0], color=transect_color, lw=1.2,
+               label="cross section (numbered)"),
+    ]
+    if sides_df is not None and len(sides_df):
+        handles.append(Line2D([0], [0], color=side_color, lw=0, marker=".",
+                              ms=6, label="valley side"))
+    ax.legend(handles=handles, loc="upper right", fontsize=8, frameon=True,
+              framealpha=0.7)
+    ax.set_title(
+        f"channel {source_id}: cross-section locations (numbered by station)",
+        fontsize=11)
+    ax.set_axis_off()
+    return fig, ax
+
+
+# --- Feature-annotated cross sections ---------------------------------------
+
+# Marker style per feature type (colour, matplotlib marker).
+_FEATURE_STYLE = {
+    "channel":        ("tab:blue",   "v"),
+    "wall_left":      ("tab:green",  "|"),
+    "wall_right":     ("tab:red",    "|"),
+    "curvature_peak": ("tab:orange", "o"),
+    "hillshade_peak": ("tab:purple", "x"),
+}
+
+
+def plot_valley_cross_section_features(
+    samples_df: pd.DataFrame,
+    features_df: pd.DataFrame,
+    *,
+    source_id: int = 0,
+    source_col: str = "source_id",
+    station_col: str = "station_seq",
+    offset_col: str = "offset_m",
+    elevation_col: str = "elevation",
+    in_valley_col: str = "in_valley",
+    along_col: str = "along_distance_m",
+    curvature_col: str = "curvature",
+    hillshade_col: str = "hillshade",
+    feature_type_col: str = "feature_type",
+    feature_offset_col: str = "offset_m",
+    max_panels: int = 20,
+    n_cols: int = 4,
+):
+    """Individual cross sections annotated with detected features.
+
+    For each station, two stacked panels sharing the offset axis:
+      * top    — elevation profile with in-valley shading, and every detected
+                 feature marked at its offset: D8 channel crossings, left/right
+                 valley walls, maximum-curvature peaks, hillshade peaks;
+      * bottom — the maximum-curvature profile (left axis) and multidirectional
+                 hillshade profile (right axis) the (c)/(d) peaks come from,
+                 with vertical guides at the peak offsets.
+
+    Args:
+        samples_df: per-sample table (``*_valley_cross_section_samples.csv``),
+            which must include the ``curvature``, ``hillshade`` and
+            ``is_channel`` columns written when features are enabled.
+        features_df: detected-feature table
+            (``*_valley_cross_section_features.csv``) with a ``feature_type``
+            and ``offset_m`` per feature.
+        source_id: channel source to plot.
+        max_panels: cap on stations shown (evenly subsampled if exceeded;
+            0/negative draws all). n_cols: station columns.
+
+    Returns:
+        ``(fig, axes)`` — ``axes`` a list of ``(elev_ax, feat_ax)`` pairs.
+
+    Raises:
+        ValueError: if no stations exist for ``source_id``.
+    """
+    plt = _import_mpl()
+    from matplotlib.lines import Line2D
+
+    ch = samples_df[samples_df[source_col] == source_id]
+    stations = sorted(ch[station_col].unique())
+    if not stations:
+        raise ValueError(
+            f"No cross-section stations for {source_col}={source_id}.")
+    if max_panels and max_panels > 0 and len(stations) > max_panels:
+        idx = np.linspace(0, len(stations) - 1, max_panels).round().astype(int)
+        stations = [stations[i] for i in sorted(set(idx))]
+
+    feats = features_df[features_df[source_col] == source_id] \
+        if features_df is not None else None
+
+    n = len(stations)
+    n_cols = max(1, min(n_cols, n))
+    n_block_rows = (n + n_cols - 1) // n_cols
+    # 2 grid rows per station row: elevation on top, curv/hillshade below.
+    fig, axarr = plt.subplots(
+        2 * n_block_rows, n_cols,
+        figsize=(3.4 * n_cols, 3.2 * n_block_rows), squeeze=False,
+        gridspec_kw={"height_ratios": [2.0, 1.0] * n_block_rows})
+
+    ev = ch[elevation_col].replace([np.inf, -np.inf], np.nan).dropna()
+    ymin, ymax = (float(ev.min()), float(ev.max())) if len(ev) else (0.0, 1.0)
+    pad = 0.05 * (ymax - ymin + 1e-6)
+    xmax = float(ch[offset_col].abs().max())
+
+    axes = []
+    for k, sseq in enumerate(stations):
+        br, col = k // n_cols, k % n_cols
+        eax = axarr[2 * br][col]
+        fax = axarr[2 * br + 1][col]
+        axes.append((eax, fax))
+
+        s = ch[ch[station_col] == sseq].sort_values(offset_col)
+        off = s[offset_col].to_numpy(dtype=float)
+        elev = s[elevation_col].to_numpy(dtype=float)
+        inval = s[in_valley_col].to_numpy(dtype=float)
+        along = float(s[along_col].iloc[0])
+        fs = feats[feats[station_col] == sseq] if feats is not None else None
+
+        def elev_at(o):
+            return float(np.interp(o, off, elev))
+
+        # --- elevation panel ---
+        eax.plot(off, elev, "-", color="0.35", lw=1.1, zorder=2)
+        eax.fill_between(off, ymin - pad, elev, where=(inval > 0),
+                         color="tab:blue", alpha=0.18, step="mid", zorder=1)
+        eax.axvline(0.0, color="k", lw=0.7, ls=":", zorder=1)
+        if fs is not None:
+            for ftype, (colr, mk) in _FEATURE_STYLE.items():
+                fo = fs[fs[feature_type_col] == ftype][feature_offset_col]
+                for o in fo.to_numpy(dtype=float):
+                    if ftype in ("wall_left", "wall_right"):
+                        eax.axvline(o, color=colr, lw=1.1, ls="--", zorder=3)
+                    else:
+                        eax.plot(o, elev_at(o), mk, color=colr, ms=6,
+                                 mew=1.4, zorder=4)
+                    if ftype in ("curvature_peak", "hillshade_peak"):
+                        fax.axvline(o, color=colr, lw=0.8, ls=":", alpha=0.7)
+        eax.set_ylim(ymin - pad, ymax + pad)
+        eax.set_xlim(-xmax, xmax)
+        eax.set_title(f"station {int(sseq)} — {along / 1000:.2f} km",
+                      fontsize=8)
+        eax.tick_params(labelsize=6, labelbottom=False)
+        if col == 0:
+            eax.set_ylabel("elev (m)", fontsize=7)
+
+        # --- curvature / hillshade panel ---
+        curv = s[curvature_col].to_numpy(dtype=float) \
+            if curvature_col in s else np.full_like(off, np.nan)
+        hsv = s[hillshade_col].to_numpy(dtype=float) \
+            if hillshade_col in s else np.full_like(off, np.nan)
+        fax.plot(off, curv, "-", color="tab:orange", lw=0.9, zorder=2)
+        fax.axhline(0.0, color="0.7", lw=0.5)
+        fax.set_xlim(-xmax, xmax)
+        fax.tick_params(labelsize=6, colors="tab:orange")
+        if col == 0:
+            fax.set_ylabel("max curv", fontsize=7, color="tab:orange")
+        hax = fax.twinx()
+        hax.plot(off, hsv, "-", color="tab:purple", lw=0.9, alpha=0.8, zorder=2)
+        hax.tick_params(labelsize=6, colors="tab:purple")
+        if col == n_cols - 1:
+            hax.set_ylabel("hillshade", fontsize=7, color="tab:purple")
+        if br == n_block_rows - 1:
+            fax.set_xlabel("offset (m)", fontsize=7)
+
+    for k in range(n, n_block_rows * n_cols):
+        br, col = k // n_cols, k % n_cols
+        axarr[2 * br][col].set_axis_off()
+        axarr[2 * br + 1][col].set_axis_off()
+
+    handles = [
+        Line2D([0], [0], color="0.35", lw=1.1, label="elevation"),
+        Line2D([0], [0], color="tab:green", lw=1.1, ls="--", label="left wall"),
+        Line2D([0], [0], color="tab:red", lw=1.1, ls="--", label="right wall"),
+        Line2D([0], [0], color="tab:blue", lw=0, marker="v", ms=7,
+               label="D8 channel"),
+        Line2D([0], [0], color="tab:orange", lw=0, marker="o", ms=6,
+               label="max-curvature peak"),
+        Line2D([0], [0], color="tab:purple", lw=0, marker="x", ms=6,
+               label="hillshade peak"),
+    ]
+    fig.legend(handles=handles, loc="upper center", fontsize=8, frameon=False,
+               ncol=6, bbox_to_anchor=(0.5, 0.998))
+    fig.suptitle(
+        f"channel {source_id}: cross sections with detected features",
+        fontsize=11, y=1.035)
+    fig.tight_layout(rect=[0, 0, 1, 0.955])
+    return fig, axes
+
+
+_MAP_FEATURE_TYPES = ("channel", "wall_left", "wall_right")
+
+
+def plot_valley_cross_section_features_map(
+    features_df: pd.DataFrame,
+    samples_df: pd.DataFrame,
+    nodes_df: pd.DataFrame,
+    hillshade_path: str,
+    *,
+    source_id: int = 0,
+    flat_edges_df: Optional[pd.DataFrame] = None,
+    transform=None,
+    source_col: str = "source_id",
+    station_col: str = "station_seq",
+    offset_col: str = "offset_m",
+    x_col: str = "x",
+    y_col: str = "y",
+    feature_type_col: str = "feature_type",
+    node_x_col: str = "x",
+    node_y_col: str = "y",
+    label_every: int = 1,
+    centreline_color: str = "crimson",
+    transect_color: str = "0.75",
+    crop_margin_frac: float = 0.08,
+    ax=None,
+):
+    """Map of cross-section transects with valley-edge and terrace/floodplain
+    edge points, over a hillshade.
+
+    ``label_every`` labels every Nth transect with its station number (all
+    transect lines are always drawn); 0 disables labels.
+
+    Draws the hillshade, the centreline, every transect line (from the
+    per-sample endpoints), the D8 channel crossings and the original left/right
+    valley-wall boundaries, and — if ``flat_edges_df`` is supplied — the
+    terrace/floodplain edges from the flow-width step midpoints (magenta
+    diamonds; a mid-valley ridge gives 4 per step). Curvature and hillshade
+    peaks are intentionally NOT shown.
+
+    Args:
+        features_df: detected-feature table with ``feature_type`` and world
+            ``x``/``y`` columns (channel + valley walls are used).
+        flat_edges_df: output of :func:`compute_flat_surface_edges` (world
+            ``x``/``y`` of the step-midpoint edges); optional.
+        samples_df, nodes_df, hillshade_path: as in
+            :func:`plot_valley_cross_section_map` (transect endpoints and
+            centreline over the hillshade).
+        source_id: channel source to map.
+
+    Returns:
+        ``(fig, ax)``.
+    """
+    plt = _import_mpl()
+    rasterio = _import_rasterio()
+    from matplotlib.lines import Line2D
+    import matplotlib.patheffects as pe
+
+    _label_stroke = [pe.withStroke(linewidth=1.4, foreground="black")]
+
+    ch = samples_df[samples_df[source_col] == source_id]
+    stations = sorted(ch[station_col].unique())
+    if not stations:
+        raise ValueError(
+            f"No cross-section stations for {source_col}={source_id}.")
+
+    with rasterio.open(hillshade_path) as src:
+        hs = src.read(1).astype(float)
+        if src.nodata is not None:
+            hs[hs == src.nodata] = np.nan
+        tr = transform if transform is not None else src.transform
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(11, 9))
+    else:
+        fig = ax.figure
+    ax.imshow(hs, cmap="gray", interpolation="nearest")
+
+    all_rows, all_cols = [], []
+
+    g = nodes_df[nodes_df[source_col] == source_id]
+    if len(g):
+        rows, cols = rasterio.transform.rowcol(
+            tr, g[node_x_col].to_numpy(), g[node_y_col].to_numpy())
+        rows = np.asarray(rows, dtype=float); cols = np.asarray(cols, dtype=float)
+        ax.plot(cols, rows, "-", lw=1.4, color=centreline_color, zorder=3)
+        all_rows.append(rows); all_cols.append(cols)
+
+    for k, sseq in enumerate(stations):
+        s = ch[ch[station_col] == sseq].sort_values(offset_col)
+        ends = s.iloc[[0, -1]]
+        rr, cc = rasterio.transform.rowcol(
+            tr, ends[x_col].to_numpy(), ends[y_col].to_numpy())
+        rr = np.asarray(rr, dtype=float); cc = np.asarray(cc, dtype=float)
+        ax.plot(cc, rr, "-", lw=0.7, color=transect_color, alpha=0.9, zorder=2)
+        all_rows.append(rr); all_cols.append(cc)
+        if label_every > 0 and (k % label_every == 0):
+            dx, dy = cc[0] - cc[-1], rr[0] - rr[-1]
+            norm = float(np.hypot(dx, dy)) or 1.0
+            lx = cc[0] + 10.0 * dx / norm
+            ly = rr[0] + 10.0 * dy / norm
+            ax.text(lx, ly, str(int(sseq)), fontsize=7, color="yellow",
+                    ha="center", va="center", zorder=6,
+                    path_effects=_label_stroke)
+
+    fe = features_df[features_df[source_col] == source_id] \
+        if features_df is not None else None
+    if fe is not None and len(fe):
+        for ftype in _MAP_FEATURE_TYPES:
+            colr, mk = _FEATURE_STYLE[ftype]
+            sub = fe[fe[feature_type_col] == ftype]
+            if not len(sub):
+                continue
+            rr, cc = rasterio.transform.rowcol(
+                tr, sub[x_col].to_numpy(), sub[y_col].to_numpy())
+            rr = np.asarray(rr, dtype=float); cc = np.asarray(cc, dtype=float)
+            ax.plot(cc, rr, linestyle="none", marker=mk, ms=5, mew=1.2,
+                    color=colr, zorder=4, label=ftype.replace("_", " "))
+            all_rows.append(rr); all_cols.append(cc)
+
+    if flat_edges_df is not None and len(flat_edges_df):
+        ed = flat_edges_df[flat_edges_df[source_col] == source_id]
+        if len(ed):
+            rr, cc = rasterio.transform.rowcol(
+                tr, ed[x_col].to_numpy(), ed[y_col].to_numpy())
+            rr = np.asarray(rr, dtype=float); cc = np.asarray(cc, dtype=float)
+            ax.plot(cc, rr, linestyle="none", marker="D", ms=5, mew=0.7,
+                    mfc="magenta", mec="black", zorder=5,
+                    label="terrace / floodplain edge")
+            all_rows.append(rr); all_cols.append(cc)
+
+    if crop_margin_frac and crop_margin_frac > 0 and all_rows:
+        rr = np.concatenate(all_rows); cc = np.concatenate(all_cols)
+        r0, r1 = np.nanmin(rr), np.nanmax(rr)
+        c0, c1 = np.nanmin(cc), np.nanmax(cc)
+        mr = crop_margin_frac * max(r1 - r0, 1.0)
+        mc = crop_margin_frac * max(c1 - c0, 1.0)
+        ax.set_xlim(max(c0 - mc, 0), min(c1 + mc, hs.shape[1]))
+        ax.set_ylim(min(r1 + mr, hs.shape[0]), max(r0 - mr, 0))
+
+    handles = [Line2D([0], [0], color=centreline_color, lw=1.4,
+                      label="centreline"),
+               Line2D([0], [0], color=transect_color, lw=1.0,
+                      label="cross section")]
+    for ftype in _MAP_FEATURE_TYPES:
+        colr, mk = _FEATURE_STYLE[ftype]
+        handles.append(Line2D([0], [0], color=colr, lw=0, marker=mk, ms=6,
+                              label=ftype.replace("_", " ")))
+    if flat_edges_df is not None and len(flat_edges_df):
+        handles.append(Line2D([0], [0], color="magenta", lw=0, marker="D",
+                              ms=6, mec="black",
+                              label="terrace / floodplain edge"))
+    ax.legend(handles=handles, loc="upper right", fontsize=7, frameon=True,
+              framealpha=0.7)
+    ax.set_title(f"channel {source_id}: cross-section features", fontsize=11)
+    ax.set_axis_off()
+    return fig, ax
+
+
+# --- Stage-rise hydraulic-geometry flat-surface detection -------------------
+
+def cross_section_hydraulics(offset, elevation, stage_step=0.1):
+    """Flood a cross-section profile and return stage-hydraulic curves.
+
+    From the profile's lowest point, raise a water-surface stage ``h`` in
+    ``stage_step`` (m) increments. At each stage, over the wetted run CONNECTED
+    to the thalweg (lowest point), compute wetted area ``A`` (integral of depth
+    over width), total flow width ``W``, wetted perimeter ``P`` (bed length
+    across the run) and hydraulic depth ``D_h = A / W``.
+
+    Args:
+        offset: 1-D array of signed offsets (m), evenly spaced, ascending.
+        elevation: 1-D array of elevations (m); non-finite samples are dropped.
+        stage_step: stage increment (m).
+
+    Returns:
+        dict of numpy arrays ``stage, area, width, perimeter, hyd_depth`` plus
+        scalars ``zmin`` and ``ds`` (offset spacing). Empty arrays if the
+        profile has < 3 valid samples.
+    """
+    off = np.asarray(offset, dtype=float)
+    z = np.asarray(elevation, dtype=float)
+    ok = np.isfinite(z) & np.isfinite(off)
+    off, z = off[ok], z[ok]
+    order = np.argsort(off)
+    off, z = off[order], z[order]
+    empty = dict(stage=np.array([]), area=np.array([]), width=np.array([]),
+                 perimeter=np.array([]), hyd_depth=np.array([]),
+                 zmin=np.nan, ds=np.nan)
+    n = len(z)
+    if n < 3:
+        return empty
+    ds = float(np.median(np.diff(off)))
+    if not np.isfinite(ds) or ds <= 0:
+        return empty
+    zmin, zmax = float(z.min()), float(z.max())
+    thalweg = int(np.argmin(z))
+    stages = np.arange(zmin + stage_step, zmax, stage_step)
+    A = np.zeros_like(stages); W = np.zeros_like(stages)
+    P = np.zeros_like(stages); Dh = np.zeros_like(stages)
+    for i, h in enumerate(stages):
+        if z[thalweg] >= h:
+            continue
+        lo = thalweg
+        while lo - 1 >= 0 and z[lo - 1] < h:
+            lo -= 1
+        hi = thalweg
+        while hi + 1 < n and z[hi + 1] < h:
+            hi += 1
+        seg = z[lo:hi + 1]
+        depth = h - seg
+        A[i] = float(np.sum(depth)) * ds
+        W[i] = len(seg) * ds
+        P[i] = (float(np.sum(np.hypot(ds, np.diff(seg))))
+                if len(seg) > 1 else ds)
+        Dh[i] = A[i] / W[i] if W[i] > 0 else 0.0
+    return dict(stage=stages, area=A, width=W, perimeter=P, hyd_depth=Dh,
+                zmin=zmin, ds=ds)
+
+
+def _prominent_peaks(v, min_prom_frac=0.1):
+    """Indices of prominent local maxima of a 1-D array (prominence >=
+    min_prom_frac of the value range)."""
+    v = np.asarray(v, dtype=float)
+    n = len(v)
+    if n < 3:
+        return []
+    rng = float(np.nanmax(v) - np.nanmin(v))
+    if rng <= 0:
+        return []
+    thr = min_prom_frac * rng
+    out = []
+    for i in range(1, n - 1):
+        if not (v[i] > v[i - 1] and v[i] >= v[i + 1]):
+            continue
+        left = v[i]
+        for j in range(i - 1, -1, -1):
+            if v[j] > v[i]:
+                break
+            left = min(left, v[j])
+        right = v[i]
+        for j in range(i + 1, n):
+            if v[j] > v[i]:
+                break
+            right = min(right, v[j])
+        if v[i] - max(left, right) >= thr:
+            out.append(i)
+    return out
+
+
+def detect_hydraulic_flats(hyd, width_prom_frac=0.12,
+                           hyd_depth_flat_frac=1.0):
+    """Detect flat-surface stages from stage-hydraulic curves.
+
+    A flat surface is a stage where flow WIDTH increases rapidly (a prominent
+    peak of ``dW/dh``) while hydraulic depth stays roughly constant (``|dD_h/dh|``
+    at the peak below ``hyd_depth_flat_frac`` x the median ``|dD_h/dh|``).
+
+    Args:
+        hyd: output of :func:`cross_section_hydraulics`.
+        width_prom_frac: min prominence of a ``dW/dh`` peak (fraction of range).
+        hyd_depth_flat_frac: keep a peak only if ``|dD_h/dh|`` there is below
+            this multiple of the median ``|dD_h/dh|``. Large (e.g. 1e9) disables
+            the constant-depth filter.
+
+    Returns:
+        ``(stages, dW_dh)`` — the detected flat-surface stages (elevations, m)
+        and the full ``dW/dh`` curve (aligned to ``hyd['stage']``).
+    """
+    h = hyd["stage"]
+    if len(h) < 3:
+        return np.array([]), np.array([])
+    dW = np.gradient(hyd["width"], h)
+    dDh = np.gradient(hyd["hyd_depth"], h)
+    med = float(np.median(np.abs(dDh))) or 1e-9
+    peaks = _prominent_peaks(dW, width_prom_frac)
+    keep = [i for i in peaks
+            if abs(dDh[i]) <= hyd_depth_flat_frac * med]
+    return h[keep], dW
+
+
+def combine_width_steps(stage, width, ds, min_step_height_m=2.0,
+                        min_step_width_px=3):
+    """Combine the steps of a (monotonic) flow-width curve into flat surfaces.
+
+    Walking up from the lowest stage, accumulate the flow width and the height
+    gained since the last step boundary. A step is only significant enough to
+    open a NEW boundary once, since the last boundary, the flow width has grown
+    by at least ``min_step_width_px`` pixels AND the stage has risen by at least
+    ``min_step_height_m`` — smaller steps are merged into the running one. The
+    first boundary is the lowest stage; the last is the highest.
+
+    Args:
+        stage: ascending stage elevations (m) from
+            :func:`cross_section_hydraulics`.
+        width: flow width at each stage (m), monotonic non-decreasing.
+        ds: offset spacing (m); ``min_step_width_px`` is measured in these.
+        min_step_height_m: minimum vertical rise for a new step boundary.
+        min_step_width_px: minimum added width (in pixels) for a new boundary.
+
+    Returns:
+        ``(boundaries, midpoints)`` — step-boundary elevations (m, including the
+        lowest and highest stage) and the mid-elevation of each step between
+        consecutive boundaries.
+    """
+    stage = np.asarray(stage, dtype=float)
+    width = np.asarray(width, dtype=float)
+    if len(stage) < 2 or not np.isfinite(ds) or ds <= 0:
+        return [], []
+    min_w = min_step_width_px * ds
+    zmin, zmax = float(stage[0]), float(stage[-1])
+    boundaries = [zmin]
+    w_ref, h_ref = float(width[0]), zmin
+    for i in range(len(stage)):
+        if (width[i] - w_ref) >= min_w and (stage[i] - h_ref) >= min_step_height_m:
+            b = float(stage[i])
+            boundaries.append(b)
+            w_ref, h_ref = float(width[i]), b
+    if zmax - boundaries[-1] > 1e-9:
+        boundaries.append(zmax)
+    mids = [0.5 * (boundaries[k] + boundaries[k + 1])
+            for k in range(len(boundaries) - 1)]
+    return boundaries, mids
+
+
+def _water_line_crossings(offset, elevation, level):
+    """Offsets where a profile crosses a horizontal water surface ``level``.
+
+    Returns every left/right bank intersection at that stage (a mid-valley ridge
+    poking above the water yields 4 crossings instead of 2), by linear
+    interpolation between adjacent samples that straddle ``level``.
+    """
+    off = np.asarray(offset, dtype=float)
+    z = np.asarray(elevation, dtype=float)
+    ok = np.isfinite(off) & np.isfinite(z)
+    off, z = off[ok], z[ok]
+    order = np.argsort(off)
+    off, z = off[order], z[order]
+    d = z - level
+    out = []
+    for i in range(len(d) - 1):
+        a, b = d[i], d[i + 1]
+        if a == 0.0:
+            out.append(float(off[i]))
+        if (a < 0.0 and b > 0.0) or (a > 0.0 and b < 0.0):
+            t = a / (a - b)
+            out.append(float(off[i] + t * (off[i + 1] - off[i])))
+    if len(d) and d[-1] == 0.0:
+        out.append(float(off[-1]))
+    return out
+
+
+def compute_flat_surface_edges(
+    samples_df: pd.DataFrame,
+    *,
+    source_id: int = 0,
+    source_col: str = "source_id",
+    station_col: str = "station_seq",
+    offset_col: str = "offset_m",
+    elevation_col: str = "elevation",
+    x_col: str = "x",
+    y_col: str = "y",
+    stage_step: float = 0.1,
+    min_step_height_m: float = 2.0,
+    min_step_width_px: int = 3,
+):
+    """Terrace / floodplain edges from flow-width step midpoints, per station.
+
+    For each cross section, floods the profile (:func:`cross_section_hydraulics`),
+    combines the width steps (:func:`combine_width_steps`), then at the
+    MID-ELEVATION of each step records every water-line crossing of the profile
+    (:func:`_water_line_crossings`) with its interpolated world coordinate.
+
+    Returns:
+        DataFrame with columns ``source_id, station_seq, step, stage, offset_m,
+        x, y`` (one row per crossing).
+    """
+    ch = samples_df[samples_df[source_col] == source_id]
+    cols = ["source_id", "station_seq", "step", "stage", "offset_m", "x", "y"]
+    rows = []
+    for sseq in sorted(ch[station_col].unique()):
+        s = ch[ch[station_col] == sseq].sort_values(offset_col)
+        off = s[offset_col].to_numpy(dtype=float)
+        elev = s[elevation_col].to_numpy(dtype=float)
+        xw = s[x_col].to_numpy(dtype=float)
+        yw = s[y_col].to_numpy(dtype=float)
+        hyd = cross_section_hydraulics(off, elev, stage_step=stage_step)
+        if not len(hyd["stage"]):
+            continue
+        _, mids = combine_width_steps(
+            hyd["stage"], hyd["width"], hyd["ds"],
+            min_step_height_m=min_step_height_m,
+            min_step_width_px=min_step_width_px)
+        okxy = np.isfinite(off) & np.isfinite(xw) & np.isfinite(yw)
+        offc, xc, yc = off[okxy], xw[okxy], yw[okxy]
+        for step_idx, zmid in enumerate(mids):
+            for xoff in _water_line_crossings(off, elev, zmid):
+                rows.append(dict(
+                    source_id=source_id, station_seq=int(sseq), step=step_idx,
+                    stage=float(zmid), offset_m=float(xoff),
+                    x=float(np.interp(xoff, offc, xc)),
+                    y=float(np.interp(xoff, offc, yc))))
+    return pd.DataFrame(rows, columns=cols)
+
+
+def plot_valley_cross_section_hydraulics(
+    samples_df: pd.DataFrame,
+    *,
+    source_id: int = 0,
+    source_col: str = "source_id",
+    station_col: str = "station_seq",
+    offset_col: str = "offset_m",
+    elevation_col: str = "elevation",
+    in_valley_col: str = "in_valley",
+    along_col: str = "along_distance_m",
+    stage_step: float = 0.1,
+    min_step_height_m: float = 2.0,
+    min_step_width_px: int = 3,
+    max_panels: int = 20,
+    n_cols: int = 4,
+):
+    """Flow-width step surfaces & terrace/floodplain edges, per cross section.
+
+    Two side-by-side panels per station: (left) the elevation profile, (right)
+    the flow-width curve ``W(h)`` ROTATED so stage/elevation is the vertical
+    axis (shared with the profile). The width curve is segmented into flat
+    surfaces with :func:`combine_width_steps`; step boundaries are dotted grey
+    lines on both panels, and at the MID-ELEVATION of each step the water-line
+    crossings of the profile are marked as terrace/floodplain edges (magenta
+    diamonds; a mid-valley ridge gives 4 edges instead of 2).
+
+    Args:
+        samples_df: per-sample cross-section table.
+        source_id: channel source to plot.
+        stage_step: stage increment for flooding (m).
+        min_step_height_m, min_step_width_px: step-combining thresholds — a new
+            step boundary opens only once ``>= min_step_width_px`` pixels of
+            width AND ``>= min_step_height_m`` of stage have accumulated.
+        max_panels, n_cols: layout (``n_cols`` stations per row).
+
+    Returns:
+        ``(fig, results)`` where ``results`` maps station -> list of step
+        mid-elevations (m).
+    """
+    plt = _import_mpl()
+    from matplotlib.lines import Line2D
+
+    ch = samples_df[samples_df[source_col] == source_id]
+    stations = sorted(ch[station_col].unique())
+    if not stations:
+        raise ValueError(
+            f"No cross-section stations for {source_col}={source_id}.")
+    if max_panels and max_panels > 0 and len(stations) > max_panels:
+        idx = np.linspace(0, len(stations) - 1, max_panels).round().astype(int)
+        stations = [stations[i] for i in sorted(set(idx))]
+
+    n = len(stations)
+    n_cols = max(1, min(n_cols, n))
+    n_block_rows = (n + n_cols - 1) // n_cols
+    fig, axarr = plt.subplots(
+        n_block_rows, 2 * n_cols,
+        figsize=(4.2 * n_cols, 3.0 * n_block_rows), squeeze=False,
+        gridspec_kw={"width_ratios": [3.0, 1.0] * n_cols})
+
+    xmax = float(ch[offset_col].abs().max())
+    results = {}
+
+    for k, sseq in enumerate(stations):
+        br, col = k // n_cols, k % n_cols
+        eax = axarr[br][2 * col]
+        wax = axarr[br][2 * col + 1]
+
+        s = ch[ch[station_col] == sseq].sort_values(offset_col)
+        off = s[offset_col].to_numpy(dtype=float)
+        elev = s[elevation_col].to_numpy(dtype=float)
+        inval = s[in_valley_col].to_numpy(dtype=float)
+        along = float(s[along_col].iloc[0])
+
+        hyd = cross_section_hydraulics(off, elev, stage_step=stage_step)
+        if len(hyd["stage"]):
+            boundaries, mids = combine_width_steps(
+                hyd["stage"], hyd["width"], hyd["ds"],
+                min_step_height_m=min_step_height_m,
+                min_step_width_px=min_step_width_px)
+        else:
+            boundaries, mids = [], []
+        results[int(sseq)] = list(map(float, mids))
+
+        efin = elev[np.isfinite(elev)]
+        ymin, ymax = (float(efin.min()), float(efin.max())) if len(efin) \
+            else (0.0, 1.0)
+        pad = 0.05 * (ymax - ymin + 1e-6)
+
+        # elevation profile + step boundaries + terrace/floodplain edges
+        eax.plot(off, elev, "-", color="0.35", lw=1.1, zorder=2)
+        eax.fill_between(off, ymin - pad, elev, where=(inval > 0),
+                         color="tab:blue", alpha=0.15, step="mid", zorder=1)
+        for zb in boundaries:
+            eax.axhline(zb, color="0.7", lw=0.6, ls=":", zorder=2)
+        edge_x, edge_y = [], []
+        for zmid in mids:
+            for xoff in _water_line_crossings(off, elev, zmid):
+                edge_x.append(xoff)
+                edge_y.append(zmid)
+        if edge_x:
+            eax.plot(edge_x, edge_y, linestyle="none", marker="D", ms=5,
+                     mew=0.7, mfc="magenta", mec="black", zorder=5)
+        eax.set_ylim(ymin - pad, ymax + pad)
+        eax.set_xlim(-xmax, xmax)
+        eax.set_title(f"station {int(sseq)} — {along / 1000:.2f} km",
+                      fontsize=8)
+        eax.tick_params(labelsize=6)
+        if col == 0:
+            eax.set_ylabel("elev (m)", fontsize=7)
+        if br == n_block_rows - 1:
+            eax.set_xlabel("offset (m)", fontsize=7)
+
+        # flow width vs stage, rotated (width on x, stage/elevation on y)
+        if len(hyd["stage"]):
+            wax.plot(hyd["width"], hyd["stage"], "-", color="tab:blue", lw=1.0)
+            for zb in boundaries:
+                wax.axhline(zb, color="0.7", lw=0.6, ls=":")
+            for zmid in mids:
+                wax.axhline(zmid, color="magenta", lw=0.8, ls="--", alpha=0.7)
+        wax.set_ylim(ymin - pad, ymax + pad)
+        wax.tick_params(labelsize=6, labelleft=False)
+        wax.set_title("W(h)", fontsize=7)
+        if br == n_block_rows - 1:
+            wax.set_xlabel("width (m)", fontsize=7)
+
+    for k in range(n, n_block_rows * n_cols):
+        br, col = k // n_cols, k % n_cols
+        axarr[br][2 * col].set_axis_off()
+        axarr[br][2 * col + 1].set_axis_off()
+
+    handles = [
+        Line2D([0], [0], color="0.35", lw=1.1, label="elevation"),
+        Line2D([0], [0], color="tab:blue", lw=1.0, label="flow width W(h)"),
+        Line2D([0], [0], color="0.7", lw=0.8, ls=":", label="step boundary"),
+        Line2D([0], [0], color="magenta", lw=0, marker="D", ms=6,
+               mec="black", label="terrace / floodplain edge"),
+    ]
+    fig.legend(handles=handles, loc="upper center", fontsize=8, frameon=False,
+               ncol=4, bbox_to_anchor=(0.5, 0.998))
+    fig.suptitle(
+        f"channel {source_id}: flow-width step surfaces & terrace edges",
+        fontsize=11, y=1.03)
+    fig.tight_layout(rect=[0, 0, 1, 0.955])
+    return fig, results

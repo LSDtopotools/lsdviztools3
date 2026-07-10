@@ -292,10 +292,14 @@ def _break_metric_frame():
 
     # Global: no clean break (reach-adaptive used).
     add("global", -1.0, break_bin=-1, boundary_bin=-1, peak_bins=[])
-    # Two windows: one own break, one with none (inherits).
+    # Three windows with a dip at bin 60 or none: the applied break in the test
+    # then makes reach 1000 an accepted "own" dip, 3000 "inherited" (no own
+    # dip), and 5000 a "median" (own dip replaced by a different applied break).
     add("window", 1000.0, break_bin=60, boundary_bin=60, peak_bins=[30, 100],
         raw=False)
     add("window", 3000.0, break_bin=-1, boundary_bin=-1, peak_bins=[], raw=False)
+    add("window", 5000.0, break_bin=60, boundary_bin=60, peak_bins=[30, 100],
+        raw=False)
     return pd.DataFrame(rows)
 
 
@@ -303,23 +307,38 @@ def test_plot_valley_break_metric_panels_and_applied_break():
     import pandas as pd
     from lsdviztools3.charts import plot_valley_break_metric
 
+    dip60 = float(np.logspace(-1.3, 2, 128)[60])   # the dip HANC at bin 60
     breaks = pd.DataFrame({
-        "source_id": [0, 0],
-        "window_centre_m": [1000.0, 3000.0],
-        "break_m": [5.0, 2.0],
-        "own_break": [True, False],
+        "source_id": [0, 0, 0],
+        "window_centre_m": [1000.0, 3000.0, 5000.0],
+        # own accepted (== dip), inherited, median (!= dip).
+        "break_m": [dip60, 2.0, dip60 + 3.0],
+        "own_break": [True, False, True],
     })
     fig, axes = plot_valley_break_metric(
         _break_metric_frame(), breaks_df=breaks, source_id=0)
-    # Global panel + 2 window panels.
-    assert len(axes) == 3
+    # Global panel + 3 window panels.
+    assert len(axes) == 4
     # Global panel notes the reach-adaptive fallback.
     assert "reach-adaptive" in axes[0].get_title()
-    # Window panels are tagged own / inherited from breaks_df.
+    # Window panels are tagged own / inherited / median.
     assert "(own)" in axes[1].get_title()
     assert "(inherited)" in axes[2].get_title()
-    # Metric axis is logarithmic.
-    assert axes[1].get_xscale() == "log"
+    assert "(median)" in axes[3].get_title()
+
+    # The descriptive break line appears under each reach title.
+    def texts(ax):
+        return " ".join(t.get_text() for t in ax.texts)
+    assert "accepted dip at" in texts(axes[1])
+    assert "inherited break at" in texts(axes[2])
+    assert "accepted median at" in texts(axes[3])
+
+    # Axis is LINEAR (Simon: log space was misleading) and cropped from 0 to
+    # the decision region (not the full HANC range).
+    assert axes[1].get_xscale() == "linear"
+    xlo, xhi = axes[1].get_xlim()
+    assert xlo == 0.0
+    assert xhi <= 60.5
 
 
 def test_plot_valley_break_metric_missing_source_raises():
@@ -327,3 +346,188 @@ def test_plot_valley_break_metric_missing_source_raises():
 
     with pytest.raises(ValueError, match="No break-metric rows"):
         plot_valley_break_metric(_break_metric_frame(), source_id=9)
+
+
+# --- plot_valley_break_fraction (relief-adaptive) ---------------------------
+
+def _relief_breaks_frame():
+    import pandas as pd
+    return pd.DataFrame({
+        "source_id": [0, 0, 0, 0],
+        "window_centre_m": [1000.0, 2000.0, 3000.0, 4000.0],
+        "break_m": [2.0, 3.0, 5.0, 2.0],
+        "own_break": ["true", "false", "true", "true"],
+        "break_fraction": [0.55, 0.60, 0.66, 0.58],
+        "relief_m": [5.0, 8.0, 15.0, 6.0],
+    })
+
+
+def test_plot_valley_break_fraction_panels():
+    from lsdviztools3.charts import plot_valley_break_fraction
+
+    fig, axs = plot_valley_break_fraction(
+        _relief_breaks_frame(), source_id=0, frac_min=0.5, frac_max=0.7)
+    # Three stacked panels: fraction, relief, break.
+    assert len(axs) == 3
+    assert "acceptance" in axs[0].get_ylabel()
+    assert "relief" in axs[1].get_ylabel()
+
+
+def test_plot_valley_break_fraction_requires_column():
+    import pandas as pd
+    from lsdviztools3.charts import plot_valley_break_fraction
+
+    # A fixed-method breaks table has no break_fraction column.
+    fixed = pd.DataFrame({
+        "source_id": [0, 0],
+        "window_centre_m": [1000.0, 2000.0],
+        "break_m": [2.0, 3.0],
+        "own_break": ["true", "true"],
+    })
+    with pytest.raises(ValueError, match="break_fraction"):
+        plot_valley_break_fraction(fixed, source_id=0)
+
+
+# --- plot_valley_cross_section_map ------------------------------------------
+
+def _nodes_frame(n=10):
+    import pandas as pd
+    return pd.DataFrame({
+        "source_id": [0] * n,
+        "node_seq": list(range(n)),
+        "x": np.linspace(-400.0, 400.0, n),
+        "y": np.linspace(0.0, 4500.0, n),
+    })
+
+
+def _tiny_hillshade_tif(tmp_path):
+    """A small GeoTIFF whose extent covers the synthetic cross-section frame."""
+    rasterio = pytest.importorskip("rasterio")
+    from rasterio.transform import from_origin
+
+    # Data spans x in [-500,500], y in [0,4500]; give a generous margin.
+    res = 20.0
+    x0, y_top = -700.0, 5200.0
+    width, height = 70, 280
+    transform = from_origin(x0, y_top, res, res)
+    path = tmp_path / "hs.tif"
+    data = np.linspace(0, 255, width * height).reshape(height, width).astype(
+        "float32")
+    with rasterio.open(
+        path, "w", driver="GTiff", height=height, width=width, count=1,
+        dtype="float32", transform=transform, nodata=-9999.0,
+    ) as dst:
+        dst.write(data, 1)
+    return str(path)
+
+
+def test_plot_valley_cross_section_map_returns_fig_ax(tmp_path):
+    from lsdviztools3.charts import plot_valley_cross_section_map
+
+    hs = _tiny_hillshade_tif(tmp_path)
+    fig, ax = plot_valley_cross_section_map(
+        _cross_section_frame(8), _nodes_frame(), hs, source_id=0)
+    # Hillshade + transect lines + centreline are drawn; numbers are labelled.
+    assert len(ax.lines) >= 8
+    texts = [t.get_text() for t in ax.texts]
+    assert "0" in texts and "7" in texts
+
+
+def test_plot_valley_cross_section_map_label_every_thins_labels(tmp_path):
+    from lsdviztools3.charts import plot_valley_cross_section_map
+
+    hs = _tiny_hillshade_tif(tmp_path)
+    fig, ax = plot_valley_cross_section_map(
+        _cross_section_frame(8), _nodes_frame(), hs, source_id=0,
+        label_every=4)
+    # Stations 0 and 4 labelled; 1,2,3 not.
+    texts = [t.get_text() for t in ax.texts]
+    assert "0" in texts and "4" in texts
+    assert "1" not in texts
+
+
+def test_plot_valley_cross_section_map_missing_source_raises(tmp_path):
+    from lsdviztools3.charts import plot_valley_cross_section_map
+
+    hs = _tiny_hillshade_tif(tmp_path)
+    with pytest.raises(ValueError, match="No cross-section stations"):
+        plot_valley_cross_section_map(
+            _cross_section_frame(4), _nodes_frame(), hs, source_id=9)
+
+
+# --- plot_valley_reach_map --------------------------------------------------
+
+def _write_geotiff(path, arr, nodata=None):
+    rasterio = pytest.importorskip("rasterio")
+    from rasterio.transform import from_origin
+    arr = np.asarray(arr, dtype="float32")
+    tr = from_origin(0.0, arr.shape[0], 1.0, 1.0)  # 1 m cells, origin top-left
+    with rasterio.open(
+        path, "w", driver="GTiff", height=arr.shape[0], width=arr.shape[1],
+        count=1, dtype="float32", transform=tr, nodata=nodata,
+    ) as dst:
+        dst.write(arr, 1)
+
+
+def test_plot_valley_reach_map_returns_fig_ax(tmp_path):
+    pytest.importorskip("rasterio")
+    from lsdviztools3.charts import plot_valley_reach_map
+    # 8x8 reach raster: three reaches in bands, negative = outside corridor.
+    reach = np.full((8, 8), -1.0)
+    reach[1:7, 1:3] = 0
+    reach[1:7, 3:5] = 1
+    reach[1:7, 5:7] = 2
+    _write_geotiff(tmp_path / "reach.tif", reach)
+    _write_geotiff(tmp_path / "hs.tif", np.random.rand(8, 8) * 255)
+    nodes = pd.DataFrame({"source_id": [0, 0, 0],
+                          "x": [2.0, 4.0, 6.0], "y": [4.0, 4.0, 4.0]})
+    fig, ax = plot_valley_reach_map(
+        str(tmp_path / "reach.tif"), str(tmp_path / "hs.tif"),
+        nodes_df=nodes, source_id=0)
+    assert "channel 0" in ax.get_title()
+    # Three reach-number labels (0,1,2) + the centreline line drawn.
+    labels = {t.get_text() for t in ax.texts}
+    assert {"0", "1", "2"} <= labels
+    assert len(ax.get_lines()) >= 1
+
+
+def test_plot_valley_reach_map_all_nodata_raises(tmp_path):
+    pytest.importorskip("rasterio")
+    from lsdviztools3.charts import plot_valley_reach_map
+    _write_geotiff(tmp_path / "reach.tif", np.full((6, 6), -1.0))
+    _write_geotiff(tmp_path / "hs.tif", np.ones((6, 6)))
+    with pytest.raises(ValueError, match="no valid"):
+        plot_valley_reach_map(str(tmp_path / "reach.tif"),
+                              str(tmp_path / "hs.tif"))
+
+
+# --- plot_valley_floor_map --------------------------------------------------
+
+def test_plot_valley_floor_map_returns_fig_ax(tmp_path):
+    pytest.importorskip("rasterio")
+    from lsdviztools3.charts import plot_valley_floor_map
+    # 8x8 valley mask: source 0 (=1) and source 1 (=2) ribbons; 0 = not valley.
+    vm = np.zeros((8, 8))
+    vm[2:6, 1:3] = 1
+    vm[2:6, 5:7] = 2
+    _write_geotiff(tmp_path / "vm.tif", vm)
+    _write_geotiff(tmp_path / "hs.tif", np.random.rand(8, 8) * 255)
+    nodes = pd.DataFrame({"source_id": [0, 0, 1, 1],
+                          "x": [2.0, 2.0, 6.0, 6.0],
+                          "y": [3.0, 5.0, 3.0, 5.0]})
+    fig, ax = plot_valley_floor_map(
+        str(tmp_path / "vm.tif"), str(tmp_path / "hs.tif"),
+        nodes_df=nodes, title="t")
+    assert ax.get_title() == "t"
+    # Two hillshade+overlay images and the two centrelines drawn.
+    assert len(ax.get_images()) == 2
+    assert len(ax.get_lines()) >= 2
+
+
+def test_plot_valley_floor_map_empty_raises(tmp_path):
+    pytest.importorskip("rasterio")
+    from lsdviztools3.charts import plot_valley_floor_map
+    _write_geotiff(tmp_path / "vm.tif", np.zeros((6, 6)))
+    _write_geotiff(tmp_path / "hs.tif", np.ones((6, 6)))
+    with pytest.raises(ValueError, match="no valley"):
+        plot_valley_floor_map(str(tmp_path / "vm.tif"), str(tmp_path / "hs.tif"))
