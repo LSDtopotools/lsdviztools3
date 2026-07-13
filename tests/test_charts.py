@@ -124,59 +124,59 @@ def test_plot_circular_comparison_both_returns_two_axes():
     assert len(axes) == 2
 
 
-def _hanc_frame(n=300, seed=5):
+def _hand_frame(n=300, seed=5):
     import pandas as pd
 
     rng = np.random.default_rng(seed)
     d = rng.uniform(0, 20_000, n)
     cls = rng.choice([1, 2], n)
-    hanc = np.where(cls == 1, rng.uniform(0, 2, n), rng.uniform(5, 15, n))
+    hand = np.where(cls == 1, rng.uniform(0, 2, n), rng.uniform(5, 15, n))
     return pd.DataFrame({
-        "channel_flow_distance_m": d, "hanc_m": hanc,
+        "channel_flow_distance_m": d, "hand_m": hand,
         "class": cls, "source_id": rng.choice([0, 1], n),
     })
 
 
-def test_plot_hanc_distance_two_classes_legended():
-    from lsdviztools3.charts import plot_hanc_distance
+def test_plot_hand_distance_two_classes_legended():
+    from lsdviztools3.charts import plot_hand_distance
 
-    fig, ax = plot_hanc_distance(_hanc_frame())
+    fig, ax = plot_hand_distance(_hand_frame())
     texts = [t.get_text() for t in ax.get_legend().get_texts()]
     assert texts == ["floodplain", "terrace"]
     assert ax.get_xlabel() == "Distance along channel (km)"
     assert ax.get_ylabel() == "Height above channel (m)"
 
 
-def test_plot_hanc_distance_source_filter_and_breaks():
+def test_plot_hand_distance_source_filter_and_breaks():
     import pandas as pd
-    from lsdviztools3.charts import plot_hanc_distance
+    from lsdviztools3.charts import plot_hand_distance
 
     breaks = pd.DataFrame({
         "source_id": [0, 0], "window_centre_m": [5_000.0, 15_000.0],
         "breaks_m": ["3.5", "2.5;8.0"],
     })
-    fig, ax = plot_hanc_distance(
-        _hanc_frame(), source_id=0, breaks=breaks, distance_units="m")
+    fig, ax = plot_hand_distance(
+        _hand_frame(), source_id=0, breaks=breaks, distance_units="m")
     texts = [t.get_text() for t in ax.get_legend().get_texts()]
     assert texts == ["floodplain", "terrace", "band break"]
     assert ax.get_xlabel() == "Distance along channel (m)"
 
 
-def test_plot_hanc_distance_subsamples_to_cap():
-    from lsdviztools3.charts import plot_hanc_distance
+def test_plot_hand_distance_subsamples_to_cap():
+    from lsdviztools3.charts import plot_hand_distance
 
-    fig, ax = plot_hanc_distance(_hanc_frame(2_000), max_points=100)
+    fig, ax = plot_hand_distance(_hand_frame(2_000), max_points=100)
     # Two scatter collections (one per class), each capped at 100 points.
     sizes = [len(c.get_offsets()) for c in ax.collections]
     assert sizes == [100, 100]
 
 
-def test_plot_hanc_distance_empty_raises():
-    from lsdviztools3.charts import plot_hanc_distance
+def test_plot_hand_distance_empty_raises():
+    from lsdviztools3.charts import plot_hand_distance
 
-    df = _hanc_frame(50)
+    df = _hand_frame(50)
     with pytest.raises(ValueError, match="No plottable pixels"):
-        plot_hanc_distance(df[df["class"] == 99])
+        plot_hand_distance(df[df["class"] == 99])
 
 
 def _window_hist_frame():
@@ -190,13 +190,13 @@ def _window_hist_frame():
                   + rng.integers(0, 5, 60))
         for b, c in zip(bins, counts):
             rows.append({"source_id": 0, "window_centre_m": w,
-                         "hanc_m": b, "n_pixels": int(c)})
+                         "hand_m": b, "n_pixels": int(c)})
     return pd.DataFrame(rows)
 
 
-def test_plot_hanc_window_populations_panels_and_breaks():
+def test_plot_hand_window_populations_panels_and_breaks():
     import pandas as pd
-    from lsdviztools3.charts import plot_hanc_window_populations
+    from lsdviztools3.charts import plot_hand_window_populations
 
     breaks = pd.DataFrame({
         "source_id": [0, 0, 0],
@@ -204,7 +204,7 @@ def test_plot_hanc_window_populations_panels_and_breaks():
         "break_m": [5.0, 7.5, 6.0],
         "own_break": [True, False, True],
     })
-    fig, axes = plot_hanc_window_populations(
+    fig, axes = plot_hand_window_populations(
         _window_hist_frame(), breaks_df=breaks, source_id=0)
     assert len(axes) == 3
     # Each panel carries a break line legend; inherited window is marked.
@@ -213,11 +213,11 @@ def test_plot_hanc_window_populations_panels_and_breaks():
     assert "(inherited)" in legends[1].get_texts()[0].get_text()
 
 
-def test_plot_hanc_window_populations_missing_source_raises():
-    from lsdviztools3.charts import plot_hanc_window_populations
+def test_plot_hand_window_populations_missing_source_raises():
+    from lsdviztools3.charts import plot_hand_window_populations
 
-    with pytest.raises(ValueError, match="No HANC window histograms"):
-        plot_hanc_window_populations(_window_hist_frame(), source_id=9)
+    with pytest.raises(ValueError, match="No HAND window histograms"):
+        plot_hand_window_populations(_window_hist_frame(), source_id=9)
 
 
 # --- plot_valley_cross_sections ---------------------------------------------
@@ -350,7 +350,7 @@ def _break_metric_frame():
         for i, b in enumerate(bins):
             rows.append({
                 "source_id": 0, "scope": scope, "window_centre_m": wc,
-                "hanc_m": b,
+                "hand_m": b,
                 "raw_count": int(sm[i]) if raw else 0,
                 "smoothed": float(sm[i]),
                 "is_peak": 1 if i in peak_bins else 0,
@@ -375,7 +375,7 @@ def test_plot_valley_break_metric_panels_and_applied_break():
     import pandas as pd
     from lsdviztools3.charts import plot_valley_break_metric
 
-    dip60 = float(np.logspace(-1.3, 2, 128)[60])   # the dip HANC at bin 60
+    dip60 = float(np.logspace(-1.3, 2, 128)[60])   # the dip HAND at bin 60
     breaks = pd.DataFrame({
         "source_id": [0, 0, 0],
         "window_centre_m": [1000.0, 3000.0, 5000.0],
@@ -402,7 +402,7 @@ def test_plot_valley_break_metric_panels_and_applied_break():
     assert "accepted median at" in texts(axes[3])
 
     # Axis is LINEAR (Simon: log space was misleading) and cropped from 0 to
-    # the decision region (not the full HANC range).
+    # the decision region (not the full HAND range).
     assert axes[1].get_xscale() == "linear"
     xlo, xhi = axes[1].get_xlim()
     assert xlo == 0.0

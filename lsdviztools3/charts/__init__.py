@@ -22,8 +22,8 @@ from .cross_sections import (
     combine_width_steps, compute_flat_surface_edges,
 )
 from .distributions import plot_distributions
-from .hanc import (
-    plot_hanc_distance, plot_hanc_window_populations, plot_valley_break_metric,
+from .hand import (
+    plot_hand_distance, plot_hand_window_populations, plot_valley_break_metric,
     plot_valley_break_fraction, plot_valley_floor_map, plot_valley_reach_map,
 )
 from .rose import rose_diagram
@@ -31,7 +31,7 @@ from .swath import plot_swath
 
 __all__ = [
     "plot_chi_profile", "plot_chi_stacked", "plot_swath",
-    "plot_hanc_distance", "plot_hanc_window_populations",
+    "plot_hand_distance", "plot_hand_window_populations",
     "plot_valley_break_metric", "plot_valley_break_fraction",
     "plot_valley_cross_sections",
     "plot_valley_cross_section_map",

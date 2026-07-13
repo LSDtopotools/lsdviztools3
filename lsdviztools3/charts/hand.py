@@ -1,10 +1,10 @@
-"""Height-above-channel (HANC) profile plotting (matplotlib).
+"""Height-above-channel (HAND) profile plotting (matplotlib).
 
-:func:`plot_hanc_distance` draws HANC against distance along the channel for
+:func:`plot_hand_distance` draws HAND against distance along the channel for
 classified floodplain / terrace pixels, from an ``lsdtt-flat-surface-finder``
-per-pixel table (``*_hanc_profile.csv``, written by ``write_hanc_profile_csv``).
+per-pixel table (``*_hand_profile.csv``, written by ``write_hand_profile_csv``).
 Optionally overlays the reach-relative band break levels from the companion
-``*_hanc_band_breaks.csv`` table.
+``*_hand_band_breaks.csv`` table.
 
 The plotting engine is matplotlib (DESIGN decision #1), imported lazily so the
 core maps install stays lean.
@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 _MPL_MSG = (
-    "HANC-profile plotting needs matplotlib. Install the optional 'charts' "
+    "HAND-profile plotting needs matplotlib. Install the optional 'charts' "
     "extra, e.g. `pip install lsdviztools3[charts]` or `pip install matplotlib`."
 )
 
@@ -49,11 +49,11 @@ def _import_rasterio():
     return rasterio
 
 
-def plot_hanc_distance(
+def plot_hand_distance(
     df: pd.DataFrame,
     *,
     distance_col: str = "channel_flow_distance_m",
-    hanc_col: str = "hanc_m",
+    hand_col: str = "hand_m",
     class_col: str = "class",
     source_col: Optional[str] = "source_id",
     source_id: Optional[int] = None,
@@ -68,21 +68,21 @@ def plot_hanc_distance(
     log_y: bool = False,
     ax=None,
 ):
-    """Plot HANC vs distance along the channel, coloured by surface class.
+    """Plot HAND vs distance along the channel, coloured by surface class.
 
     Args:
-        df: Per-pixel HANC profile table (``*_hanc_profile.csv``) with at
-            least the distance, HANC, and class columns.
+        df: Per-pixel HAND profile table (``*_hand_profile.csv``) with at
+            least the distance, HAND, and class columns.
         distance_col: Along-channel flow distance column (metres, measured
             from the DEM outlet).
-        hanc_col: Height-above-channel column (metres).
+        hand_col: Height-above-channel column (metres).
         class_col: Integer surface-class column (1 floodplain, 2 terrace).
         source_col: Channel source-id column, used only when ``source_id``
             filters to one channel. ``None`` pools all sources.
         source_id: Plot only pixels attributed to this channel source.
         class_labels: Legend text per class code.
         class_colors: Point colour per class code.
-        breaks: Optional band-breaks table (``*_hanc_band_breaks.csv`` with
+        breaks: Optional band-breaks table (``*_hand_band_breaks.csv`` with
             ``window_centre_m`` and semicolon-separated ``breaks_m``) to
             overlay the reach-relative break levels.
         distance_units: ``"km"`` (divide metres by 1000) or ``"m"``.
@@ -91,7 +91,7 @@ def plot_hanc_distance(
         max_points: Random subsample cap per class (pixel tables can run to
             millions of rows). 0 or negative = no cap.
         seed: Subsample RNG seed (reproducible figures).
-        log_y: Logarithmic HANC axis (drops non-positive values).
+        log_y: Logarithmic HAND axis (drops non-positive values).
         ax: Existing matplotlib ``Axes`` or ``None`` for a new one.
 
     Returns:
@@ -118,7 +118,7 @@ def plot_hanc_distance(
     for code, label in class_labels.items():
         cls = data[data[class_col] == code]
         x = cls[distance_col].to_numpy(dtype=float)
-        y = cls[hanc_col].to_numpy(dtype=float)
+        y = cls[hand_col].to_numpy(dtype=float)
         keep = np.isfinite(x) & np.isfinite(y)
         if log_y:
             keep &= y > 0
@@ -137,7 +137,7 @@ def plot_hanc_distance(
         n_drawn += x.size
 
     if n_drawn == 0:
-        raise ValueError("No plottable pixels in the HANC profile table.")
+        raise ValueError("No plottable pixels in the HAND profile table.")
 
     if breaks is not None and not breaks.empty:
         bx, by = [], []
@@ -167,22 +167,22 @@ def plot_hanc_distance(
     return fig, ax
 
 
-def plot_hanc_window_populations(
+def plot_hand_window_populations(
     hist_df: pd.DataFrame,
     *,
     breaks_df: Optional[pd.DataFrame] = None,
     source_id: int = 0,
-    hanc_col: str = "hanc_m",
+    hand_col: str = "hand_m",
     count_col: str = "n_pixels",
     window_col: str = "window_centre_m",
     smooth_bins: int = 5,
     max_windows: int = 12,
     n_cols: int = 3,
 ):
-    """Per-window HANC populations with the selected valley break.
+    """Per-window HAND populations with the selected valley break.
 
     Draws one panel per along-channel window from the
-    ``*_valley_hanc_window_hist.csv`` table written by
+    ``*_valley_hand_window_hist.csv`` table written by
     ``lsdtt-valley-centreline``, so users can see the population each
     reach-adaptive threshold was selected from. When ``breaks_df`` (the
     companion ``*_valley_breaks.csv``) is given, the chosen break is drawn
@@ -190,11 +190,11 @@ def plot_hanc_window_populations(
 
     Args:
         hist_df: Per-window histogram table (``source_id``, window centre,
-            bin-centre HANC, pixel count).
+            bin-centre HAND, pixel count).
         breaks_df: Optional per-window break table (``source_id``,
             ``window_centre_m``, ``break_m``, ``own_break``).
         source_id: Channel to plot.
-        hanc_col: Bin-centre column (m).
+        hand_col: Bin-centre column (m).
         count_col: Pixel-count column.
         window_col: Window-centre column (m along the channel).
         smooth_bins: Moving-average width (bins) for the drawn density.
@@ -213,7 +213,7 @@ def plot_hanc_window_populations(
     windows = sorted(data[window_col].unique())[:max_windows]
     if not windows:
         raise ValueError(
-            f"No HANC window histograms for source_id={source_id}.")
+            f"No HAND window histograms for source_id={source_id}.")
 
     n_rows = (len(windows) + n_cols - 1) // n_cols
     fig, axarr = plt.subplots(
@@ -223,14 +223,14 @@ def plot_hanc_window_populations(
     for k, w in enumerate(windows):
         ax = axarr[k // n_cols][k % n_cols]
         axes.append(ax)
-        g = data[data[window_col] == w].sort_values(hanc_col)
+        g = data[data[window_col] == w].sort_values(hand_col)
         counts = g[count_col].to_numpy(dtype=float)
         if smooth_bins > 1 and counts.size > smooth_bins:
             kernel = np.ones(smooth_bins) / smooth_bins
             pad = smooth_bins // 2
             padded = np.pad(counts, pad, mode="edge")
             counts = np.convolve(padded, kernel, mode="valid")[:len(g)]
-        ax.plot(g[hanc_col].to_numpy(), counts, color="0.15", lw=1.0)
+        ax.plot(g[hand_col].to_numpy(), counts, color="0.15", lw=1.0)
         ax.set_xscale("log")
         ax.set_title(f"window {w / 1000:.1f} km", fontsize=9)
 
@@ -249,11 +249,11 @@ def plot_hanc_window_populations(
     for k in range(len(windows), n_rows * n_cols):
         axarr[k // n_cols][k % n_cols].set_axis_off()
     for ax in axes[-n_cols:]:
-        ax.set_xlabel("HANC (m)")
+        ax.set_xlabel("HAND (m)")
     for r in range(n_rows):
         axarr[r][0].set_ylabel("pixel count")
     fig.suptitle(
-        f"channel {source_id}: corridor HANC populations per reach window",
+        f"channel {source_id}: corridor HAND populations per reach window",
         fontsize=11)
     fig.tight_layout()
     return fig, axes
@@ -261,7 +261,7 @@ def plot_hanc_window_populations(
 
 #: Colours for the break-metric figure.
 _BREAK_METRIC_COLORS = {
-    "valley": "#8ecae6",    # valley band shade (HANC <= break)
+    "valley": "#8ecae6",    # valley band shade (HAND <= break)
     "curve": "#1d3557",     # smoothed decision metric
     "raw": "0.75",          # raw histogram bars
     "dip": "#d1495b",       # raw detected dip on the metric
@@ -282,9 +282,9 @@ def plot_valley_break_metric(
     valley_fraction: float = 0.6,
     colors: Mapping[str, str] = _BREAK_METRIC_COLORS,
 ):
-    """Reviewer figure: how the valley HANC break is chosen.
+    """Reviewer figure: how the valley HAND break is chosen.
 
-    Shows the ACTUAL metric the break is decided on — the SMOOTHED HANC density
+    Shows the ACTUAL metric the break is decided on — the SMOOTHED HAND density
     (a 2-pass moving average of the log-binned height-above-nearest-channel
     histogram), NOT the raw, bumpy histogram — from the
     ``*_valley_break_metric.csv`` table written by ``lsdtt-valley-centreline``
@@ -329,7 +329,7 @@ def plot_valley_break_metric(
 
     Args:
         metric_df: Break-metric table with columns ``source_id``, ``scope``
-            (``"global"`` / ``"window"``), ``window_centre_m``, ``hanc_m``,
+            (``"global"`` / ``"window"``), ``window_centre_m``, ``hand_m``,
             ``raw_count``, ``smoothed``, ``is_peak``, ``is_boundary``,
             ``is_break``.
         breaks_df: Optional per-window applied-break table (``source_id``,
@@ -384,13 +384,13 @@ def plot_valley_break_metric(
             return valley_fraction
         return v if np.isfinite(v) and v > 0 else valley_fraction
 
-    def break_hanc(sub):
+    def break_hand(sub):
         b = sub[sub["is_break"] == 1]
-        return float(b["hanc_m"].iloc[0]) if len(b) else None
+        return float(b["hand_m"].iloc[0]) if len(b) else None
 
-    def peaks_hanc(sub):
-        """Surviving mode-peak HANC values, ascending."""
-        return sorted(float(v) for v in sub[sub["is_peak"] == 1]["hanc_m"])
+    def peaks_hand(sub):
+        """Surviving mode-peak HAND values, ascending."""
+        return sorted(float(v) for v in sub[sub["is_peak"] == 1]["hand_m"])
 
     # --- Data-driven x crop (LINEAR axis) -----------------------------------
     # Simon: log space is misleading and pixels >~100 m above the channel are
@@ -401,7 +401,7 @@ def plot_valley_break_metric(
     # where no reach segments (e.g. a confined all-wall gorge).
     wall_peaks = []
     for wc in wcs:
-        p = peaks_hanc(wins[wins["window_centre_m"] == wc])
+        p = peaks_hand(wins[wins["window_centre_m"] == wc])
         if len(p) >= 2:
             wall_peaks.append(p[1])
     applied_vals = []
@@ -420,12 +420,12 @@ def plot_valley_break_metric(
     def draw_panel(ax, sub, title, show_raw, applied_break=None,
                    annotate_dip=True, subtitle=None, fraction=None):
         frac = fraction if fraction is not None else valley_fraction
-        sub = sub.sort_values("hanc_m")
-        x = sub["hanc_m"].to_numpy(dtype=float)
+        sub = sub.sort_values("hand_m")
+        x = sub["hand_m"].to_numpy(dtype=float)
         sm = sub["smoothed"].to_numpy(dtype=float)
         in_crop = x <= x_hi
-        pk = peaks_hanc(sub)
-        bk = break_hanc(sub)
+        pk = peaks_hand(sub)
+        bk = break_hand(sub)
 
         # Y SCALING: the valley-floor mode and the dip that decide the break
         # are typically ~1-2% of the wall-mode height, so a wall-normalised
@@ -473,14 +473,14 @@ def plot_valley_break_metric(
                             arrowprops=dict(arrowstyle="->",
                                             color=colors["curve"], lw=0.8))
 
-        band = applied_break if applied_break is not None else break_hanc(sub)
+        band = applied_break if applied_break is not None else break_hand(sub)
         if band is not None and np.isfinite(band):
             ax.axvspan(0, band, color=colors["valley"], alpha=0.35, zorder=0)
 
         # Mode structure: surviving boundaries (the inter-mode minima) and the
         # mode peaks the segmentation kept (within the crop; the wall peak may
         # sit off the top of the zoomed axis).
-        for hb in sub[sub["is_boundary"] == 1]["hanc_m"]:
+        for hb in sub[sub["is_boundary"] == 1]["hand_m"]:
             if hb <= x_hi:
                 ax.axvline(hb, color=colors["boundary"], lw=0.7, ls=":",
                            zorder=2)
@@ -489,7 +489,7 @@ def plot_valley_break_metric(
         # can see but that is not a surviving mode was fused into a neighbour).
         if "is_raw_peak" in sub.columns:
             raw_pk = sorted(float(v)
-                            for v in sub[sub["is_raw_peak"] == 1]["hanc_m"])
+                            for v in sub[sub["is_raw_peak"] == 1]["hand_m"])
             surviving = set(pk)
             for hp in raw_pk:
                 if hp in surviving:
@@ -549,7 +549,7 @@ def plot_valley_break_metric(
         n_rows, n_cols, figsize=(3.4 * n_cols, 2.4 * n_rows), squeeze=False)
     axf = [axarr[i // n_cols][i % n_cols] for i in range(n_rows * n_cols)]
 
-    gbk = break_hanc(gl) if len(gl) else None
+    gbk = break_hand(gl) if len(gl) else None
     gtitle = ("whole corridor"
               + (f": break {gbk:.1f} m" if gbk is not None
                  else ": no single break\n-> reach-adaptive used"))
@@ -558,7 +558,7 @@ def plot_valley_break_metric(
     for i, wc in enumerate(wcs, start=1):
         sub = wins[wins["window_centre_m"] == wc]
         abrk, own = applied_at(wc)
-        dip = break_hanc(sub)
+        dip = break_hand(sub)
         # Three cases: a window with no own break INHERITS; a window with an
         # own dip that survives post-processing unchanged is ACCEPTED; a window
         # whose applied break differs from its own dip was replaced by the
@@ -603,18 +603,18 @@ def plot_valley_break_metric(
         Line2D([0], [0], color=colors["applied"], lw=2.0,
                label="applied break (clamp/median/inherit)"),
         plt.Rectangle((0, 0), 1, 1, color=colors["valley"], alpha=0.5,
-                      label="valley (HANC <= break)"),
+                      label="valley (HAND <= break)"),
     ]
     fig.legend(handles=handles, loc="lower center", ncol=8, fontsize=8,
                frameon=False, bbox_to_anchor=(0.5, -0.01))
     fig.suptitle(
-        f"channel {source_id}: how the valley HANC break is chosen  "
+        f"channel {source_id}: how the valley HAND break is chosen  "
         f"(break_valley_fraction = {valley_fraction:g})\n"
         f"(x = height above nearest channel, LINEAR & cropped to the decision "
         f"region; valley = at or below the first inter-mode dip)", fontsize=11)
     # X labels on the bottom row of drawn panels.
     for ax in axf[max(0, npan - n_cols):npan]:
-        ax.set_xlabel("HANC (m)", fontsize=8)
+        ax.set_xlabel("HAND (m)", fontsize=8)
     fig.tight_layout(rect=[0, 0.03, 1, 0.94])
     return fig, axf[:npan]
 
@@ -641,7 +641,7 @@ def plot_valley_reach_map(
     (``*_valley_reach_id_ch<sid>.tif`` from ``lsdtt-valley-centreline`` with
     ``write_valley_reach_id_raster``) semi-transparently over the hillshade,
     so every DEM pixel is coloured by the reach (window) of its nearest
-    channel node — i.e. exactly the population each per-reach HANC break
+    channel node — i.e. exactly the population each per-reach HAND break
     histogram is built from. Reaches are labelled with their number at the
     centroid of their pixels, and the valley centreline is overlaid.
 
@@ -878,14 +878,14 @@ def plot_valley_break_fraction(
 
     Shows, for one channel, how the relief-adaptive method varied the dip
     acceptance fraction with along-channel distance, alongside the local
-    relief that drove it and the resulting valley HANC break. Reads the
+    relief that drove it and the resulting valley HAND break. Reads the
     ``*_valley_breaks.csv`` table (written by ``lsdtt-valley-centreline``),
     which for the ``relief_adaptive`` method carries ``break_fraction`` and
     ``relief_m`` columns in addition to ``break_m`` / ``own_break``.
 
     Three stacked panels vs distance (km): (1) the acceptance fraction with
     own-break reaches marked and the [frac_min, frac_max] band shaded;
-    (2) the median local relief per reach; (3) the applied HANC break.
+    (2) the median local relief per reach; (3) the applied HAND break.
     """
     import matplotlib.pyplot as plt
 
@@ -930,7 +930,7 @@ def plot_valley_break_fraction(
 
     axs[2].plot(d, brk, "-", color="crimson", lw=1.6)
     axs[2].plot(d[own], brk[own], "o", ms=5, color="crimson")
-    axs[2].set_ylabel("applied HANC\nbreak (m)")
+    axs[2].set_ylabel("applied HAND\nbreak (m)")
     axs[2].set_xlabel("distance along channel (km)")
 
     for a in axs:

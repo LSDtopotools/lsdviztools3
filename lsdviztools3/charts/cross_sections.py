@@ -1091,40 +1091,49 @@ def plot_valley_cross_section_hydraulics(
     samples_df: pd.DataFrame,
     *,
     source_id: int = 0,
+    boundaries_df: "pd.DataFrame | None" = None,
+    hydraulics_df: "pd.DataFrame | None" = None,
     source_col: str = "source_id",
     station_col: str = "station_seq",
     offset_col: str = "offset_m",
     elevation_col: str = "elevation",
     in_valley_col: str = "in_valley",
     along_col: str = "along_distance_m",
-    stage_step: float = 0.1,
-    min_step_height_m: float = 2.0,
-    min_step_width_px: int = 3,
     max_panels: int = 20,
     n_cols: int = 4,
 ):
     """Flow-width step surfaces & terrace/floodplain edges, per cross section.
 
-    Two side-by-side panels per station: (left) the elevation profile, (right)
-    the flow-width curve ``W(h)`` ROTATED so stage/elevation is the vertical
-    axis (shared with the profile). The width curve is segmented into flat
-    surfaces with :func:`combine_width_steps`; step boundaries are dotted grey
-    lines on both panels. Mid-elevations are then nudged within their step
-    bounds to minimise excessive crossings before marking terrace/floodplain
-    edges (magenta diamonds).
+    VISUALISATION ONLY — reads the values COMPUTED BY THE C++ ENGINE
+    (lsdtt-valley-centreline) and plots them; it does NOT recompute the
+    hydraulic geometry. (The Python ``cross_section_hydraulics`` /
+    ``combine_width_steps`` / ``detect_hydraulic_flats`` helpers in this module
+    were prototypes only; the C++ engine is the single source of truth.)
+
+    Two side-by-side panels per station: (left) the elevation profile with the
+    C++ terrace/floodplain edges (magenta diamonds at each ``hydraulic_edge``'s
+    offset/stage), (right) the flow-width curve ``W(h)`` ROTATED so
+    stage/elevation is the vertical axis. Edge stages are drawn as dashed
+    magenta lines on both panels.
 
     Args:
-        samples_df: per-sample cross-section table.
+        samples_df: per-sample cross-section table
+            (``_valley_cross_section_samples.csv``).
         source_id: channel source to plot.
-        stage_step: stage increment for flooding (m).
-        min_step_height_m, min_step_width_px: step-combining thresholds — a new
-            step boundary opens only once ``>= min_step_width_px`` pixels of
-            width AND ``>= min_step_height_m`` of stage have accumulated.
+        boundaries_df: the C++ boundary points
+            (``_valley_cross_section_boundaries.fgb`` read into a DataFrame with
+            a ``boundary_type`` column). Rows with ``boundary_type ==
+            "hydraulic_edge"`` supply the edge offsets and stages. If None, no
+            edges are drawn.
+        hydraulics_df: the C++ hydraulic-depth table
+            (``_valley_cross_section_hydraulics.csv``, written when
+            ``write_cross_section_hydraulics`` is on). Supplies the ``W(h)``
+            curve for the right panel. If None, the width panel is left blank.
         max_panels, n_cols: layout (``n_cols`` stations per row).
 
     Returns:
-        ``(fig, results)`` where ``results`` maps station -> list of step
-        mid-elevations (m).
+        ``(fig, results)`` where ``results`` maps station -> list of C++ edge
+        stages (m).
     """
     plt = _import_mpl()
     from matplotlib.lines import Line2D
@@ -1137,6 +1146,18 @@ def plot_valley_cross_section_hydraulics(
     if max_panels and max_panels > 0 and len(stations) > max_panels:
         idx = np.linspace(0, len(stations) - 1, max_panels).round().astype(int)
         stations = [stations[i] for i in sorted(set(idx))]
+
+    # C++ hydraulic edges for this channel (magenta diamonds): offset + stage.
+    edges_ch = None
+    if boundaries_df is not None and len(boundaries_df) \
+            and "boundary_type" in boundaries_df.columns:
+        edges_ch = boundaries_df[
+            (boundaries_df[source_col] == source_id)
+            & (boundaries_df["boundary_type"] == "hydraulic_edge")]
+    # C++ width curve W(h) for this channel.
+    hyd_ch = None
+    if hydraulics_df is not None and len(hydraulics_df):
+        hyd_ch = hydraulics_df[hydraulics_df[source_col] == source_id]
 
     n = len(stations)
     n_cols = max(1, min(n_cols, n))
@@ -1160,16 +1181,13 @@ def plot_valley_cross_section_hydraulics(
         inval = s[in_valley_col].to_numpy(dtype=float)
         along = float(s[along_col].iloc[0])
 
-        hyd = cross_section_hydraulics(off, elev, stage_step=stage_step)
-        if len(hyd["stage"]):
-            boundaries, mids = combine_width_steps(
-                hyd["stage"], hyd["width"], hyd["ds"],
-                min_step_height_m=min_step_height_m,
-                min_step_width_px=min_step_width_px)
-            mids = _adjust_step_midpoints_for_crossings(
-                off, elev, boundaries, mids)
-        else:
-            boundaries, mids = [], []
+        # C++-computed edges for this station: (offset, stage) pairs.
+        edge_off, edge_stage = [], []
+        if edges_ch is not None:
+            es = edges_ch[edges_ch[station_col] == sseq]
+            edge_off = es[offset_col].to_numpy(dtype=float).tolist()
+            edge_stage = es["stage_m"].to_numpy(dtype=float).tolist()
+        mids = sorted(set(round(z, 6) for z in edge_stage))
         results[int(sseq)] = list(map(float, mids))
 
         efin = elev[np.isfinite(elev)]
@@ -1177,19 +1195,15 @@ def plot_valley_cross_section_hydraulics(
             else (0.0, 1.0)
         pad = 0.05 * (ymax - ymin + 1e-6)
 
-        # elevation profile + step boundaries + terrace/floodplain edges
+        # elevation profile + C++ terrace/floodplain edges
         eax.plot(off, elev, "-", color="0.35", lw=1.1, zorder=2)
         eax.fill_between(off, ymin - pad, elev, where=(inval > 0),
                          color="tab:blue", alpha=0.15, step="mid", zorder=1)
-        for zb in boundaries:
-            eax.axhline(zb, color="0.7", lw=0.6, ls=":", zorder=2)
-        edge_x, edge_y = [], []
         for zmid in mids:
-            for xoff in _water_line_crossings(off, elev, zmid):
-                edge_x.append(xoff)
-                edge_y.append(zmid)
-        if edge_x:
-            eax.plot(edge_x, edge_y, linestyle="none", marker="D", ms=5,
+            eax.axhline(zmid, color="magenta", lw=0.6, ls="--", alpha=0.5,
+                        zorder=2)
+        if edge_off:
+            eax.plot(edge_off, edge_stage, linestyle="none", marker="D", ms=5,
                      mew=0.7, mfc="magenta", mec="black", zorder=5)
         eax.set_ylim(ymin - pad, ymax + pad)
         eax.set_xlim(-xmax, xmax)
@@ -1202,12 +1216,14 @@ def plot_valley_cross_section_hydraulics(
             eax.set_xlabel("offset (m)", fontsize=7)
 
         # flow width vs stage, rotated (width on x, stage/elevation on y)
-        if len(hyd["stage"]):
-            wax.plot(hyd["width"], hyd["stage"], "-", color="tab:blue", lw=1.0)
-            for zb in boundaries:
-                wax.axhline(zb, color="0.7", lw=0.6, ls=":")
-            for zmid in mids:
-                wax.axhline(zmid, color="magenta", lw=0.8, ls="--", alpha=0.7)
+        if hyd_ch is not None:
+            hs = hyd_ch[hyd_ch[station_col] == sseq].sort_values("stage_m")
+            if len(hs):
+                wax.plot(hs["width_m"].to_numpy(dtype=float),
+                         hs["stage_m"].to_numpy(dtype=float),
+                         "-", color="tab:blue", lw=1.0)
+        for zmid in mids:
+            wax.axhline(zmid, color="magenta", lw=0.8, ls="--", alpha=0.7)
         wax.set_ylim(ymin - pad, ymax + pad)
         wax.tick_params(labelsize=6, labelleft=False)
         wax.set_title("W(h)", fontsize=7)
@@ -1222,12 +1238,11 @@ def plot_valley_cross_section_hydraulics(
     handles = [
         Line2D([0], [0], color="0.35", lw=1.1, label="elevation"),
         Line2D([0], [0], color="tab:blue", lw=1.0, label="flow width W(h)"),
-        Line2D([0], [0], color="0.7", lw=0.8, ls=":", label="step boundary"),
         Line2D([0], [0], color="magenta", lw=0, marker="D", ms=6,
                mec="black", label="terrace / floodplain edge"),
     ]
     fig.legend(handles=handles, loc="upper center", fontsize=8, frameon=False,
-               ncol=4, bbox_to_anchor=(0.5, 0.998))
+               ncol=3, bbox_to_anchor=(0.5, 0.998))
     fig.suptitle(
         f"channel {source_id}: flow-width step surfaces & terrace edges",
         fontsize=11, y=1.03)

@@ -611,46 +611,46 @@ def render_swath_profile(
     return png_path
 
 
-def render_hanc_profile(
-    hanc_profile_csv: PathLike,
+def render_hand_profile(
+    hand_profile_csv: PathLike,
     png_path: PathLike,
     *,
     band_breaks_csv: Optional[PathLike] = None,
     dpi: int = 300,
     **kwargs,
 ):
-    """Plot HANC vs distance along the channel for classified pixels.
+    """Plot HAND vs distance along the channel for classified pixels.
 
-    Reads the per-pixel ``*_hanc_profile.csv`` written by
-    ``lsdtt-flat-surface-finder`` (``write_hanc_profile_csv``) and draws the
-    floodplain / terrace HANC populations along the channel; optionally
+    Reads the per-pixel ``*_hand_profile.csv`` written by
+    ``lsdtt-flat-surface-finder`` (``write_hand_profile_csv``) and draws the
+    floodplain / terrace HAND populations along the channel; optionally
     overlays the reach-relative band break levels from
-    ``*_hanc_band_breaks.csv``. Uses the matplotlib ``charts`` engine.
+    ``*_hand_band_breaks.csv``. Uses the matplotlib ``charts`` engine.
 
     Args:
-        hanc_profile_csv: Per-pixel HANC profile table.
+        hand_profile_csv: Per-pixel HAND profile table.
         png_path: Output PNG path.
         band_breaks_csv: Optional band-breaks table to overlay.
         dpi: Save resolution.
         **kwargs: Passed through to
-            :func:`lsdviztools3.charts.plot_hanc_distance` (e.g. ``source_id``,
+            :func:`lsdviztools3.charts.plot_hand_distance` (e.g. ``source_id``,
             ``log_y``, ``max_points``).
 
     Returns:
         ``Path`` to the written PNG.
     """
     from .io.table import load_table
-    from .charts import plot_hanc_distance
+    from .charts import plot_hand_distance
 
-    df = load_table(hanc_profile_csv)
+    df = load_table(hand_profile_csv)
     breaks = load_table(band_breaks_csv) if band_breaks_csv else None
-    fig, _ = plot_hanc_distance(df, breaks=breaks, **kwargs)
+    fig, _ = plot_hand_distance(df, breaks=breaks, **kwargs)
     png_path = Path(png_path)
     fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
     return png_path
 
 
-def render_hanc_window_populations(
+def render_hand_window_populations(
     window_hist_csv: PathLike,
     png_path: PathLike,
     *,
@@ -659,31 +659,31 @@ def render_hanc_window_populations(
     dpi: int = 300,
     **kwargs,
 ):
-    """Plot per-window HANC populations with the selected valley breaks.
+    """Plot per-window HAND populations with the selected valley breaks.
 
-    Reads the ``*_valley_hanc_window_hist.csv`` (and optionally the
+    Reads the ``*_valley_hand_window_hist.csv`` (and optionally the
     ``*_valley_breaks.csv``) written by ``lsdtt-valley-centreline`` and draws
     one panel per along-channel window, so the reach-adaptive threshold
     selection is inspectable. Uses the matplotlib ``charts`` engine.
 
     Args:
-        window_hist_csv: Per-window HANC histogram table.
+        window_hist_csv: Per-window HAND histogram table.
         png_path: Output PNG path.
         breaks_csv: Optional per-window break table to overlay.
         source_id: Channel to plot.
         dpi: Save resolution.
         **kwargs: Passed through to
-            :func:`lsdviztools3.charts.plot_hanc_window_populations`.
+            :func:`lsdviztools3.charts.plot_hand_window_populations`.
 
     Returns:
         ``Path`` to the written PNG.
     """
     from .io.table import load_table
-    from .charts import plot_hanc_window_populations
+    from .charts import plot_hand_window_populations
 
     hist_df = load_table(window_hist_csv)
     breaks_df = load_table(breaks_csv) if breaks_csv else None
-    fig, _ = plot_hanc_window_populations(
+    fig, _ = plot_hand_window_populations(
         hist_df, breaks_df=breaks_df, source_id=source_id, **kwargs)
     png_path = Path(png_path)
     fig.savefig(png_path, dpi=dpi, bbox_inches="tight")
