@@ -15,6 +15,7 @@ from .circular import (
 )
 from .cross_sections import (
     plot_valley_cross_section_map, plot_valley_cross_sections,
+    plot_valley_curved_cross_section_map,
     plot_valley_cross_section_features,
     plot_valley_cross_section_features_map,
     plot_valley_cross_section_hydraulics,
@@ -26,6 +27,10 @@ from .hand import (
     plot_hand_distance, plot_hand_window_populations, plot_valley_break_metric,
     plot_valley_break_fraction, plot_valley_floor_map, plot_valley_reach_map,
 )
+from .hydraulic_breaks import (
+    plot_hydraulic_breaks_downstream, hydraulic_break_clusters,
+    plot_hydraulic_break_clusters, plot_cross_section_informed_valley_mask,
+)
 from .rose import rose_diagram
 from .swath import plot_swath
 
@@ -35,6 +40,7 @@ __all__ = [
     "plot_valley_break_metric", "plot_valley_break_fraction",
     "plot_valley_cross_sections",
     "plot_valley_cross_section_map",
+    "plot_valley_curved_cross_section_map",
     "plot_valley_cross_section_features",
     "plot_valley_cross_section_features_map",
     "plot_valley_cross_section_hydraulics",
@@ -42,6 +48,9 @@ __all__ = [
     "combine_width_steps", "compute_flat_surface_edges",
     "plot_valley_reach_map",
     "plot_valley_floor_map",
+    "plot_hydraulic_breaks_downstream", "hydraulic_break_clusters",
+    "plot_hydraulic_break_clusters",
+    "plot_cross_section_informed_valley_mask",
     "plot_distributions", "rose_diagram",
     "circular_wasserstein", "kuiper_two_sample", "plot_circular_comparison",
     "plot_profile", "plot_slope_area",

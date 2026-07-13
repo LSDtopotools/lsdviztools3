@@ -641,3 +641,111 @@ def test_plot_valley_floor_map_empty_raises(tmp_path):
     _write_geotiff(tmp_path / "hs.tif", np.ones((6, 6)))
     with pytest.raises(ValueError, match="no valley"):
         plot_valley_floor_map(str(tmp_path / "vm.tif"), str(tmp_path / "hs.tif"))
+
+
+# --- hydraulic breaks -------------------------------------------------------
+
+def _hydraulic_breaks_frame(n_stations=30, bimodal=True):
+    """Synthetic hydraulic-break table: break 1 near HAND 2 m, and (when
+    bimodal) break 2 near HAND 9 m, so a 10-section bin has two clear levels."""
+    import pandas as pd
+    rng = np.random.default_rng(0)
+    rows = []
+    for st in range(n_stations):
+        along = 24.0 * st
+        rows.append({"source_id": 0, "station_seq": st,
+                     "along_distance_m": along, "break_index": 0,
+                     "stage_m": 100.0, "hand_m": 0.0})
+        rows.append({"source_id": 0, "station_seq": st,
+                     "along_distance_m": along, "break_index": 1,
+                     "stage_m": 102.0, "hand_m": 2.0 + rng.normal(0, 0.2)})
+        if bimodal and st % 3 != 0:
+            rows.append({"source_id": 0, "station_seq": st,
+                         "along_distance_m": along, "break_index": 2,
+                         "stage_m": 109.0, "hand_m": 9.0 + rng.normal(0, 0.3)})
+    return pd.DataFrame(rows)
+
+
+def test_plot_hydraulic_breaks_downstream_series_per_rank():
+    from lsdviztools3.charts import plot_hydraulic_breaks_downstream
+    fig, ax = plot_hydraulic_breaks_downstream(
+        _hydraulic_breaks_frame(), source_id=0)
+    # A points series + a connecting line per break rank (ranks 1 and 2).
+    labels = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert "break 1" in labels and "break 2" in labels
+    assert ax.get_ylabel().startswith("break height")
+
+
+def test_plot_hydraulic_breaks_downstream_missing_source_raises():
+    from lsdviztools3.charts import plot_hydraulic_breaks_downstream
+    with pytest.raises(ValueError, match="No hydraulic breaks"):
+        plot_hydraulic_breaks_downstream(
+            _hydraulic_breaks_frame(), source_id=9)
+
+
+def test_hydraulic_break_clusters_bimodal_finds_two():
+    from lsdviztools3.charts import hydraulic_break_clusters
+    cl = hydraulic_break_clusters(
+        _hydraulic_breaks_frame(bimodal=True), source_id=0, bin_size=10)
+    assert (cl["n_clusters"] == 2).all()
+    # Cluster centres bracket the two synthetic levels (~2 m and ~9 m).
+    for centres in cl["cluster_centres"]:
+        assert min(centres) < 4.0 and max(centres) > 7.0
+
+
+def test_hydraulic_break_clusters_unimodal_finds_one():
+    from lsdviztools3.charts import hydraulic_break_clusters
+    df = _hydraulic_breaks_frame(bimodal=False)
+    cl = hydraulic_break_clusters(df, source_id=0, bin_size=10)
+    assert (cl["n_clusters"] == 1).all()
+
+
+def test_hydraulic_break_clusters_columns_and_bins():
+    from lsdviztools3.charts import hydraulic_break_clusters
+    cl = hydraulic_break_clusters(
+        _hydraulic_breaks_frame(n_stations=25), source_id=0, bin_size=10)
+    assert list(cl["n_sections"]) == [10, 10, 5]      # 25 sections -> 3 bins
+    for col in ("bin_index", "bin_centre_along_m", "along_lo_m", "along_hi_m",
+                "n_values", "n_clusters", "cluster_centres", "silhouette"):
+        assert col in cl.columns
+
+
+def test_plot_hydraulic_break_clusters_overlays_levels():
+    from lsdviztools3.charts import plot_hydraulic_break_clusters
+    fig, ax = plot_hydraulic_break_clusters(
+        _hydraulic_breaks_frame(), source_id=0, bin_size=10)
+    labels = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert "reach cluster level" in labels
+
+
+def test_plot_cross_section_informed_valley_mask(tmp_path):
+    import pandas as pd
+    pytest.importorskip("rasterio")
+    from lsdviztools3.charts import plot_cross_section_informed_valley_mask
+    # Binary informed floodplain (value 1); original partly overlaps it, so the
+    # figure has original-only, informed-only and overlap regions.
+    inf = np.zeros((10, 10)); inf[3:7, 2:8] = 1
+    orig = np.zeros((10, 10)); orig[2:6, 4:9] = 1
+    _write_geotiff(tmp_path / "inf.tif", inf)
+    _write_geotiff(tmp_path / "orig.tif", orig)
+    _write_geotiff(tmp_path / "hs.tif", np.random.rand(10, 10) * 255)
+    nodes = pd.DataFrame({"source_id": [0, 0, 0],
+                          "x": [3.0, 5.0, 7.0], "y": [5.0, 5.0, 5.0]})
+    fig, ax = plot_cross_section_informed_valley_mask(
+        str(tmp_path / "inf.tif"), str(tmp_path / "orig.tif"),
+        str(tmp_path / "hs.tif"), nodes_df=nodes)
+    # hillshade + original overlay + informed overlay = 3 images; centreline drawn.
+    assert len(ax.get_images()) == 3
+    assert len(ax.get_lines()) >= 1
+
+
+def test_plot_cross_section_informed_valley_mask_empty_raises(tmp_path):
+    pytest.importorskip("rasterio")
+    from lsdviztools3.charts import plot_cross_section_informed_valley_mask
+    _write_geotiff(tmp_path / "inf.tif", np.zeros((6, 6)))
+    _write_geotiff(tmp_path / "orig.tif", np.zeros((6, 6)))
+    _write_geotiff(tmp_path / "hs.tif", np.ones((6, 6)))
+    with pytest.raises(ValueError, match="no valley"):
+        plot_cross_section_informed_valley_mask(
+            str(tmp_path / "inf.tif"), str(tmp_path / "orig.tif"),
+            str(tmp_path / "hs.tif"))

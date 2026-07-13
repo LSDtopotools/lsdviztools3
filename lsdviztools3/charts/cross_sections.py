@@ -333,6 +333,205 @@ def plot_valley_cross_section_map(
     return fig, ax
 
 
+# --- Curved (boundary-fitted) cross sections --------------------------------
+
+def _label_height_data_units(ax, fontsize):
+    """Height of a two-digit label at ``fontsize``, expressed in the axes' data
+    units (metres, when the map is drawn in world coordinates). Needed so the
+    adaptive-numbering gap can be stated as a multiple of the label height."""
+    fig = ax.figure
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    t = ax.text(float(np.mean(ax.get_xlim())), float(np.mean(ax.get_ylim())),
+                "88", fontsize=fontsize)
+    h_px = t.get_window_extent(renderer=renderer).height
+    t.remove()
+    inv = ax.transData.inverted()
+    (_, y0) = inv.transform((0.0, 0.0))
+    (_, y1) = inv.transform((0.0, h_px))
+    return abs(y1 - y0)
+
+
+def plot_valley_curved_cross_section_map(
+    samples_df: pd.DataFrame,
+    hillshade_path: str,
+    *,
+    source_id: int = 0,
+    nodes_df: Optional[pd.DataFrame] = None,
+    source_col: str = "source_id",
+    station_col: str = "station_seq",
+    offset_col: str = "offset_m",
+    x_col: str = "x",
+    y_col: str = "y",
+    node_x_col: str = "x",
+    node_y_col: str = "y",
+    number_labels: bool = True,
+    label_gap_factor: float = 2.0,
+    label_fontsize: int = 8,
+    section_cmap: str = "turbo",
+    section_lw: float = 1.4,
+    centreline_color: str = "tab:cyan",
+    crop_margin_metres: float = 300.0,
+    ax=None,
+):
+    """Map of the CURVED (boundary-fitted) cross sections over a hillshade.
+
+    The companion to :func:`plot_valley_cross_section_map` for the curved
+    sections written by ``lsdtt-valley-centreline`` with
+    ``curved_cross_sections: true``. Each section is an isocontour of the
+    along-valley coordinate, so it is a *polyline* (many samples), not a straight
+    chord: this draws the full traced curve of every section from its per-sample
+    world coordinates. The map is drawn in world coordinates (metres) via the
+    hillshade's ``extent`` so the curves and the adaptive number labels share one
+    metric coordinate system.
+
+    Station numbers are placed ADAPTIVELY. Walking downstream, a section is
+    labelled only when its label anchor (the consistent left-side endpoint,
+    nudged outward) is at least ``label_gap_factor`` times the label height from
+    the previously placed label. A sparse network therefore numbers every
+    section; a dense one numbers an evenly-spaced subset, with the text never
+    closer than ``label_gap_factor`` label-heights — directly honouring "how far
+    apart the closest endpoints are".
+
+    Args:
+        samples_df: Per-sample cross-section table
+            (``*_valley_cross_section_samples.csv``). For a curved section the
+            samples trace the curve; ``offset_m`` is the signed arc-length along
+            it (negative left, positive right of downstream).
+        hillshade_path: Path to the hillshade GeoTIFF (read with rasterio).
+        source_id: Channel source to map.
+        nodes_df: Optional valley-centreline nodes
+            (``*_valley_centreline_nodes.csv``) to draw the centreline. ``None``
+            skips it.
+        source_col, station_col, offset_col, x_col, y_col: Column names in
+            ``samples_df``.
+        node_x_col, node_y_col: World-coordinate columns in ``nodes_df``.
+        number_labels: Draw adaptive station-number labels.
+        label_gap_factor: Minimum spacing between placed labels, as a multiple
+            of the label height (2.0 = at least two label-heights apart).
+        label_fontsize: Font size of the station-number labels.
+        section_cmap: Matplotlib colormap for the sections (coloured
+            downstream). Pass a single colour name to draw them all one colour.
+        section_lw: Section line width.
+        centreline_color: Colour of the centreline (when ``nodes_df`` given).
+        crop_margin_metres: Margin (metres) added around the sections' bounding
+            box when cropping the map. 0 or negative shows the full hillshade.
+        ax: Existing matplotlib ``Axes`` or ``None`` for a new one.
+
+    Returns:
+        ``(fig, ax, n_labels)`` — the figure, axes, and the number of station
+        labels actually placed.
+
+    Raises:
+        ValueError: if the table holds no stations for ``source_id``.
+    """
+    plt = _import_mpl()
+    rasterio = _import_rasterio()
+    from matplotlib.lines import Line2D
+    import matplotlib.patheffects as pe
+
+    _stroke = [pe.withStroke(linewidth=2.0, foreground="white")]
+
+    ch = samples_df[samples_df[source_col] == source_id]
+    stations = sorted(ch[station_col].unique())
+    if not stations:
+        raise ValueError(
+            f"No cross-section stations for {source_col}={source_id}.")
+
+    with rasterio.open(hillshade_path) as src:
+        hs = src.read(1).astype(float)
+        if src.nodata is not None:
+            hs[hs == src.nodata] = np.nan
+        tr = src.transform
+        extent = (tr.c, tr.c + tr.a * src.width,
+                  tr.f + tr.e * src.height, tr.f)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 10))
+    else:
+        fig = ax.figure
+    ax.imshow(hs, extent=extent, cmap="gray", origin="upper", zorder=0)
+    ax.set_aspect("equal")
+
+    # Optional centreline.
+    if nodes_df is not None:
+        g = nodes_df[nodes_df[source_col] == source_id]
+        if len(g):
+            ax.plot(g[node_x_col].to_numpy(), g[node_y_col].to_numpy(), "-",
+                    color=centreline_color, lw=1.0, alpha=0.85, zorder=2)
+
+    # Per-station geometry: the full ordered polyline, plus the left-side
+    # endpoint (min signed offset) and centre (offset nearest 0) for labelling.
+    try:
+        cmap = plt.get_cmap(section_cmap)
+        single_colour = None
+    except (ValueError, TypeError):
+        cmap, single_colour = None, section_cmap
+
+    label_info = []
+    xs_all, ys_all = [], []
+    n = len(stations)
+    for i, sseq in enumerate(stations):
+        s = ch[ch[station_col] == sseq].sort_values(offset_col)
+        px = s[x_col].to_numpy(); py = s[y_col].to_numpy()
+        if len(px) < 2:
+            continue
+        colour = single_colour if single_colour is not None \
+            else cmap(i / max(1, n - 1))
+        ax.plot(px, py, "-", lw=section_lw, color=colour, zorder=3)
+        xs_all.append(px); ys_all.append(py)
+        # Left endpoint (most negative offset) as the consistent label side;
+        # nudge outward from the centre (offset closest to 0).
+        c_idx = int(np.argmin(np.abs(s[offset_col].to_numpy())))
+        anchor = np.array([px[0], py[0]])
+        centre = np.array([px[c_idx], py[c_idx]])
+        out = anchor - centre
+        nrm = float(np.hypot(*out))
+        out = out / nrm if nrm else np.array([-1.0, 0.0])
+        label_info.append(dict(seq=int(sseq), anchor=anchor, out=out))
+
+    # Adaptive station numbering.
+    n_labels = 0
+    if number_labels and label_info:
+        H = _label_height_data_units(ax, label_fontsize)
+        min_gap = label_gap_factor * H
+        last = None
+        for it in label_info:
+            a = it["anchor"] + it["out"] * (0.75 * H)
+            if last is None or float(np.hypot(*(a - last))) >= min_gap:
+                ha = "left" if it["out"][0] >= 0 else "right"
+                va = "bottom" if it["out"][1] >= 0 else "top"
+                ax.text(a[0], a[1], str(it["seq"]), fontsize=label_fontsize,
+                        ha=ha, va=va, color="black", zorder=6,
+                        path_effects=_stroke)
+                last = a
+                n_labels += 1
+
+    # Crop to the sections' bounding box with a margin.
+    if crop_margin_metres and crop_margin_metres > 0 and xs_all:
+        ax_x = np.concatenate(xs_all); ax_y = np.concatenate(ys_all)
+        x0, x1 = np.nanmin(ax_x), np.nanmax(ax_x)
+        y0, y1 = np.nanmin(ax_y), np.nanmax(ax_y)
+        m = crop_margin_metres
+        ax.set_xlim(x0 - m, x1 + m)
+        ax.set_ylim(y0 - m, y1 + m)
+
+    handles = [
+        Line2D([0], [0], color="0.4", lw=section_lw,
+               label="curved cross section"),
+    ]
+    if nodes_df is not None:
+        handles.append(Line2D([0], [0], color=centreline_color, lw=1.2,
+                              label="centreline"))
+    ax.legend(handles=handles, loc="upper right", fontsize=8, frameon=True,
+              framealpha=0.7)
+    ax.set_title(
+        f"channel {source_id}: curved (boundary-fitted) cross sections — "
+        f"{len(stations)} sections, {n_labels} labels", fontsize=11)
+    ax.tick_params(labelsize=6)
+    return fig, ax, n_labels
+
+
 # --- Feature-annotated cross sections ---------------------------------------
 
 # Marker style per feature type (colour, matplotlib marker).
