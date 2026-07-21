@@ -78,7 +78,9 @@ def _run_and_check_chi(dem, workdir, *, stem, source_threshold, n_largest):
     matplotlib.use("Agg")
 
     from lsdviztools3.io.chi import (
-        load_chi_fit, load_chi_points, load_chi_segment_lines,
+        FIT_NODE_COLUMNS, FIT_SEGMENT_COLUMNS,
+        load_chi_fit, load_chi_fit_nodes, load_chi_fit_segments,
+        load_chi_points, load_chi_segment_lines,
     )
     from lsdviztools3.charts import plot_chi_stacked
     from lsdviztools3.workflows import lsdtt3_chi_analysis, render_chi_profiles
@@ -91,6 +93,26 @@ def _run_and_check_chi(dem, workdir, *, stem, source_threshold, n_largest):
     assert outputs["fit_nodes"].exists()
     assert outputs["fit_segments"].exists()
     assert outputs["segment_lines"].exists()
+
+    # Column contract (docs/documentation.md §5.1.1): every declared column is
+    # present, in the declared order, in what lsdtt3 actually wrote. Extra
+    # trailing columns are tolerated; a rename, removal or reorder on the C++
+    # side fails here so the loaders and the docs table get updated with it.
+    def _assert_declared_columns(path, declared, loader):
+        actual = list(loader(path).columns)
+        assert set(declared).issubset(actual), (
+            f"{path.name} is missing {sorted(set(declared) - set(actual))}"
+        )
+        assert [c for c in actual if c in declared] == list(declared), (
+            f"{path.name} reorders the declared columns: {actual}"
+        )
+
+    _assert_declared_columns(
+        outputs["fit_nodes"], FIT_NODE_COLUMNS, load_chi_fit_nodes)
+    _assert_declared_columns(
+        outputs["fit_segments"], FIT_SEGMENT_COLUMNS, load_chi_fit_segments)
+    # k_sn is a segments-only column until assign_node_ksn grafts it on.
+    assert "k_sn" not in load_chi_fit_nodes(outputs["fit_nodes"]).columns
 
     nodes = load_chi_fit(outputs["fit_nodes"], outputs["fit_segments"])
     assert not nodes.empty

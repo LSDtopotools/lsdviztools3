@@ -116,6 +116,59 @@ def _frame_label(path: PathLike, times: dict[int, float]) -> Optional[str]:
     return f"iter {it}"
 
 
+def write_gif(
+    frame_pngs: Sequence[PathLike],
+    out_gif: PathLike,
+    *,
+    fps: float = 4.0,
+    loop: int = 0,
+    background: str = "white",
+) -> Path:
+    """Stitch rendered PNG frames into an animated GIF.
+
+    The frames are composited onto an opaque background first: the render layer
+    writes transparent PNGs, and GIF has no alpha channel, so without this the
+    transparent nodata areas come out as whatever the palette happens to put in
+    slot 0.
+
+    Args:
+        frame_pngs: Ordered PNG frame paths.
+        out_gif: Output ``.gif`` path.
+        fps: Frames per second.
+        loop: GIF loop count (``0`` = loop forever).
+        background: Solid colour composited under each frame.
+
+    Returns:
+        The path to the written GIF.
+    """
+    from PIL import Image
+
+    frame_pngs = [Path(p) for p in frame_pngs]
+    if not frame_pngs:
+        raise ValueError("No frames to write.")
+
+    images = []
+    for png in frame_pngs:
+        rgba = Image.open(png).convert("RGBA")
+        bg = Image.new("RGBA", rgba.size, background)
+        images.append(
+            Image.alpha_composite(bg, rgba).convert("P", palette=Image.ADAPTIVE)
+        )
+
+    out_gif = Path(out_gif)
+    out_gif.parent.mkdir(parents=True, exist_ok=True)
+    images[0].save(
+        str(out_gif),
+        save_all=True,
+        append_images=images[1:],
+        duration=int(round(1000.0 / fps)),
+        loop=loop,
+        disposal=2,
+        optimize=True,
+    )
+    return out_gif
+
+
 def render_transient_frame(
     raster: PathLike,
     *,
@@ -209,8 +262,6 @@ def animate_transient_rasters(
     Returns:
         The path to the written GIF.
     """
-    from PIL import Image
-
     style = style or MapStyle()
 
     # Resolve the ordered frame list.
@@ -242,7 +293,7 @@ def animate_transient_rasters(
         frame_dir = Path(frame_dir_ctx.name)
 
     try:
-        images = []
+        pngs = []
         for i, fpath in enumerate(frame_paths):
             label = _frame_label(fpath, times) if annotate else None
             fig = render_transient_frame(
@@ -254,21 +305,9 @@ def animate_transient_rasters(
             )
             png = frame_dir / f"frame_{i:04d}.png"
             fig.savefig(str(png), dpi=style.dpi, transparent=True)
-            # Composite onto an opaque background so the GIF (no alpha) is clean.
-            rgba = Image.open(png).convert("RGBA")
-            bg = Image.new("RGBA", rgba.size, background)
-            images.append(Image.alpha_composite(bg, rgba).convert("P", palette=Image.ADAPTIVE))
+            pngs.append(png)
 
-        duration_ms = int(round(1000.0 / fps))
-        images[0].save(
-            str(out_gif),
-            save_all=True,
-            append_images=images[1:],
-            duration=duration_ms,
-            loop=loop,
-            disposal=2,
-            optimize=True,
-        )
+        write_gif(pngs, out_gif, fps=fps, loop=loop, background=background)
     finally:
         if frame_dir_ctx is not None:
             frame_dir_ctx.cleanup()

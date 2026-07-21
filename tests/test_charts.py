@@ -581,6 +581,7 @@ def _write_geotiff(path, arr, nodata=None):
 
 def test_plot_valley_reach_map_returns_fig_ax(tmp_path):
     pytest.importorskip("rasterio")
+    import pandas as pd
     from lsdviztools3.charts import plot_valley_reach_map
     # 8x8 reach raster: three reaches in bands, negative = outside corridor.
     reach = np.full((8, 8), -1.0)
@@ -615,6 +616,7 @@ def test_plot_valley_reach_map_all_nodata_raises(tmp_path):
 
 def test_plot_valley_floor_map_returns_fig_ax(tmp_path):
     pytest.importorskip("rasterio")
+    import pandas as pd
     from lsdviztools3.charts import plot_valley_floor_map
     # 8x8 valley mask: source 0 (=1) and source 1 (=2) ribbons; 0 = not valley.
     vm = np.zeros((8, 8))
@@ -749,3 +751,276 @@ def test_plot_cross_section_informed_valley_mask_empty_raises(tmp_path):
         plot_cross_section_informed_valley_mask(
             str(tmp_path / "inf.tif"), str(tmp_path / "orig.tif"),
             str(tmp_path / "hs.tif"))
+
+
+# --- chi profiles -----------------------------------------------------------
+#
+# These pin the lsdtt-chi-analysis column contract and the stacked-plot
+# conventions documented in docs/documentation.md §5.1. Frames are built with
+# the exact headers lsdtt3 writes, so a header change on the C++ side (or a
+# drifting loader) fails here rather than silently producing a wrong plot.
+
+#: Header of ``*_chi_fit_nodes_mn_*.csv``, in the order lsdtt3 writes it.
+CHI_NODE_HEADER = (
+    "basin_index", "outlet_flat", "flat", "receiver_flat", "chi",
+    "observed_elevation", "fitted_elevation", "residual_elevation",
+    "abs_residual_elevation", "branch_id", "is_main_stem", "is_source",
+    "is_junction", "is_split_point",
+)
+
+#: Header of ``*_chi_fit_segments_mn_*.csv``, in the order lsdtt3 writes it.
+CHI_SEGMENT_HEADER = (
+    "basin_index", "outlet_flat", "segment_id", "parent_segment_id",
+    "branch_id", "downstream_flat", "upstream_flat", "downstream_chi",
+    "upstream_chi", "downstream_elevation", "upstream_elevation", "k_sn",
+    "max_abs_residual", "n_nodes",
+)
+
+
+def _chi_nodes_frame():
+    """Two basins with known chi spans, carrying the full lsdtt3 node header.
+
+    Basin 0 spans chi 0..10 (one branch, two segments at k_sn 20 then 5);
+    basin 1 spans chi 0..5 (one segment at k_sn 50). Elevation is the
+    piecewise-linear integral of those k_sn, so observed == fitted.
+    """
+    import pandas as pd
+
+    rows = []
+    for basin, outlet, chi_max in ((0, 100, 10), (1, 200, 5)):
+        for i in range(chi_max + 1):
+            chi = float(i)
+            if basin == 0:
+                z = 20.0 * chi if chi <= 5 else 100.0 + 5.0 * (chi - 5.0)
+            else:
+                z = 50.0 * chi
+            rows.append({
+                "basin_index": basin, "outlet_flat": outlet,
+                "flat": outlet + i, "receiver_flat": outlet + max(i - 1, 0),
+                "chi": chi, "observed_elevation": z, "fitted_elevation": z,
+                "residual_elevation": 0.0, "abs_residual_elevation": 0.0,
+                "branch_id": 0, "is_main_stem": 1,
+                "is_source": int(i == chi_max), "is_junction": 0,
+                "is_split_point": 0,
+            })
+    return pd.DataFrame(rows, columns=list(CHI_NODE_HEADER))
+
+
+def _chi_segments_frame():
+    """Segments matching :func:`_chi_nodes_frame`, full lsdtt3 segment header."""
+    import pandas as pd
+
+    specs = [
+        # basin, outlet, seg, d_chi, u_chi, d_z,   u_z,   k_sn
+        (0, 100, 0, 0.0, 5.0, 0.0, 100.0, 20.0),
+        (0, 100, 1, 5.0, 10.0, 100.0, 125.0, 5.0),
+        (1, 200, 0, 0.0, 5.0, 0.0, 250.0, 50.0),
+    ]
+    rows = [{
+        "basin_index": b, "outlet_flat": o, "segment_id": s,
+        "parent_segment_id": s - 1, "branch_id": 0,
+        "downstream_flat": o, "upstream_flat": o + 1,
+        "downstream_chi": dc, "upstream_chi": uc,
+        "downstream_elevation": dz, "upstream_elevation": uz,
+        "k_sn": k, "max_abs_residual": 0.0, "n_nodes": 6,
+    } for b, o, s, dc, uc, dz, uz, k in specs]
+    return pd.DataFrame(rows, columns=list(CHI_SEGMENT_HEADER))
+
+
+def _chi_data_map_frame():
+    """Chi data-map points: note ``basin_key``, not ``basin_index``."""
+    import pandas as pd
+
+    rows = []
+    for key, chi_max in ((0, 10), (1, 5)):
+        for i in range(chi_max + 1):
+            rows.append({
+                "chi": float(i), "drainage_area": 1e6 - 1e4 * i,
+                "flow_distance": 30.0 * i, "elevation": 10.0 * i,
+                "source_key": key, "basin_key": key,
+            })
+    return pd.DataFrame(rows)
+
+
+def test_chi_io_column_constants_match_lsdtt3_header():
+    """The loader's declared columns are the contract documented in §5.1.1."""
+    from lsdviztools3.io.chi import FIT_NODE_COLUMNS, FIT_SEGMENT_COLUMNS
+
+    assert FIT_NODE_COLUMNS == CHI_NODE_HEADER
+    assert FIT_SEGMENT_COLUMNS == CHI_SEGMENT_HEADER
+    # k_sn lives on the segments only; it is grafted onto nodes by
+    # assign_node_ksn. Documented because it surprises people.
+    assert "k_sn" in FIT_SEGMENT_COLUMNS
+    assert "k_sn" not in FIT_NODE_COLUMNS
+
+
+def test_assign_node_ksn_uses_the_containing_segment():
+    from lsdviztools3.io.chi import assign_node_ksn
+
+    out = assign_node_ksn(_chi_nodes_frame(), _chi_segments_frame())
+    b0 = out[out["basin_index"] == 0].set_index("chi")["k_sn"]
+    assert b0[1.0] == pytest.approx(20.0)     # inside segment 0
+    assert b0[7.0] == pytest.approx(5.0)      # inside segment 1
+    assert out[out["basin_index"] == 1]["k_sn"].eq(50.0).all()
+    assert out["k_sn"].notna().all()
+
+
+def test_assign_node_ksn_falls_back_to_nearest_segment():
+    """A node outside every interval takes the nearest segment in its branch."""
+    import pandas as pd
+    from lsdviztools3.io.chi import assign_node_ksn
+
+    nodes = _chi_nodes_frame()
+    stray = nodes[nodes["basin_index"] == 0].iloc[[0]].copy()
+    stray["chi"] = 12.0                        # beyond the upstream end
+    nodes = pd.concat([nodes, stray], ignore_index=True)
+
+    out = assign_node_ksn(nodes, _chi_segments_frame())
+    assert out.loc[out["chi"] == 12.0, "k_sn"].iloc[0] == pytest.approx(5.0)
+
+
+def test_assign_node_ksn_leaves_nan_when_branch_has_no_segments():
+    from lsdviztools3.io.chi import assign_node_ksn
+
+    nodes = _chi_nodes_frame()
+    nodes.loc[nodes["basin_index"] == 1, "branch_id"] = 7   # no such segment
+    out = assign_node_ksn(nodes, _chi_segments_frame())
+    assert out.loc[out["basin_index"] == 1, "k_sn"].isna().all()
+    assert out.loc[out["basin_index"] == 0, "k_sn"].notna().all()
+
+
+def test_load_chi_fit_reads_csvs_and_attaches_ksn(tmp_path):
+    from lsdviztools3.io.chi import load_chi_fit
+
+    nodes_csv = tmp_path / "x_chi_fit_nodes_mn_0p450.csv"
+    segs_csv = tmp_path / "x_chi_fit_segments_mn_0p450.csv"
+    _chi_nodes_frame().to_csv(nodes_csv, index=False)
+    _chi_segments_frame().to_csv(segs_csv, index=False)
+
+    out = load_chi_fit(nodes_csv, segs_csv)
+    assert list(out.columns)[:len(CHI_NODE_HEADER)] == list(CHI_NODE_HEADER)
+    assert out["k_sn"].notna().all()
+
+
+def test_plot_chi_stacked_nodes_scatters_observed_with_fit():
+    from lsdviztools3.charts import plot_chi_stacked
+    from lsdviztools3.io.chi import assign_node_ksn
+
+    nodes = assign_node_ksn(_chi_nodes_frame(), _chi_segments_frame())
+    fig, ax = plot_chi_stacked(nodes)
+    assert len(ax.collections) == 2                  # one scatter per basin
+    assert len(ax.lines) == 2                        # one fitted branch each
+    assert ax.get_xlabel().endswith("offset per basin)")
+
+
+def test_plot_chi_stacked_segments_draws_one_line_collection():
+    from matplotlib.collections import LineCollection
+    from lsdviztools3.charts import plot_chi_stacked
+
+    fig, ax = plot_chi_stacked(_chi_segments_frame())
+    lcs = [c for c in ax.collections if isinstance(c, LineCollection)]
+    assert len(lcs) == 1
+    assert len(lcs[0].get_segments()) == 3           # all segments, both basins
+    assert not ax.lines                              # segments *are* the fit
+
+
+def test_plot_chi_stacked_default_offset_is_20_percent_of_widest_span():
+    """Documented rule: gap = 0.2 * widest basin chi span; stacks are contiguous."""
+    from matplotlib.collections import LineCollection
+    from lsdviztools3.charts import plot_chi_stacked
+
+    fig, ax = plot_chi_stacked(_chi_segments_frame())
+    lc = [c for c in ax.collections if isinstance(c, LineCollection)][0]
+    xs = np.array([[p[0] for p in seg] for seg in lc.get_segments()])
+
+    # Basin 0 spans 0..10 (the widest), so the gap is 2.0 and basin 1 starts
+    # at 10 + 2 = 12 and ends at 17.
+    assert xs[:2].min() == pytest.approx(0.0)
+    assert xs[:2].max() == pytest.approx(10.0)
+    assert xs[2].min() == pytest.approx(12.0)
+    assert xs[2].max() == pytest.approx(17.0)
+
+
+def test_plot_chi_stacked_basins_argument_selects_and_orders():
+    from matplotlib.collections import LineCollection
+    from lsdviztools3.charts import plot_chi_stacked
+
+    fig, ax = plot_chi_stacked(_chi_segments_frame(), basins=[1])
+    lc = [c for c in ax.collections if isinstance(c, LineCollection)][0]
+    xs = np.array([[p[0] for p in seg] for seg in lc.get_segments()])
+    # Only basin 1, and it is normalised back to chi = 0.
+    assert len(lc.get_segments()) == 1
+    assert xs.min() == pytest.approx(0.0) and xs.max() == pytest.approx(5.0)
+
+
+def test_plot_chi_stacked_labels_carry_basin_index():
+    from lsdviztools3.charts import plot_chi_stacked
+
+    fig, ax = plot_chi_stacked(_chi_segments_frame())
+    assert {t.get_text() for t in ax.texts} == {"0", "1"}
+
+    fig, ax = plot_chi_stacked(_chi_segments_frame(), label_basins=False)
+    assert not ax.texts
+
+
+def test_colour_values_floor_small_ksn_in_log_space():
+    """log10 colouring floors k_sn < 0.1 to 0.0 rather than dropping it."""
+    from lsdviztools3.charts.chi import _colour_values
+
+    out = _colour_values(np.array([0.05, 0.0, -1.0, 10.0, 100.0]), True)
+    assert out[0] == pytest.approx(0.0)      # floored, NOT log10(0.05)
+    assert out[1] == pytest.approx(0.0)
+    assert out[2] == pytest.approx(0.0)
+    assert out[3] == pytest.approx(1.0)
+    assert out[4] == pytest.approx(2.0)
+    # Without log scaling the values pass through untouched.
+    raw = _colour_values(np.array([0.05, 10.0]), False)
+    assert raw.tolist() == [0.05, 10.0]
+
+
+def test_plot_chi_stacked_rejects_a_data_map_frame_as_data():
+    """Data maps carry basin_key, so they are an `observed=` input only."""
+    from lsdviztools3.charts import plot_chi_stacked
+
+    with pytest.raises(KeyError, match="basin_index"):
+        plot_chi_stacked(_chi_data_map_frame())
+
+
+def test_plot_chi_stacked_observed_overlay_uses_the_same_offset():
+    from lsdviztools3.charts import plot_chi_stacked
+
+    fig, ax = plot_chi_stacked(_chi_segments_frame(),
+                               observed=_chi_data_map_frame())
+    # Observed scatters are drawn per basin, under the segments (zorder 0).
+    scatters = [c for c in ax.collections if c.get_zorder() == 0]
+    assert len(scatters) == 2
+    x_basin1 = scatters[1].get_offsets()[:, 0]
+    # Basin 1's observed chi 0..5 is shifted by the same 12.0 as its segments.
+    assert x_basin1.min() == pytest.approx(12.0)
+    assert x_basin1.max() == pytest.approx(17.0)
+
+
+def test_plot_chi_profile_selects_the_requested_basin():
+    from lsdviztools3.charts import plot_chi_profile
+    from lsdviztools3.io.chi import assign_node_ksn
+
+    nodes = assign_node_ksn(_chi_nodes_frame(), _chi_segments_frame())
+    fig, ax = plot_chi_profile(nodes, basin=1)
+    assert ax.get_title() == "Basin 1"
+    xs = ax.collections[0].get_offsets()[:, 0]
+    # True chi, no offset applied.
+    assert xs.min() == pytest.approx(0.0) and xs.max() == pytest.approx(5.0)
+
+
+def test_plot_chi_profile_defaults_to_the_first_basin():
+    from lsdviztools3.charts import plot_chi_profile
+
+    fig, ax = plot_chi_profile(_chi_segments_frame())
+    assert ax.get_title() == "Basin 0"
+
+
+def test_plot_chi_profile_unknown_basin_raises():
+    from lsdviztools3.charts import plot_chi_profile
+
+    with pytest.raises(ValueError, match="basin_index=9"):
+        plot_chi_profile(_chi_segments_frame(), basin=9)

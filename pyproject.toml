@@ -45,6 +45,7 @@ lsdviz3-channels = "lsdviztools3.cli.plot_channels:main"
 lsdviz3-basins = "lsdviztools3.cli.plot_basins:main"
 lsdviz3-basemap = "lsdviztools3.cli.plot_basemap:main"
 lsdviz3-animate = "lsdviztools3.cli.plot_animation:main"
+lsdviz3-lem-pulse = "lsdviztools3.cli.plot_lem_pulse:main"
 lsdviz3-grabdem = "lsdviztools3.cli.grab_dem:main"
 lsdviz3-lsdtt = "lsdviztools3.cli.run_lsdtt:main"
 

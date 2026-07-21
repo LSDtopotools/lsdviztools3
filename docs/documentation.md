@@ -23,11 +23,21 @@ Contents:
    - [Overlaying several vector layers on a hillshade](#49-overlaying-several-vector-layers-on-a-hillshade)
 5. [Charts (x–y plots)](#5-charts-xy-plots)
    - [Chi profiles (individual + stacked)](#51-chi-profiles)
+     - [Inputs: which lsdtt3 call produces which file](#511-inputs-which-lsdtt3-call-produces-which-file)
+     - [Stacked chi plots](#512-stacked-chi-plots-plot_chi_stacked)
+     - [Nodes table vs segments table](#513-nodes-table-vs-segments-table)
+     - [Overlaying observed points](#514-overlaying-observed-points)
+     - [Single-basin profiles](#515-single-basin-profiles-plot_chi_profile)
    - [Swath profiles](#52-swath-profiles)
    - [Rose diagrams (bearings)](#53-rose-diagrams-bearings)
    - [Circular / directional comparison](#54-circular--directional-comparison)
+   - [Distributions](#55-distributions)
+   - [Valley floor / HAND charts](#56-valley-floor--hand-charts)
+   - [Valley cross sections](#57-valley-cross-sections)
+   - [Hydraulic breaks](#58-hydraulic-breaks)
 6. [End-to-end workflows](#6-end-to-end-workflows)
 7. [CLI reference](#7-cli-reference)
+8. [lsdtt3 output → plot function map](#8-lsdtt3-output--plot-function-map)
 
 Run Python via the project environment (`pixi run python …`) so PyGMT/GDAL are
 on the path. In a notebook started from the pixi env, use `fig.show()` instead
@@ -645,13 +655,22 @@ plot_segment_classification(
 
 These use **matplotlib** (the optional `charts` extra) and return
 `(fig, ax)`. They consume `lsdtt-chi-analysis` / `lsdtt-swath-profile` output,
-and the bearing/junction outputs of `lsdtt-channel-network-analysis` (rose and
-circular-comparison charts, [§5.3](#53-rose-diagrams-bearings)–[§5.4](#54-circular--directional-comparison)).
+the bearing/junction outputs of `lsdtt-channel-network-analysis` (rose and
+circular-comparison charts, [§5.3](#53-rose-diagrams-bearings)–[§5.4](#54-circular--directional-comparison)),
+and the valley-floor products of `lsdtt-flat-surface-finder` /
+`lsdtt-valley-centreline` ([§5.6](#56-valley-floor--hand-charts)–[§5.8](#58-hydraulic-breaks)).
+[§8](#8-lsdtt3-output--plot-function-map) maps every lsdtt3 output file to the
+function that plots it.
 
 ### 5.1 Chi profiles
 
-Two views: a single basin's chi–elevation profile, and the lsdviztools
-"stacked" plot (basins normalised to χ=0 then offset), coloured by log₁₀ k_sn.
+Two views: a single basin's chi–elevation profile
+([§5.1.5](#515-single-basin-profiles-plot_chi_profile)), and the lsdviztools
+**stacked chi plot** — every basin normalised to χ=0, then offset along the χ
+axis so the profiles sit side-by-side on one pair of axes, coloured by
+log₁₀ k_sn ([§5.1.2](#512-stacked-chi-plots-plot_chi_stacked)).
+
+Quick start:
 
 ```python
 from lsdviztools3.io.chi import load_chi_fit
@@ -668,14 +687,116 @@ fig, ax = plot_chi_profile(nodes, basin=0)        # one basin
 fig.savefig("demo_output/chi_basin0.png", dpi=300, bbox_inches="tight")
 ```
 
-`plot_chi_stacked(data, *, basins=None, x_offset=None, color_by="k_sn",
-log_color=True, cmap="viridis", show_fit=True, observed=None, label_basins=True, ...)`
-and `plot_chi_profile(data, *, basin=None, color_by="k_sn", show_fit=True,
-observed=None, ...)`.
+Or run the analysis and write a stacked plot plus one profile per basin in one
+call:
 
-**FlatGeobuf input.** Both plotters also accept a *segments* table — the fitted
-segment-lines fgb — so you can plot without the CSVs, and overlay the observed
-points from the data-map fgb:
+```python
+from lsdviztools3.workflows import lsdtt3_chi_analysis, render_chi_profiles
+out = lsdtt3_chi_analysis("demo_output/eigg_glo30.tif", "work/eigg", stem="eigg",
+                          source_threshold=300, n_largest_basins=5, m_over_n=0.45)
+render_chi_profiles(out, "demo_output/chi", stem="eigg")
+# -> demo_output/chi/eigg_stacked.png + eigg_profile_basin<N>.png
+```
+
+#### 5.1.1 Inputs: which lsdtt3 call produces which file
+
+Every chi chart consumes output from **`lsdtt-chi-analysis`**. Nothing is
+computed here: chi, the piecewise-linear fit and k_sn all come from the C++
+side. The minimal parameter set — exactly what
+`workflows.lsdtt3_chi_analysis` sends — is:
+
+```python
+from lsdviztools3.driver import run_lsdtt
+
+run_lsdtt("lsdtt-chi-analysis", {
+    "read_path": "work/eigg", "read_fname": "eigg_remove_seas.tif",
+    "write_path": "work/eigg", "write_fname": "eigg",
+    "source_pixels_threshold": 300,
+    "n_largest_basins": 5,            # keep >0: see the warning in 5.1.4
+    "print_chi_data_maps": "true",    # -> observed points
+    "chi_data_maps_output_format": "flatgeobuf",
+    "fit_chi_networks": "true",       # -> the fit itself
+    "write_fit_tables": "true",       # -> nodes + segments CSVs
+    "write_chi_fit_segment_lines": "true",
+    "chi_fit_segment_lines_output_format": "flatgeobuf",
+    "mn_min": 0.45, "mn_max": 0.45, "mn_step": 0.02,
+}, data_path="work/eigg")
+```
+
+`mn_*` (or `m_over_n`) sets the concavity; the value appears in the filename as
+`mn_0p450`. The four products and their columns:
+
+| File | Written when | Loader | Columns |
+|---|---|---|---|
+| `*_chi_fit_nodes_mn_*.csv` | `write_fit_tables` | `load_chi_fit_nodes` | `basin_index`, `outlet_flat`, `flat`, `receiver_flat`, `chi`, `observed_elevation`, `fitted_elevation`, `residual_elevation`, `abs_residual_elevation`, `branch_id`, `is_main_stem`, `is_source`, `is_junction`, `is_split_point` — **no `k_sn`** |
+| `*_chi_fit_segments_mn_*.csv` | `write_fit_tables` | `load_chi_fit_segments` | `basin_index`, `outlet_flat`, `segment_id`, `parent_segment_id`, `branch_id`, `downstream_flat`, `upstream_flat`, `downstream_chi`, `upstream_chi`, `downstream_elevation`, `upstream_elevation`, **`k_sn`**, `max_abs_residual`, `n_nodes` |
+| `*_chi_fit_segment_lines_mn_*.fgb` | `write_chi_fit_segment_lines` | `load_chi_segment_lines` | the segment columns *minus* `parent_segment_id` and `max_abs_residual`, plus map-space geometry (dropped on load) |
+| `*_chi_data_maps.fgb` / `.csv` | `print_chi_data_maps` | `load_chi_points` | `chi`, `drainage_area`, `flow_distance`, `elevation`, `source_key`, **`basin_key`** |
+
+`k_sn` lives on the **segments**, not the nodes. `load_chi_fit(nodes, segments)`
+(or `assign_node_ksn`) grafts it on by finding, within each
+`(basin_index, branch_id)`, the segment whose `[downstream_chi, upstream_chi]`
+interval contains each node — nodes just outside every interval take the
+nearest segment in the branch.
+
+Two more `lsdtt-chi-analysis` products are used elsewhere in this guide, not by
+the chi charts: `*_chi_ksn_basin_summary_mn_*.csv` (per-basin k_sn statistics)
+and the segment-lines fgb again, as a **map** layer in
+[§4.2](#42-channel-network-coloured-by-log10-k_sn).
+
+#### 5.1.2 Stacked chi plots (`plot_chi_stacked`)
+
+```python
+plot_chi_stacked(data, *, basins=None, x_offset=None, color_by="k_sn",
+                 log_color=True, cmap="viridis", point_size=3.0, show_fit=True,
+                 observed=None, observed_color="0.6", observed_size=1.5,
+                 label_basins=True, ax=None, colorbar=True)  ->  (fig, ax)
+```
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `data` | — | Nodes **or** segments table; see [§5.1.3](#513-nodes-table-vs-segments-table). Must carry `basin_index`. |
+| `basins` | all present | Ordered `basin_index` values to stack — also the only way to reorder the stack. |
+| `x_offset` | 20% of the widest basin's χ span | Horizontal gap between successive basins, in χ units. |
+| `color_by` | `"k_sn"` | Column used for colour. |
+| `log_color` | `True` | Colour on a log₁₀ scale. See the flooring rule below. |
+| `cmap` | `"viridis"` | Any matplotlib colourmap. |
+| `point_size` | `3.0` | Marker size — nodes table only. |
+| `show_fit` | `True` | Overlay the fitted profile per `branch_id` — nodes table only (a segments table *is* the fit). |
+| `observed` | `None` | Chi data-map frame overlaid as neutral points; see [§5.1.4](#514-overlaying-observed-points). |
+| `observed_color` / `observed_size` | `"0.6"` / `1.5` | Style of that overlay. |
+| `label_basins` | `True` | Annotate each stack with its `basin_index`. |
+| `ax` | `None` | Draw into an existing `Axes` instead of a new figure. |
+| `colorbar` | `True` | Attach a colourbar. |
+
+Conventions worth knowing before you read a stacked plot:
+
+- **Stacking.** Each basin's χ is shifted so the basin starts at 0, then
+  translated by a running cursor: `cursor += basin_chi_span + x_offset`. The x
+  axis is therefore *offset χ*, not comparable between stacks — only the shape
+  and the slope (k_sn) are.
+- **Order.** The default is ascending `basin_index`, i.e. the order lsdtt3
+  retained the basins in, **not** by drainage area or k_sn. Pass `basins=[…]`
+  to impose your own order.
+- **Colour normalisation is global** across the selected basins, so colours are
+  comparable between stacks in one figure but not between figures.
+- **log₁₀ k_sn flooring.** With `log_color=True`, values `>= 0.1` are
+  log₁₀-scaled and anything below (including 0 and negatives) is mapped to
+  `0.0` rather than dropped — mirroring lsdviztools. On low-relief basins this
+  piles genuinely small k_sn onto the same colour as k_sn = 1. Set
+  `log_color=False` if that matters for your site.
+
+#### 5.1.3 Nodes table vs segments table
+
+Both plotters detect the input type: a frame carrying `downstream_chi` **and**
+`upstream_chi` is treated as *segments*, otherwise as *nodes*.
+
+| Input | What is drawn |
+|---|---|
+| **Nodes** (`load_chi_fit` / `load_chi_fit_nodes`) | Scatter of `observed_elevation` vs `chi`, coloured by the grafted-on `k_sn`, with `fitted_elevation` overlaid as a line per `branch_id` (`show_fit`). |
+| **Segments** (`load_chi_fit_segments` or `load_chi_segment_lines`) | A `LineCollection` of the fitted segments, each coloured by its own `k_sn`. No observed scatter (use `observed=`), and no node→segment join needed. |
+
+The segments route lets you plot straight from the FlatGeobuf, with no CSVs:
 
 ```python
 from lsdviztools3.io.chi import load_chi_segment_lines, load_chi_points
@@ -684,14 +805,44 @@ obs  = load_chi_points("work/eigg/eigg_chi_data_maps.fgb")  # observed pts (no k
 fig, ax = plot_chi_stacked(segs, observed=obs)
 ```
 
-Or run analysis + write a stacked plot and one profile per basin in one call:
+> **`data=` must carry `basin_index`.** Both plotters group and label by
+> `basin_index`, so a chi **data-map** frame (which has `basin_key` instead)
+> works only as `observed=`, never as `data=`. Passing one as `data=` raises a
+> `KeyError` on `basin_index`.
+
+#### 5.1.4 Overlaying observed points
+
+`observed=` takes a chi data-map frame and scatters its `chi`/`elevation` under
+the fit, using the same per-basin offset. Those points carry no `k_sn`, so they
+are drawn in a neutral colour (`observed_color`).
+
+The overlay is joined **by basin number**: `basin_index` on the fit side,
+`basin_key` on the data-map side. These are two independent counters in lsdtt3
+— `basin_key` is assigned in `lsdtt_chi_data_maps_cpu.cpp` over the *complete*
+basins, `basin_index` is the position in the fitted-basin list from
+`lsdtt_chi_network_analysis_cpu.cpp`.
+
+> **Keep `n_largest_basins > 0`** (the default is 5) whenever you overlay
+> observed points. With `n_largest_basins > 0`, lsdtt-chi-analysis filters the
+> basin list to complete basins before both products are written and the two
+> numberings agree. With `n_largest_basins: 0` the fit keeps incomplete basins
+> while the data maps still drop them, the numbering shifts, and the observed
+> points are silently attached to the **wrong stack**. If you must use `0`,
+> join on `outlet_flat` yourself instead of relying on the basin number.
+
+#### 5.1.5 Single-basin profiles (`plot_chi_profile`)
 
 ```python
-from lsdviztools3.workflows import lsdtt3_chi_analysis, render_chi_profiles
-out = lsdtt3_chi_analysis("demo_output/eigg_glo30.tif", "work/eigg", stem="eigg",
-                          source_threshold=300, n_largest_basins=5)
-render_chi_profiles(out, "demo_output/chi", stem="eigg")
+plot_chi_profile(data, *, basin=None, color_by="k_sn", log_color=True,
+                 cmap="viridis", point_size=4.0, show_fit=True, observed=None,
+                 observed_color="0.6", observed_size=2.0, ax=None,
+                 colorbar=True)  ->  (fig, ax)
 ```
+
+Same input rules, same colour conventions; `basin` selects the `basin_index` to
+draw (default: the first one present) and the title is set to `Basin <n>`.
+There is no offset — the x axis is true χ. Raises `ValueError` if the requested
+basin is absent.
 
 ### 5.2 Swath profiles
 
@@ -808,6 +959,74 @@ that computes the authoritative circular-Wasserstein distance and Kuiper test
 between two bearing files. See the worked example in
 [§6](#6-end-to-end-workflows).
 
+### 5.5 Distributions
+
+`plot_distributions(series, ...)` overlays step-histograms of several labelled
+value series — used in the worked examples for junction-angle populations and
+for fault-relative deflection split by side of the fault
+([§6](#6-end-to-end-workflows)).
+
+```python
+from lsdviztools3.charts import plot_distributions
+fig, ax = plot_distributions({"dendritic": angles_a, "trellis": angles_b})
+```
+
+### 5.6 Valley floor / HAND charts
+
+Charts over `lsdtt-flat-surface-finder` output: HAND (height above nearest
+drainage) per pixel in `*_hand_profile.csv`, the reach-relative band breaks in
+`*_hand_band_breaks.csv`, and the reach-id / valley-floor rasters. Surface
+classes follow the lsdtt3 `_surface_class` convention (1 = floodplain,
+2 = terrace).
+
+| Function | What it draws |
+|---|---|
+| `plot_hand_distance` | HAND against distance along the channel, coloured by surface class, optionally with the band-break levels. |
+| `plot_hand_window_populations` | Per-window HAND populations with the selected valley break. |
+| `plot_valley_break_metric` | Reviewer figure: how the valley HAND break is chosen. |
+| `plot_valley_break_fraction` | Per-reach relief-adaptive acceptance fraction along the channel. |
+| `plot_valley_reach_map` | Map of the along-channel reaches over a hillshade. |
+| `plot_valley_floor_map` | Map of the extracted valley floor over a hillshade. |
+
+The map functions need `rasterio` in addition to matplotlib. Full parameter
+lists are in the function docstrings (`lsdviztools3/charts/hand.py`).
+
+### 5.7 Valley cross sections
+
+Charts over `lsdtt-valley-centreline` output: the per-sample transect table
+`*_valley_cross_section_samples.csv` (`write_valley_cross_sections`) and the
+feature table written by `write_cross_section_features`. Every transect on a
+channel shares a length set by the widest valley on that channel, so panels are
+directly comparable.
+
+| Function | What it draws |
+|---|---|
+| `plot_valley_cross_sections` | Grid of cross sections orthogonal to the centreline, with the in-valley run shaded and the detected sides marked. |
+| `plot_valley_cross_section_map` | Map of the numbered transects over a hillshade. |
+| `plot_valley_curved_cross_section_map` | The same for the curved (boundary-fitted) sections. |
+| `plot_valley_cross_section_features` | Individual sections annotated with detected features. |
+| `plot_valley_cross_section_features_map` | Map of transects with valley-edge and terrace/floodplain features. |
+| `plot_valley_cross_section_hydraulics` | Flow-width step surfaces and terrace/floodplain edges, per section. |
+
+`cross_section_hydraulics`, `detect_hydraulic_flats`, `combine_width_steps` and
+`compute_flat_surface_edges` are the numeric helpers behind the hydraulics
+plot. They are **prototyping code**: lsdviztools3 visualises, lsdtt3 computes,
+so treat their results as exploratory until the equivalent lives in C++.
+
+### 5.8 Hydraulic breaks
+
+Cross-section flooding (`lsdtt-valley-centreline` with
+`write_cross_section_features`) records the water-surface elevations separating
+flat surfaces from the risers between them, written as local HAND values in
+`*_valley_cross_section_hydraulic_breaks.csv`.
+
+| Function | What it draws |
+|---|---|
+| `plot_hydraulic_breaks_downstream` | Break HAND of every section against distance downstream, one series per break rank. |
+| `hydraulic_break_clusters` | Binned 1-D clustering test (default 10 sections per bin) asking whether break elevations fall into distinct levels. Numeric, not a plot — same prototyping caveat as §5.7. |
+| `plot_hydraulic_break_clusters` | Break-HAND scatter down-valley with the per-bin cluster levels overlaid. |
+| `plot_cross_section_informed_valley_mask` | The cross-section-informed valley floor over a hillshade, beside the histogram-derived mask. |
+
 ---
 
 ## 6. End-to-end workflows
@@ -825,6 +1044,14 @@ paths (or a Figure/PNG path).
 | `render_chi_ksn_relief3d(dem, segment_lines, png, *, vertical_exaggeration=2.0)` | 3D hillshaded relief with the chi network draped on the surface, coloured by log₁₀ k_sn + colourbar |
 | `lsdtt3_swath_profile(dem, workdir, stem=…, half_width_metres=…, bin_width_metres=…)` | preprocess → main-channel baseline → swath; returns swath CSV + rasters |
 | `render_swath_profile(outputs, png)` | swath envelope plot |
+| `lsdtt3_stream_order_basins(dem, workdir, stem=…, stream_order=…)` | extract all junction basins of one Strahler order; returns polygon paths |
+| `render_hillshade_stream_order_basins(outputs, png)` | hillshade + channels + every selected-order basin polygon |
+| `render_hand_profile(…)` / `render_hand_window_populations(…)` | the [§5.6](#56-valley-floor--hand-charts) HAND charts, straight from lsdtt3 output paths |
+| `hillshade_with_vectors(dem, layers, png)` | hillshade with any number of vector layers overlaid ([§4.9](#49-overlaying-several-vector-layers-on-a-hillshade)) |
+| `compare_stream_networks(…)` | stream-burning preset over `hillshade_with_vectors` |
+| `plot_segment_classification(…)` / `plot_algoviz(…)` | stream-burning diagnostics: trace-divergence per segment; replay of the `snap_to_accumulation` source-path burn |
+| `sample_dem_along_line(dem, line)` / `trace_d8_flowpath(dem, start)` | sample elevation along a polyline; trace a D8 steepest-descent path |
+| `plot_long_profile(profiles, …)` | elevation-vs-distance long profiles on shared axes |
 
 `lsdtt3_chi_analysis` selects the **N largest complete basins** and moves
 interior (coastal) outlets upstream so island basins pass the completeness test
@@ -920,6 +1147,8 @@ pixi run python examples/single_channel_basins.py --skip-compute  # replot only
 | `lsdviz3-channels` | hillshade + channel lines | `--base --lines --out` + style |
 | `lsdviz3-basins` | hillshade + basin polygons | `--base --basins --out --fill --transparency` + style |
 | `lsdviz3-basemap` | global/aerial locator | `--in --out --mode --elevation-km --view-limit-deg --look-bearing --look-vertical-angle --grid-spacing-deg --no-north-arrow` + style |
+| `lsdviz3-animate` | animate a transient `lsdtt-lem` run as a GIF | `--in --out --glob --stats-csv --fps --loop --no-annotate --keep-frames` + style |
+| `lsdviz3-lem-pulse` | animate an `lsdtt-lem` incision-pulse run (hillshade + erosion drape + channels + history panel) | `--in --out --prefix --ext --stats-csv --erosion-cmap --erosion-vmin --erosion-vmax --erosion-percentile --erosion-transparency --channel-color --no-timeseries --no-annotate --fps --loop --keep-frames` + style |
 | `lsdviz3-grabdem` | download a DEM | `--bbox --source --dataset --out --dir --ot-api-key-file` |
 | `lsdviz3-lsdtt` | run an lsdtt3 tool | `tool --params --data-path --lsdtt-dir --set-lsdtt-dir --cwd --dir` |
 
@@ -934,3 +1163,44 @@ is placed. See [§1](#1-conventions).
 > Chi, swath, channel-by-k_sn, point, and 3D-relief plots currently have **no
 > dedicated CLI** — use the Python API / workflows above. The `lsdviz3-lsdtt`
 > command runs the underlying lsdtt3 tools that produce their input.
+
+---
+
+## 8. lsdtt3 output → plot function map
+
+lsdviztools3 never computes topographic metrics: every chart and map is a view
+of a file **lsdtt3** wrote. This table is the linkage — which CLI, which switch,
+which file, which columns, which loader, which plotter. Filenames are shown
+with the `<stem>` = lsdtt3 `write_fname` prefix stripped.
+
+| lsdtt3 CLI | Switch that writes it | Output file | Key columns / bands | Loader | Plot function |
+|---|---|---|---|---|---|
+| `lsdtt-raster-preprocessing` | `write_hillshade_raster` | `_hillshade.tif` | single band | (path) | `render_hillshade` ([§4.1](#41-hillshade)) |
+| `lsdtt-raster-preprocessing` | `write_fill_raster` / default | `_fill.tif`, `_remove_seas.tif` | elevation | (path) | base layer for every map; `render_relief3d` ([§4.7](#47-3d-perspective-relief-rayshader-style)) |
+| `lsdtt-channel-extraction` | `write_channel_network_lines` | `_channel_network_lines.fgb` | `stream_order` | `load_vector` | `render_channels` ([§4.2](#42-channel-network-coloured-by-log10-k_sn)) |
+| `lsdtt-channel-extraction` | `write_channel_network_points` | `_channel_network_points.fgb` | `flat`, `row`, `col`, `stream_order`, `drainage_area` — the **`.csv` form omits `drainage_area`**, so ask for `flatgeobuf`/`gpkg` if you want to size points by it | `load_vector` | `render_points` ([§4.3](#43-points-sized-by-drainage-area)) |
+| `lsdtt-basin-extraction` | `write_basin_outlines` (+ `_as_polygon`) | `_junction_basin_polygons.fgb` | basin id | `load_vector` | `render_basins` ([§4.4](#44-basins)) |
+| `lsdtt-basin-extraction` | `select_basins_from_line_crossings` | `_line_crossing_basins.csv` | outlet, centre of mass, area, outlet→COM bearing, fault azimuth, side, relative bearing | `load_table` | `rose_diagram`, `plot_distributions` ([§6](#6-end-to-end-workflows)) |
+| `lsdtt-chi-analysis` | `write_fit_tables` | `_chi_fit_nodes_mn_*.csv` | `basin_index`, `chi`, `observed_elevation`, `fitted_elevation`, `branch_id` (no `k_sn`) | `load_chi_fit_nodes` / `load_chi_fit` | `plot_chi_stacked`, `plot_chi_profile` ([§5.1](#51-chi-profiles)) |
+| `lsdtt-chi-analysis` | `write_fit_tables` | `_chi_fit_segments_mn_*.csv` | `basin_index`, `branch_id`, `downstream_chi`, `upstream_chi`, `k_sn` | `load_chi_fit_segments` | `plot_chi_stacked`, `plot_chi_profile` |
+| `lsdtt-chi-analysis` | `write_chi_fit_segment_lines` | `_chi_fit_segment_lines_mn_*.fgb` | as above + geometry | `load_chi_segment_lines` | `plot_chi_*`; `render_chi_ksn_map` / `render_chi_ksn_relief3d` ([§4.2](#42-channel-network-coloured-by-log10-k_sn)) |
+| `lsdtt-chi-analysis` | `print_chi_data_maps` | `_chi_data_maps.fgb` | `chi`, `elevation`, `drainage_area`, `flow_distance`, `basin_key`, `source_key` | `load_chi_points` | `observed=` overlay ([§5.1.4](#514-overlaying-observed-points)); `render_points` |
+| `lsdtt-chi-analysis` | `write_ksn_basin_summary` | `_chi_ksn_basin_summary_mn_*.csv` | per-basin k_sn statistics | `load_table` | — (tabular) |
+| `lsdtt-swath-profile` | default | `_swath_profile.csv` | `along_axis_centre`, `n_pixels`, `mean`, `p0`…`p100` (21 levels, step 5) | `load_swath` | `plot_swath` ([§5.2](#52-swath-profiles)) |
+| `lsdtt-channel-network-analysis` | `write_channel_link_bearings` | `_channel_link_bearings.csv/.fgb` | `bearing_deg`, `bearing_rad`, `stream_order`, `drainage_area_m2`, `total_length_metres`, `fit_linearity`, … | `load_table` / `load_vector` | `rose_diagram`, `plot_circular_comparison` ([§5.3](#53-rose-diagrams-bearings)–[§5.4](#54-circular--directional-comparison)) |
+| `lsdtt-channel-network-analysis` | `write_junction_angles` | `_junction_angles.csv/.fgb` | `donor_opening_angle_rad`, `donor_*_receiver_angle_rad`, per-limb `*_bearing_deg`, `*_order`, `*_area_m2` | `load_table` | `plot_distributions` ([§5.5](#55-distributions)) |
+| `lsdtt-channel-network-analysis` | `write_junction_centre_of_mass_bearings` | `_junction_com_bearings.csv` | outlet→centre-of-mass bearing | `load_table` | `rose_diagram` |
+| `lsdtt-bearing-comparison` | default | stdout / result file | circular Wasserstein + Kuiper | — | `annotation=` for `plot_circular_comparison` ([§5.4](#54-circular--directional-comparison)) |
+| `lsdtt-flat-surface-finder` | `write_hand_profile_csv` | `_hand_profile.csv` | HAND, distance, `surface_class` (1 = floodplain, 2 = terrace) | `load_table` | `plot_hand_distance` and the rest of [§5.6](#56-valley-floor--hand-charts) |
+| `lsdtt-valley-centreline` | `write_valley_cross_sections` | `_valley_cross_section_samples.csv` | per-sample offset, elevation, section id | `load_table` | [§5.7](#57-valley-cross-sections) |
+| `lsdtt-valley-centreline` | `write_cross_section_features` | `_valley_cross_section_hydraulic_breaks.csv` | break HAND per section and rank | `load_table` | [§5.8](#58-hydraulic-breaks) |
+| `lsdtt-lem` | `frequency_of_output_writing`, `write_erosion_rate_raster`, `write_channel_mask_raster` | `_model_iteration_<N>` rasters, `_model_elevation_stats.csv` | elevation, erosion rate, channel mask, model time | `find_pulse_frames` / `find_transient_frames` | `animate_lem_pulse`, `animate_transient_rasters` (`lsdviz3-lem-pulse`, `lsdviz3-animate`) |
+
+Two rules follow from this table:
+
+1. **If a column is missing, fix the lsdtt3 call, not the plot.** The switch in
+   column 2 is what produces it; `lsdviz3-lsdtt` / `run_lsdtt` runs the tool.
+2. **Basin numbering is per-product.** `basin_index` (fit tables) and
+   `basin_key` (data maps) are separate counters that only coincide when
+   lsdtt-chi-analysis filtered to complete basins — see the warning in
+   [§5.1.4](#514-overlaying-observed-points).
