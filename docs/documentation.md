@@ -35,6 +35,7 @@ Contents:
    - [Valley floor / HAND charts](#56-valley-floor--hand-charts)
    - [Valley cross sections](#57-valley-cross-sections)
    - [Hydraulic breaks](#58-hydraulic-breaks)
+   - [Cosmo comparison workflows](#59-cosmo-comparison-workflows)
 6. [End-to-end workflows](#6-end-to-end-workflows)
 7. [CLI reference](#7-cli-reference)
 8. [lsdtt3 output → plot function map](#8-lsdtt3-output--plot-function-map)
@@ -1027,6 +1028,68 @@ flat surfaces from the risers between them, written as local HAND values in
 | `plot_hydraulic_break_clusters` | Break-HAND scatter down-valley with the per-bin cluster levels overlaid. |
 | `plot_cross_section_informed_valley_mask` | The cross-section-informed valley floor over a hillshade, beside the histogram-derived mask. |
 
+### 5.9 Cosmo comparison workflows
+
+For cosmogenic workflows, `lsdviztools3` can render standard comparison figures
+from lsdtt3 CSV artefacts.
+
+Expected primary input:
+
+- `single_point_scan_comparison.csv` from
+  `tests/scripts/run_cosmo_single_point_scaling_scan.py` in lsdtt3.
+
+Optional secondary input:
+
+- sample-level comparison tables (for example OCTOPUS/riversand summary style
+  CSVs containing a percent-difference column).
+
+Python API:
+
+```python
+from lsdviztools3.charts import load_cosmo_table, plot_cosmo_sweep_panels
+from lsdviztools3.workflows import render_cosmo_comparison_figures
+
+scan = load_cosmo_table("../lsdtt3/tests/expected/cosmo/generated/single_point_scan_comparison.csv")
+fig, axes = plot_cosmo_sweep_panels(scan, reference="cronus_v3", representative_pressure_hpa=900)
+
+outputs = render_cosmo_comparison_figures(
+    scan_comparison_csv="../lsdtt3/tests/expected/cosmo/generated/single_point_scan_comparison.csv",
+    sample_comparison_csv="../lsdtt3/tests/expected/cosmo/published/dethier2014_riversand_summary.csv",
+    out_dir="demo_output/cosmo",
+)
+print(outputs)
+```
+
+Scripted example:
+
+```bash
+python examples/cosmo_comparison_workflow.py \
+  --scan-csv ../lsdtt3/tests/expected/cosmo/generated/single_point_scan_comparison.csv \
+  --outdir demo_output/cosmo
+
+# Published-summary residuals (stone/lsdn/riversand)
+pixi run lsdviz3-cosmo-published \
+  --published-dir ../lsdtt3/tests/expected/cosmo/published \
+  --datasets dethier2014,clapp2002,dibiase2010 \
+  --mode auto \
+  --outdir demo_output/cosmo
+```
+
+Main chart helpers:
+
+- `plot_cosmo_sweep_panels`: nuclide x scaling panels of residual vs latitude,
+  including separate muon-scheme traces.
+- `plot_cosmo_sample_residuals`: grouped boxplots for sample-level residual
+  tables, optionally split by `scaling_scheme`.
+
+Main workflow helpers:
+
+- `render_cosmo_comparison_figures`: sweep residual panels and optional
+  sample-level residual figure.
+- `render_cosmo_published_residuals`: dataset-level residual figure directly
+  from `<dataset>_summary.csv`, `<dataset>_lsdn_summary.csv`, and
+  `<dataset>_riversand_summary.csv` style files.
+
 ---
 
 ## 6. End-to-end workflows
@@ -1046,6 +1109,8 @@ paths (or a Figure/PNG path).
 | `render_swath_profile(outputs, png)` | swath envelope plot |
 | `lsdtt3_stream_order_basins(dem, workdir, stem=…, stream_order=…)` | extract all junction basins of one Strahler order; returns polygon paths |
 | `render_hillshade_stream_order_basins(outputs, png)` | hillshade + channels + every selected-order basin polygon |
+| `render_cosmo_comparison_figures(scan_csv, out_dir, *, sample_comparison_csv=None)` | sweep residual panels (+ optional sample residual boxplots) from standard lsdtt3 cosmo CSVs |
+| `render_cosmo_published_residuals(published_dir, out_dir, *, datasets, mode=...)` | residual boxplots directly from lsdtt3 published summary tables |
 | `render_hand_profile(…)` / `render_hand_window_populations(…)` | the [§5.6](#56-valley-floor--hand-charts) HAND charts, straight from lsdtt3 output paths |
 | `hillshade_with_vectors(dem, layers, png)` | hillshade with any number of vector layers overlaid ([§4.9](#49-overlaying-several-vector-layers-on-a-hillshade)) |
 | `compare_stream_networks(…)` | stream-burning preset over `hillshade_with_vectors` |
@@ -1149,6 +1214,8 @@ pixi run python examples/single_channel_basins.py --skip-compute  # replot only
 | `lsdviz3-basemap` | global/aerial locator | `--in --out --mode --elevation-km --view-limit-deg --look-bearing --look-vertical-angle --grid-spacing-deg --no-north-arrow` + style |
 | `lsdviz3-animate` | animate a transient `lsdtt-lem` run as a GIF | `--in --out --glob --stats-csv --fps --loop --no-annotate --keep-frames` + style |
 | `lsdviz3-lem-pulse` | animate an `lsdtt-lem` incision-pulse run (hillshade + erosion drape + channels + history panel) | `--in --out --prefix --ext --stats-csv --erosion-cmap --erosion-vmin --erosion-vmax --erosion-percentile --erosion-transparency --channel-color --no-timeseries --no-annotate --fps --loop --keep-frames` + style |
+| `lsdviz3-cosmo-compare` | cosmogenic comparison figures from standard lsdtt3 CSVs | `--scan-csv --outdir [--sample-csv --reference --pressure --erate --stem --dpi]` |
+| `lsdviz3-cosmo-published` | residual figure(s) from lsdtt3 published summary tables | `--published-dir --datasets [--mode --outdir --stem --dpi]` |
 | `lsdviz3-grabdem` | download a DEM | `--bbox --source --dataset --out --dir --ot-api-key-file` |
 | `lsdviz3-lsdtt` | run an lsdtt3 tool | `tool --params --data-path --lsdtt-dir --set-lsdtt-dir --cwd --dir` |
 

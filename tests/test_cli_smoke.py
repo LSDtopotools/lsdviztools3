@@ -11,6 +11,8 @@ from lsdviztools3.cli import (
     plot_basemap,
     plot_basins,
     plot_channels,
+    plot_cosmo_compare,
+    plot_cosmo_published,
     plot_drape,
     plot_hillshade,
     run_lsdtt,
@@ -25,6 +27,8 @@ from lsdviztools3.cli import (
         plot_channels.build_parser,
         plot_basins.build_parser,
         plot_basemap.build_parser,
+        plot_cosmo_compare.build_parser,
+        plot_cosmo_published.build_parser,
         grab_dem.build_parser,
         run_lsdtt.build_parser,
     ],
@@ -223,3 +227,64 @@ def test_run_lsdtt_main_smoke(monkeypatch, capsys):
     code = run_lsdtt.main(["lsdtt-channel-extraction", "--params", "job.driver"])
     assert code == 0
     assert "ok" in capsys.readouterr().out
+
+
+def test_plot_cosmo_compare_main_smoke(monkeypatch, capsys):
+    def fake_render(**kwargs):
+        assert kwargs["scan_comparison_csv"] == "scan.csv"
+        assert kwargs["sample_comparison_csv"] == "samples.csv"
+        return {
+            "sweep_panels": "out/sweep.png",
+            "sample_residuals": "out/samples.png",
+        }
+
+    monkeypatch.setattr(plot_cosmo_compare, "render_cosmo_comparison_figures", fake_render)
+    code = plot_cosmo_compare.main(
+        [
+            "--scan-csv",
+            "scan.csv",
+            "--sample-csv",
+            "samples.csv",
+            "--outdir",
+            "out",
+            "--reference",
+            "cronuscalc",
+            "--pressure",
+            "900",
+            "--erate",
+            "0.01",
+            "--stem",
+            "cmp",
+        ]
+    )
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "sweep_panels" in out and "sample_residuals" in out
+
+
+def test_plot_cosmo_published_main_smoke(monkeypatch, capsys):
+    def fake_render(**kwargs):
+        assert kwargs["published_dir"] == "pub"
+        assert kwargs["datasets"] == ["dethier2014", "clapp2002"]
+        assert kwargs["mode"] == "auto"
+        return {
+            "sample_residuals": "out/cosmo_published_residuals.png",
+            "source_csvs": ["pub/dethier2014_summary.csv", "pub/clapp2002_summary.csv"],
+        }
+
+    monkeypatch.setattr(plot_cosmo_published, "render_cosmo_published_residuals", fake_render)
+    code = plot_cosmo_published.main(
+        [
+            "--published-dir",
+            "pub",
+            "--datasets",
+            "dethier2014,clapp2002",
+            "--mode",
+            "auto",
+            "--outdir",
+            "out",
+        ]
+    )
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "sample_residuals" in out and "source_csvs" in out

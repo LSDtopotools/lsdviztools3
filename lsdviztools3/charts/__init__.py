@@ -22,6 +22,9 @@ from .cross_sections import (
     cross_section_hydraulics, detect_hydraulic_flats,
     combine_width_steps, compute_flat_surface_edges,
 )
+from .cosmo_comparison import (
+    load_cosmo_table, plot_cosmo_sweep_panels, plot_cosmo_sample_residuals,
+)
 from .distributions import plot_distributions
 from .hand import (
     plot_hand_distance, plot_hand_window_populations, plot_valley_break_metric,
@@ -53,6 +56,7 @@ __all__ = [
     "plot_cross_section_informed_valley_mask",
     "plot_distributions", "rose_diagram",
     "circular_wasserstein", "kuiper_two_sample", "plot_circular_comparison",
+    "load_cosmo_table", "plot_cosmo_sweep_panels", "plot_cosmo_sample_residuals",
     "plot_profile", "plot_slope_area",
 ]
 

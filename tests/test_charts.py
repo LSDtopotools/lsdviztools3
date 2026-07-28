@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from lsdviztools3.charts import plot_distributions
@@ -41,6 +42,51 @@ def test_plot_distributions_skips_empty_series():
 def test_plot_distributions_all_empty_raises():
     with pytest.raises(ValueError, match="No plottable values"):
         plot_distributions({"a": np.array([]), "b": np.array([np.nan])}, bins=5)
+
+
+def _cosmo_sweep_frame():
+    rows = []
+    for lat in (-60.0, -30.0, 0.0, 30.0, 60.0):
+        for nuclide in ("Be10", "Al26", "C14"):
+            for scaling in ("stone", "lsdn"):
+                for muon in ("braucherborchers", "tunedexp"):
+                    rows.append(
+                        {
+                            "run_id": f"R_{lat}_{nuclide}_{scaling}_{muon}",
+                            "lat_deg": lat,
+                            "pressure_hpa": 900.0,
+                            "erate_gcm2yr": 0.01,
+                            "nuclide": nuclide,
+                            "scaling_scheme": scaling,
+                            "muon_scheme": muon,
+                            "pct_diff_vs_cronus_v3": 0.05 * lat + (1.2 if scaling == "lsdn" else 0.0),
+                            "pct_diff_vs_cronuscalc": -0.03 * lat,
+                        }
+                    )
+    return pd.DataFrame(rows)
+
+
+def test_plot_cosmo_sweep_panels_returns_grid():
+    from lsdviztools3.charts import plot_cosmo_sweep_panels
+
+    fig, axes = plot_cosmo_sweep_panels(_cosmo_sweep_frame(), reference="cronus_v3")
+    assert axes.shape == (3, 2)
+    assert "Residual vs cronus_v3" in axes[0, 0].get_ylabel()
+
+
+def test_plot_cosmo_sample_residuals_grouped_boxplot():
+    from lsdviztools3.charts import plot_cosmo_sample_residuals
+
+    df = pd.DataFrame(
+        {
+            "dataset": ["dethier", "dethier", "clapp", "clapp"],
+            "scaling_scheme": ["stone", "lsdn", "stone", "lsdn"],
+            "pct_diff_lsdtt_minus_reference": [-5.2, -1.1, -3.8, 0.6],
+        }
+    )
+    fig, ax = plot_cosmo_sample_residuals(df)
+    assert ax.get_ylabel() == "Residual (%)"
+    assert len(ax.get_xticklabels()) == 2
 
 
 # --- rose_diagram -----------------------------------------------------------

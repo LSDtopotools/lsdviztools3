@@ -1306,3 +1306,153 @@ def plot_long_profile(series, png_path=None, *, title=None,
         fig.savefig(str(png_path), dpi=dpi)
         plt.close(fig)
     return fig, ax
+
+
+def render_cosmo_comparison_figures(
+    scan_comparison_csv: PathLike,
+    out_dir: PathLike,
+    *,
+    sample_comparison_csv: Optional[PathLike] = None,
+    reference: str = "cronus_v3",
+    representative_pressure_hpa: Optional[float] = None,
+    representative_erate_gcm2yr: Optional[float] = None,
+    stem: str = "cosmo_comparison",
+    dpi: int = 220,
+) -> dict:
+    """Render standard cosmo comparison figures from lsdtt3 workflow CSVs.
+
+    Args:
+        scan_comparison_csv: Path to ``single_point_scan_comparison.csv``.
+        out_dir: Output directory for figure PNGs.
+        sample_comparison_csv: Optional path to a real-sample comparison table
+            (for example OCTOPUS/riversand summary-style CSVs).
+        reference: ``cronus_v3`` or ``cronuscalc`` for sweep residual panels.
+        representative_pressure_hpa: Optional nearest-pressure slice for the
+            sweep panel figure.
+        representative_erate_gcm2yr: Optional nearest-erate slice for the sweep
+            panel figure.
+        stem: Filename stem for outputs.
+        dpi: PNG output dpi.
+
+    Returns:
+        Dict with written figure paths. Always includes ``sweep_panels`` and,
+        when ``sample_comparison_csv`` is provided, ``sample_residuals``.
+    """
+    from .charts import (
+        load_cosmo_table,
+        plot_cosmo_sample_residuals,
+        plot_cosmo_sweep_panels,
+    )
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    scan_df = load_cosmo_table(scan_comparison_csv)
+    fig_sweep, _ = plot_cosmo_sweep_panels(
+        scan_df,
+        reference=reference,
+        representative_pressure_hpa=representative_pressure_hpa,
+        representative_erate_gcm2yr=representative_erate_gcm2yr,
+    )
+    sweep_png = out_dir / f"{stem}_sweep_{reference}.png"
+    fig_sweep.savefig(str(sweep_png), dpi=dpi)
+
+    out = {"sweep_panels": sweep_png}
+
+    if sample_comparison_csv is not None:
+        sample_df = load_cosmo_table(sample_comparison_csv)
+        fig_sample, _ = plot_cosmo_sample_residuals(sample_df)
+        sample_png = out_dir / f"{stem}_samples.png"
+        fig_sample.savefig(str(sample_png), dpi=dpi)
+        out["sample_residuals"] = sample_png
+
+    return out
+
+
+def render_cosmo_published_residuals(
+    published_dir: PathLike,
+    out_dir: PathLike,
+    *,
+    datasets: list[str],
+    mode: str = "auto",
+    stem: str = "cosmo_published",
+    dpi: int = 220,
+) -> dict:
+    """Render residual boxplots from lsdtt3 published-summary CSVs.
+
+    Args:
+        published_dir: Directory containing `<dataset>_summary.csv` style files.
+        out_dir: Output directory for PNG figures.
+        datasets: Dataset names (e.g. `dethier2014`, `clapp2002`).
+        mode: Which summary flavour to use: `stone`, `lsdn`, `riversand`, or
+            `auto` (prefer riversand, then lsdn, then stone per dataset).
+        stem: Output filename stem.
+        dpi: PNG output dpi.
+
+    Returns:
+        Dict with written paths and selected source CSVs.
+    """
+    from .charts import load_cosmo_table, plot_cosmo_sample_residuals
+
+    if not datasets:
+        raise ValueError("datasets must contain at least one dataset name")
+    mode = mode.lower()
+    if mode not in {"auto", "stone", "lsdn", "riversand"}:
+        raise ValueError("mode must be one of: auto, stone, lsdn, riversand")
+
+    published_dir = Path(published_dir)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    def _candidates(ds: str) -> list[Path]:
+        if mode == "stone":
+            return [published_dir / f"{ds}_summary.csv"]
+        if mode == "lsdn":
+            return [published_dir / f"{ds}_lsdn_summary.csv"]
+        if mode == "riversand":
+            return [published_dir / f"{ds}_riversand_summary.csv"]
+        return [
+            published_dir / f"{ds}_riversand_summary.csv",
+            published_dir / f"{ds}_lsdn_summary.csv",
+            published_dir / f"{ds}_summary.csv",
+        ]
+
+    frames = []
+    used = []
+    for ds in datasets:
+        chosen = next((p for p in _candidates(ds) if p.is_file()), None)
+        if chosen is None:
+            raise FileNotFoundError(
+                f"No published summary found for dataset '{ds}' in mode '{mode}' under {published_dir}"
+            )
+        df = load_cosmo_table(chosen)
+        if "dataset" not in df.columns:
+            df = df.copy()
+            df["dataset"] = ds
+        if "scaling_scheme" not in df.columns:
+            if chosen.name.endswith("_lsdn_summary.csv"):
+                df = df.copy()
+                df["scaling_scheme"] = "lsdn"
+            elif chosen.name.endswith("_riversand_summary.csv"):
+                df = df.copy()
+                df["scaling_scheme"] = "riversand"
+            else:
+                df = df.copy()
+                df["scaling_scheme"] = "stone"
+        frames.append(df)
+        used.append(chosen)
+
+    if len(frames) == 1:
+        all_df = frames[0]
+    else:
+        import pandas as pd
+        all_df = pd.concat(frames, ignore_index=True)
+
+    fig, _ = plot_cosmo_sample_residuals(all_df)
+    out_png = out_dir / f"{stem}_residuals.png"
+    fig.savefig(str(out_png), dpi=dpi)
+
+    return {
+        "sample_residuals": out_png,
+        "source_csvs": used,
+    }

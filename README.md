@@ -164,6 +164,8 @@ absolute path:
 | `lsdviz3-channels` | `lsdviztools3.cli.plot_channels`    |
 | `lsdviz3-basins`   | `lsdviztools3.cli.plot_basins`      |
 | `lsdviz3-basemap`  | `lsdviztools3.cli.plot_basemap`     |
+| `lsdviz3-cosmo-compare` | `lsdviztools3.cli.plot_cosmo_compare` |
+| `lsdviz3-cosmo-published` | `lsdviztools3.cli.plot_cosmo_published` |
 | `lsdviz3-grabdem`  | `lsdviztools3.cli.grab_dem`         |
 | `lsdviz3-lsdtt`    | `lsdviztools3.cli.run_lsdtt`        |
 
@@ -201,6 +203,22 @@ area, basins, locator basemaps, chi profiles, swath profiles — and the full li
 of options for each (CLI flags and Python keyword arguments), see
 **[`docs/documentation.md`](docs/documentation.md)**.
 
+Cosmogenic comparison CLIs:
+
+```bash
+# Sweep-based lsdtt3 vs CRONUS/cronuscalc figures
+pixi run lsdviz3-cosmo-compare \
+  --scan-csv ../lsdtt3/tests/expected/cosmo/generated/single_point_scan_comparison.csv \
+  --outdir demo_output/cosmo
+
+# Dataset summary residual figures from published summaries
+pixi run lsdviz3-cosmo-published \
+  --published-dir ../lsdtt3/tests/expected/cosmo/published \
+  --datasets dethier2014,clapp2002,dibiase2010 \
+  --mode auto \
+  --outdir demo_output/cosmo
+```
+
 ## What's implemented
 
 Maps (`render.*`, PyGMT): hillshade, channels (incl. colour-by log₁₀ k_sn),
@@ -210,9 +228,15 @@ Charts (`charts.*`, matplotlib): chi profiles
 (individual + stacked), swath profiles, rose diagrams of bearings (North-up,
 grouped/stacked by e.g. stream order), and circular/directional comparison of
 two bearing samples (`circular_wasserstein`, `kuiper_two_sample`,
-`plot_circular_comparison`). Plus IO (`io.*`), DEM download
+`plot_circular_comparison`), plus cosmogenic comparison charts for lsdtt3-vs-
+reference CSVs (`plot_cosmo_sweep_panels`, `plot_cosmo_sample_residuals`).
+Plus IO (`io.*`), DEM download
 (`download.*`), the lsdtt3 driver (`driver.*`), and chained `workflows`.
 Deferred (raise `NotImplementedError`): `charts.plot_profile`,
 `charts.plot_slope_area`, `render.decorations.add_inset`. The matplotlib chart
 plots need the optional `charts` extra (`pip install lsdviztools3[charts]`); it is
 already in the pixi env.
+
+For a quick cosmogenic end-to-end example, see
+`examples/cosmo_comparison_workflow.py` and docs section
+`5.9 Cosmo comparison workflows` in `docs/documentation.md`.
