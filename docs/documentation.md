@@ -1111,6 +1111,11 @@ paths (or a Figure/PNG path).
 | `render_hillshade_stream_order_basins(outputs, png)` | hillshade + channels + every selected-order basin polygon |
 | `render_cosmo_comparison_figures(scan_csv, out_dir, *, sample_comparison_csv=None)` | sweep residual panels (+ optional sample residual boxplots) from standard lsdtt3 cosmo CSVs |
 | `render_cosmo_published_residuals(published_dir, out_dir, *, datasets, mode=...)` | residual boxplots directly from lsdtt3 published summary tables |
+| `join_basins_with_cosmo_erates(basins, cosmo_csv, ...)` | spatially join point erosion rates to basin polygons and aggregate to per-basin values |
+| `render_cosmo_basin_erate_map(base, basins, cosmo_csv, out_png, ...)` | canonical hillshade + semi-transparent basin overlay colored by inferred erosion rate with scaling/muon/atmosphere metadata |
+| `summarize_basin_ksn(fit_nodes_csv, fit_segments_csv, ...)` | per-basin `k_sn` summary from chi nodes: median + 25th/75th percentiles + asymmetric IQR errors |
+| `render_chi_basin_ksn_map(base, basins, fit_nodes_csv, fit_segments_csv, out_png, ...)` | hillshade + basin polygons colored by median `k_sn` |
+| `render_chi_and_cosmo_basin_workflow(outputs, out_dir, *, basin_polygons=..., base_raster=..., cosmo_csv=...)` | writes one chi profile PNG per basin, basin `k_sn` summary CSV/map, and optional `k_sn` vs inferred erosion-rate errorbar plot |
 | `render_hand_profile(…)` / `render_hand_window_populations(…)` | the [§5.6](#56-valley-floor--hand-charts) HAND charts, straight from lsdtt3 output paths |
 | `hillshade_with_vectors(dem, layers, png)` | hillshade with any number of vector layers overlaid ([§4.9](#49-overlaying-several-vector-layers-on-a-hillshade)) |
 | `compare_stream_networks(…)` | stream-burning preset over `hillshade_with_vectors` |
@@ -1211,6 +1216,8 @@ pixi run python examples/single_channel_basins.py --skip-compute  # replot only
 | `lsdviz3-drape` | gray hillshade + coloured semi-transparent drape | `--base --drape --out --shade-base --log --transparency --vmin --vmax --percentile-min --percentile-max --out-of-bounds --colorbar --colorbar-label --colorbar-position` + style (`--cmap` = drape; GMT or matplotlib maps, or a solid colour) |
 | `lsdviz3-channels` | hillshade + channel lines | `--base --lines --out` + style |
 | `lsdviz3-basins` | hillshade + basin polygons | `--base --basins --out --fill --transparency` + style |
+| `lsdviz3-cosmo-basins` | standard hillshade + basins colored by inferred erosion rate from cosmo CSV | `--base --basins --cosmo-csv --out [--hillshade --joined-basins-out --colorbar --scaling-scheme --muon-scheme --atmosphere --erate-input-units --allow-incomplete-basins]` |
+| `lsdviz3-chi-cosmo` | chi basin workflow bundle: stacked chi + per-basin chi PNGs + basin k_sn summary/map + optional k_sn-vs-erate | `--fit-nodes-csv --fit-segments-csv --outdir [--base --hillshade --basins --cosmo-csv --theta --scaling-scheme --atmosphere --muon-scheme --erate-input-units --allow-incomplete-basins --stem --dpi]` |
 | `lsdviz3-basemap` | global/aerial locator | `--in --out --mode --elevation-km --view-limit-deg --look-bearing --look-vertical-angle --grid-spacing-deg --no-north-arrow` + style |
 | `lsdviz3-animate` | animate a transient `lsdtt-lem` run as a GIF | `--in --out --glob --stats-csv --fps --loop --no-annotate --keep-frames` + style |
 | `lsdviz3-lem-pulse` | animate an `lsdtt-lem` incision-pulse run (hillshade + erosion drape + channels + history panel) | `--in --out --prefix --ext --stats-csv --erosion-cmap --erosion-vmin --erosion-vmax --erosion-percentile --erosion-transparency --channel-color --no-timeseries --no-annotate --fps --loop --keep-frames` + style |

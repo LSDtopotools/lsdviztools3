@@ -340,3 +340,85 @@ def plot_chi_stacked(
     if colorbar and mappable is not None:
         fig.colorbar(mappable, ax=ax, label=_colour_label(color_by, log_color))
     return fig, ax
+
+
+def plot_ksn_vs_erate(
+    data: pd.DataFrame,
+    *,
+    erate_col: str = "inferred_erate_mm_yr",
+    ksn_col: str = "ksn_median",
+    erate_err_low_col: str = "erate_err_low_mm_yr",
+    erate_err_high_col: str = "erate_err_high_mm_yr",
+    ksn_q25_col: str = "ksn_q25",
+    ksn_q75_col: str = "ksn_q75",
+    basin_label_col: Optional[str] = "basin_index",
+    log_axes: bool = True,
+    theta: Optional[float] = None,
+    ax=None,
+):
+    """Plot basin-median k_sn versus inferred erosion rate with uncertainties.
+
+    Y-errors use ``ksn_median`` against ``ksn_q25``/``ksn_q75`` (IQR). X-errors
+    use the provided erosion-rate uncertainty columns.
+    """
+    plt, _, _ = _import_mpl()
+
+    cols = [erate_col, ksn_col, ksn_q25_col, ksn_q75_col]
+    for col in cols:
+        if col not in data.columns:
+            raise KeyError(f"Required column missing for k_sn vs erate plot: {col}")
+
+    work = data.copy()
+    for col in [erate_col, ksn_col, ksn_q25_col, ksn_q75_col, erate_err_low_col, erate_err_high_col]:
+        if col in work.columns:
+            work[col] = pd.to_numeric(work[col], errors="coerce")
+
+    work = work[np.isfinite(work[erate_col]) & np.isfinite(work[ksn_col])]
+    if work.empty:
+        raise ValueError("No finite k_sn/erosion-rate rows available for plotting.")
+
+    yerr_low = (work[ksn_col] - work[ksn_q25_col]).clip(lower=0).to_numpy(dtype=float)
+    yerr_high = (work[ksn_q75_col] - work[ksn_col]).clip(lower=0).to_numpy(dtype=float)
+
+    if erate_err_low_col in work.columns:
+        xerr_low = work[erate_err_low_col].fillna(0).clip(lower=0).to_numpy(dtype=float)
+    else:
+        xerr_low = np.zeros(len(work), dtype=float)
+    if erate_err_high_col in work.columns:
+        xerr_high = work[erate_err_high_col].fillna(0).clip(lower=0).to_numpy(dtype=float)
+    else:
+        xerr_high = np.zeros(len(work), dtype=float)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(5.5, 4.0))
+    else:
+        fig = ax.figure
+
+    ax.errorbar(
+        work[erate_col].to_numpy(dtype=float),
+        work[ksn_col].to_numpy(dtype=float),
+        xerr=np.vstack([xerr_low, xerr_high]),
+        yerr=np.vstack([yerr_low, yerr_high]),
+        fmt="o",
+        ms=4,
+        color="0.2",
+        ecolor="0.45",
+        elinewidth=0.8,
+        capsize=2,
+    )
+
+    if basin_label_col is not None and basin_label_col in work.columns:
+        for _, row in work.iterrows():
+            ax.text(row[erate_col], row[ksn_col], str(row[basin_label_col]), fontsize=7, ha="left", va="bottom")
+
+    if log_axes:
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+
+    ax.set_xlabel("Inferred erosion rate E (mm/yr)")
+    ax.set_ylabel("Median ksn")
+    if theta is None:
+        ax.set_title("Basin median ksn vs inferred erosion rate")
+    else:
+        ax.set_title(rf"Basin median ksn vs inferred erosion rate (theta={theta:g})")
+    return fig, ax

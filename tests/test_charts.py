@@ -89,6 +89,26 @@ def test_plot_cosmo_sample_residuals_grouped_boxplot():
     assert len(ax.get_xticklabels()) == 2
 
 
+def test_plot_ksn_vs_erate_with_errorbars():
+    from lsdviztools3.charts import plot_ksn_vs_erate
+
+    df = pd.DataFrame(
+        {
+            "basin_index": [1, 2, 3],
+            "inferred_erate_mm_yr": [0.2, 0.5, 1.0],
+            "erate_err_low_mm_yr": [0.03, 0.07, 0.1],
+            "erate_err_high_mm_yr": [0.04, 0.08, 0.12],
+            "ksn_median": [110.0, 180.0, 260.0],
+            "ksn_q25": [90.0, 140.0, 210.0],
+            "ksn_q75": [135.0, 230.0, 310.0],
+        }
+    )
+    fig, ax = plot_ksn_vs_erate(df)
+    assert ax.get_xscale() == "log"
+    assert ax.get_yscale() == "log"
+    assert "erosion rate" in ax.get_xlabel().lower()
+
+
 # --- rose_diagram -----------------------------------------------------------
 
 def test_rose_diagram_returns_north_up_clockwise_polar():

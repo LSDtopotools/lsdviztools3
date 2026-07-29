@@ -11,6 +11,8 @@ from lsdviztools3.cli import (
     plot_basemap,
     plot_basins,
     plot_channels,
+    plot_chi_cosmo,
+    plot_cosmo_basins,
     plot_cosmo_compare,
     plot_cosmo_published,
     plot_drape,
@@ -27,6 +29,8 @@ from lsdviztools3.cli import (
         plot_channels.build_parser,
         plot_basins.build_parser,
         plot_basemap.build_parser,
+        plot_chi_cosmo.build_parser,
+        plot_cosmo_basins.build_parser,
         plot_cosmo_compare.build_parser,
         plot_cosmo_published.build_parser,
         grab_dem.build_parser,
@@ -260,6 +264,74 @@ def test_plot_cosmo_compare_main_smoke(monkeypatch, capsys):
     assert code == 0
     out = capsys.readouterr().out
     assert "sweep_panels" in out and "sample_residuals" in out
+
+
+def test_plot_cosmo_basins_main_smoke(monkeypatch, capsys):
+    def fake_render(**kwargs):
+        assert kwargs["base_raster"] == "dem.tif"
+        assert kwargs["basin_polygons"] == "basins.fgb"
+        assert kwargs["cosmo_csv"] == "erate.csv"
+        return {
+            "out_png": "out/basins.png",
+            "joined_basins": "out/joined.fgb",
+            "n_joined_basins": 4,
+        }
+
+    monkeypatch.setattr(plot_cosmo_basins, "render_cosmo_basin_erate_map", fake_render)
+    code = plot_cosmo_basins.main(
+        [
+            "--base",
+            "dem.tif",
+            "--basins",
+            "basins.fgb",
+            "--cosmo-csv",
+            "erate.csv",
+            "--out",
+            "out/basins.png",
+            "--joined-basins-out",
+            "out/joined.fgb",
+            "--colorbar",
+        ]
+    )
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "n_joined_basins" in out and "joined_basins" in out
+
+
+def test_plot_chi_cosmo_main_smoke(monkeypatch, capsys):
+    def fake_render(outputs, out_dir, **kwargs):
+        assert outputs["fit_nodes"] == "fit_nodes.csv"
+        assert outputs["fit_segments"] == "fit_segments.csv"
+        assert str(out_dir).endswith("out")
+        assert kwargs["base_raster"] == "dem.tif"
+        assert kwargs["basin_polygons"] == "basins.fgb"
+        assert kwargs["cosmo_csv"] == "erate.csv"
+        return {
+            "chi_stacked": "out/chi_stacked.png",
+            "chi_profiles": ["out/chi_profile_basin0.png"],
+            "ksn_summary_csv": "out/chi_basin_ksn_summary.csv",
+        }
+
+    monkeypatch.setattr(plot_chi_cosmo, "render_chi_and_cosmo_basin_workflow", fake_render)
+    code = plot_chi_cosmo.main(
+        [
+            "--fit-nodes-csv",
+            "fit_nodes.csv",
+            "--fit-segments-csv",
+            "fit_segments.csv",
+            "--outdir",
+            "out",
+            "--base",
+            "dem.tif",
+            "--basins",
+            "basins.fgb",
+            "--cosmo-csv",
+            "erate.csv",
+        ]
+    )
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "chi_stacked" in out and "ksn_summary_csv" in out
 
 
 def test_plot_cosmo_published_main_smoke(monkeypatch, capsys):

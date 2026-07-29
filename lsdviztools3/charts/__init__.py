@@ -9,7 +9,7 @@ longitudinal profiles, slope-area) are still deferred and raise
 
 from __future__ import annotations
 
-from .chi import plot_chi_profile, plot_chi_stacked
+from .chi import plot_chi_profile, plot_chi_stacked, plot_ksn_vs_erate
 from .circular import (
     circular_wasserstein, kuiper_two_sample, plot_circular_comparison,
 )
@@ -38,7 +38,7 @@ from .rose import rose_diagram
 from .swath import plot_swath
 
 __all__ = [
-    "plot_chi_profile", "plot_chi_stacked", "plot_swath",
+    "plot_chi_profile", "plot_chi_stacked", "plot_ksn_vs_erate", "plot_swath",
     "plot_hand_distance", "plot_hand_window_populations",
     "plot_valley_break_metric", "plot_valley_break_fraction",
     "plot_valley_cross_sections",

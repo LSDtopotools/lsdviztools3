@@ -8,7 +8,7 @@ a plain function call you could also run yourself.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional, Sequence, Union
 
 import numpy as np
 from rasterio.features import shapes
@@ -18,7 +18,7 @@ from shapely.ops import unary_union
 from .io.raster import load_raster, to_coordinates, to_gmt_grid
 from .io.vector import load_vector, to_coordinates as to_vector_coordinates
 from .driver import run_lsdtt
-from .render.base import save_figure
+from .render.base import grid_to_display, save_figure
 from .render.basins import render_basins
 from .render.channels import render_channels
 from .render.hillshade import render_hillshade
@@ -50,6 +50,94 @@ def _clip_to_valid(gdf, valid_union):
     out.geometry = out.geometry.intersection(valid_union)
     out = out[(~out.geometry.isna()) & (~out.geometry.is_empty)]
     return out
+
+
+def _ensure_complete_basins(
+    basins_gdf,
+    raster: PathLike,
+    *,
+    edge_buffer_pixels: int = 3,
+    nodata_buffer_pixels: int = 1,
+    basin_id_col: Optional[str] = None,
+):
+    """Raise if any basin polygon touches DEM edge/nodata safety buffers."""
+    import rasterio
+    from shapely.geometry import box
+
+    with rasterio.open(raster) as src:
+        cell = abs(float(src.transform.a))
+        bounds = src.bounds
+        raster_crs = src.crs
+
+    work = basins_gdf
+    if raster_crs is not None and work.crs is not None and str(work.crs) != str(raster_crs):
+        work = work.to_crs(raster_crs)
+
+    edge_buf = max(0, int(edge_buffer_pixels)) * cell
+    nodata_buf = max(0, int(nodata_buffer_pixels)) * cell
+
+    edge_inner = box(
+        bounds.left + edge_buf,
+        bounds.bottom + edge_buf,
+        bounds.right - edge_buf,
+        bounds.top - edge_buf,
+    )
+    valid_union = _valid_data_union(raster, coordinates="local")
+    valid_inner = valid_union.buffer(-nodata_buf) if nodata_buf > 0 else valid_union
+
+    complete_mask = (
+        work.geometry.within(edge_inner)
+        & work.geometry.within(valid_inner)
+    )
+    if bool(complete_mask.all()):
+        return basins_gdf
+
+    id_col = _infer_basin_id_column(work, basin_id_col)
+    if id_col is not None:
+        bad_ids = [str(v) for v in work.loc[~complete_mask, id_col].tolist()]
+        msg = f"Incomplete basins detected (touch edge/nodata buffer): {', '.join(bad_ids)}"
+    else:
+        msg = f"Incomplete basins detected: {int((~complete_mask).sum())} polygon(s) touch edge/nodata buffer."
+    raise ValueError(msg)
+
+
+def _render_hillshade_base(base_raster: PathLike, hillshade_raster: Optional[PathLike], *, coordinates: str, style: MapStyle):
+    """Render base from an lsdtt3 hillshade when provided, else from DEM."""
+    from dataclasses import replace
+
+    base_style = replace(style, cmap="gray")
+    if hillshade_raster is not None:
+        return render_hillshade(hillshade_raster, coordinates=coordinates, shade=False, style=base_style)
+    return render_hillshade(base_raster, coordinates=coordinates, shade=True, style=base_style)
+
+
+def _display_extent_for_raster(raster: PathLike, coordinates: str = "local"):
+    da = to_coordinates(load_raster(raster), coordinates)
+    crs = da.rio.crs
+    _, extent = grid_to_display(to_gmt_grid(da), crs)
+    return extent
+
+
+def _add_header_lines(fig, lines, extent):
+    """Draw multiline header text above the map frame in map coordinates."""
+    xmin, xmax, ymin, ymax = extent
+    width = xmax - xmin
+    height = ymax - ymin
+    x = xmin + 0.01 * width
+    y = ymax + 0.12 * height
+    dy = 0.05 * height
+    for line in lines:
+        if not str(line).strip():
+            continue
+        fig.text(
+            x=x,
+            y=y,
+            text=str(line),
+            font="14p,Helvetica-Bold,black",
+            justify="TL",
+            no_clip=True,
+        )
+        y -= dy
 
 
 def lsdtt3_hillshade_channels_basin(
@@ -290,6 +378,7 @@ def render_chi_profiles(
     dpi: int = 300,
     stacked: bool = True,
     per_basin: bool = True,
+    basins: Optional[Sequence[int]] = None,
 ):
     """Plot fitted chi profiles from :func:`lsdtt3_chi_analysis` outputs.
 
@@ -305,6 +394,7 @@ def render_chi_profiles(
         dpi: Save resolution.
         stacked: Write the stacked chi plot.
         per_basin: Write one profile PNG per basin.
+        basins: Optional basin list to render. Defaults to all in the fit table.
 
     Returns:
         List of written PNG Paths.
@@ -318,14 +408,16 @@ def render_chi_profiles(
     nodes = load_chi_fit(outputs["fit_nodes"], outputs["fit_segments"])
     written = []
 
+    selected_basins = sorted(nodes["basin_index"].unique()) if basins is None else [int(b) for b in basins]
+
     if stacked:
-        fig, _ = plot_chi_stacked(nodes)
+        fig, _ = plot_chi_stacked(nodes, basins=selected_basins)
         path = out_dir / f"{stem}_stacked.png"
         fig.savefig(path, dpi=dpi, bbox_inches="tight")
         written.append(path)
 
     if per_basin:
-        for b in sorted(nodes["basin_index"].unique()):
+        for b in selected_basins:
             fig, _ = plot_chi_profile(nodes, basin=int(b))
             path = out_dir / f"{stem}_profile_basin{int(b)}.png"
             fig.savefig(path, dpi=dpi, bbox_inches="tight")
@@ -1456,3 +1548,675 @@ def render_cosmo_published_residuals(
         "sample_residuals": out_png,
         "source_csvs": used,
     }
+
+
+def _pick_column(df, requested, candidates, label):
+    if requested is not None:
+        if requested not in df.columns:
+            raise KeyError(f"{label} column not found: {requested}")
+        return requested
+    lower_map = {str(c).lower(): c for c in df.columns}
+    for cand in candidates:
+        if cand.lower() in lower_map:
+            return lower_map[cand.lower()]
+    raise KeyError(
+        f"Could not infer {label} column. Available columns: {list(df.columns)}"
+    )
+
+
+def _infer_basin_id_column(gdf, requested=None):
+    if requested is not None:
+        if requested not in gdf.columns:
+            raise KeyError(f"Basin ID column not found: {requested}")
+        return requested
+
+    candidates = [
+        "basin_index",
+        "basin_key",
+        "junction",
+        "id",
+        "outlet_junction",
+    ]
+    lower_map = {str(c).lower(): c for c in gdf.columns}
+    for cand in candidates:
+        if cand.lower() in lower_map:
+            return lower_map[cand.lower()]
+    return None
+
+
+def join_basins_with_cosmo_erates(
+    basins: PathLike,
+    cosmo_csv: PathLike,
+    *,
+    basin_id_col: Optional[str] = None,
+    erate_col: Optional[str] = None,
+    lon_col: Optional[str] = None,
+    lat_col: Optional[str] = None,
+    sample_col: Optional[str] = None,
+    out_erate_col: str = "inferred_erate_mm_yr",
+    predicate: str = "intersects",
+    erate_input_units: str = "auto",
+    assign_unmatched_to_nearest: bool = True,
+):
+    """Spatially join cosmo sample erosion rates onto basin polygons.
+
+    Aggregates per-basin means and propagated erosion-rate uncertainty estimates:
+    ``erate_err_low_mm_yr`` and ``erate_err_high_mm_yr``.
+
+    Unit handling:
+    - ``erate_input_units='auto'`` treats lsdtt-cosmo-tool's legacy
+      ``apparent_e_*_mm_yr`` columns as mm/kyr and converts to mm/yr.
+    - ``'mm_per_kyr'`` always divides by 1000.
+    - ``'mm_per_yr'`` uses values unchanged.
+    """
+    import geopandas as gpd
+    import pandas as pd
+
+    def _quadrature_mean(series):
+        values = pd.to_numeric(series, errors="coerce").to_numpy(dtype=float)
+        finite = values[np.isfinite(values)]
+        if finite.size == 0:
+            return np.nan
+        return float(np.sqrt(np.sum(finite * finite)) / finite.size)
+
+    basins_gdf = basins.copy() if hasattr(basins, "geometry") else load_vector(basins)
+    if basins_gdf.empty:
+        raise ValueError("Cannot join erosion rates: basin polygons are empty.")
+
+    cosmo_df = pd.read_csv(cosmo_csv)
+    if cosmo_df.empty:
+        raise ValueError("Cannot join erosion rates: cosmo CSV has no rows.")
+
+    lon_name = _pick_column(
+        cosmo_df,
+        lon_col,
+        ["longitude", "lon", "x", "outlet_longitude"],
+        "longitude",
+    )
+    lat_name = _pick_column(
+        cosmo_df,
+        lat_col,
+        ["latitude", "lat", "y", "outlet_latitude"],
+        "latitude",
+    )
+    erate_name = _pick_column(
+        cosmo_df,
+        erate_col,
+        [
+            "apparent_e_mm_yr",
+            "inferred_erate_mm_yr",
+            "erosion_rate_mm_yr",
+            "erate_mm_yr",
+            "erate",
+        ],
+        "erosion rate",
+    )
+
+    unit_mode = erate_input_units.lower().strip()
+    if unit_mode not in {"auto", "mm_per_yr", "mm_per_kyr"}:
+        raise ValueError("erate_input_units must be one of: auto, mm_per_yr, mm_per_kyr")
+    if unit_mode == "mm_per_kyr":
+        erate_scale = 1.0 / 1000.0
+    elif unit_mode == "mm_per_yr":
+        erate_scale = 1.0
+    else:
+        erate_scale = 1.0 / 1000.0 if erate_name in {
+            "apparent_e_mm_yr",
+            "apparent_e_minus_mm_yr",
+            "apparent_e_plus_mm_yr",
+        } else 1.0
+
+    sample_name_col = None
+    if sample_col is not None and sample_col in cosmo_df.columns:
+        sample_name_col = sample_col
+    elif sample_col is None:
+        for cand in ["sample_name", "sample", "name", "id"]:
+            if cand in cosmo_df.columns:
+                sample_name_col = cand
+                break
+
+    unc_sym_col = next(
+        (
+            c
+            for c in ["apparent_e_unc_ext_mm_yr", "apparent_e_unc_int_mm_yr", "erate_unc_mm_yr"]
+            if c in cosmo_df.columns
+        ),
+        None,
+    )
+    minus_col = next((c for c in ["apparent_e_minus_mm_yr", "erate_minus_mm_yr"] if c in cosmo_df.columns), None)
+    plus_col = next((c for c in ["apparent_e_plus_mm_yr", "erate_plus_mm_yr"] if c in cosmo_df.columns), None)
+
+    keep = [lon_name, lat_name, erate_name]
+    for extra in [sample_name_col, unc_sym_col, minus_col, plus_col]:
+        if extra is not None and extra not in keep:
+            keep.append(extra)
+    pts = cosmo_df[keep].copy()
+
+    if sample_name_col is not None:
+        pts[sample_name_col] = cosmo_df[sample_name_col]
+
+    pts[lon_name] = pd.to_numeric(pts[lon_name], errors="coerce")
+    pts[lat_name] = pd.to_numeric(pts[lat_name], errors="coerce")
+    pts[erate_name] = pd.to_numeric(pts[erate_name], errors="coerce")
+    pts[erate_name] = pts[erate_name] * erate_scale
+
+    if unc_sym_col is not None:
+        unc = pd.to_numeric(pts[unc_sym_col], errors="coerce").abs()
+        if unit_mode == "mm_per_kyr" or (unit_mode == "auto" and unc_sym_col.startswith("apparent_e_unc_")):
+            unc = unc / 1000.0
+        pts["erate_err_low_mm_yr"] = unc
+        pts["erate_err_high_mm_yr"] = unc
+    elif minus_col is not None and plus_col is not None:
+        minus = pd.to_numeric(pts[minus_col], errors="coerce")
+        plus = pd.to_numeric(pts[plus_col], errors="coerce")
+        if erate_scale != 1.0:
+            minus = minus * erate_scale
+            plus = plus * erate_scale
+        central = pts[erate_name]
+        pts["erate_err_low_mm_yr"] = (central - minus).clip(lower=0)
+        pts["erate_err_high_mm_yr"] = (plus - central).clip(lower=0)
+    else:
+        pts["erate_err_low_mm_yr"] = np.nan
+        pts["erate_err_high_mm_yr"] = np.nan
+
+    pts = pts.dropna(subset=[lon_name, lat_name, erate_name])
+    if pts.empty:
+        raise ValueError("No finite lon/lat/erosion-rate rows available for joining.")
+
+    points_gdf = gpd.GeoDataFrame(
+        pts,
+        geometry=gpd.points_from_xy(pts[lon_name], pts[lat_name]),
+        crs="EPSG:4326",
+    )
+
+    if basins_gdf.crs is not None:
+        points_gdf = points_gdf.to_crs(basins_gdf.crs)
+
+    inferred_col = _infer_basin_id_column(basins_gdf, basin_id_col)
+    join_key = inferred_col if inferred_col else "_basin_join_id"
+    basins_join = basins_gdf.copy()
+    if inferred_col is None:
+        basins_join[join_key] = basins_join.index.astype(int)
+
+    right = basins_join[[join_key, basins_join.geometry.name]]
+    joined = gpd.sjoin(points_gdf, right, how="left", predicate=predicate)
+
+    if assign_unmatched_to_nearest and joined[join_key].isna().any():
+        unmatched = joined[joined[join_key].isna()].copy()
+        if not unmatched.empty:
+            left = unmatched
+            polys = basins_join[[join_key, basins_join.geometry.name]].copy()
+            if left.crs is not None and str(left.crs).lower().endswith("4326"):
+                left = left.to_crs("EPSG:3857")
+                polys = polys.to_crs("EPSG:3857")
+            assigned = []
+            for geom in left.geometry:
+                d = polys.geometry.distance(geom)
+                nearest_idx = d.idxmin()
+                assigned.append(polys.loc[nearest_idx, join_key])
+            joined.loc[unmatched.index, join_key] = assigned
+
+    joined = joined.dropna(subset=[join_key])
+    if joined.empty:
+        raise ValueError("No cosmo samples intersect basin polygons.")
+
+    grouped = (
+        joined.groupby(join_key, dropna=False)
+        .agg(
+            **{
+                out_erate_col: (erate_name, "mean"),
+                "n_cosmo_samples": (erate_name, "count"),
+                "erate_err_low_mm_yr": ("erate_err_low_mm_yr", _quadrature_mean),
+                "erate_err_high_mm_yr": ("erate_err_high_mm_yr", _quadrature_mean),
+            }
+        )
+        .reset_index()
+    )
+    if sample_name_col is not None:
+        sample_group = (
+            joined.groupby(join_key, dropna=False)[sample_name_col]
+            .apply(lambda s: ",".join(sorted({str(v) for v in s if pd.notna(v)})))
+            .reset_index(name="sample_names")
+        )
+        grouped = grouped.merge(sample_group, on=join_key, how="left")
+
+    out = basins_join.merge(grouped, on=join_key, how="left")
+    out["n_cosmo_samples"] = out["n_cosmo_samples"].fillna(0).astype(int)
+    if inferred_col is None:
+        out = out.drop(columns=[join_key])
+    return out
+
+
+def render_cosmo_basin_erate_map(
+    base_raster: PathLike,
+    basin_polygons: PathLike,
+    cosmo_csv: PathLike,
+    out_png: PathLike,
+    *,
+    hillshade_raster: Optional[PathLike] = None,
+    joined_basins_out: Optional[PathLike] = None,
+    basin_id_col: Optional[str] = None,
+    erate_col: Optional[str] = None,
+    lon_col: Optional[str] = None,
+    lat_col: Optional[str] = None,
+    sample_col: Optional[str] = None,
+    out_erate_col: str = "inferred_erate_mm_yr",
+    scaling_scheme: str = "stone",
+    muon_scheme: str = "BraucherBorchers",
+    atmosphere: str = "ERA40",
+    plot_title: str = "",
+    coordinates: str = "local",
+    transparency: float = 65.0,
+    fill: str = "orange",
+    colorbar: bool = True,
+    colorbar_label: str = "Inferred erosion rate (mm/yr)",
+    style: Optional[MapStyle] = None,
+    erate_input_units: str = "auto",
+    require_complete_basins: bool = True,
+    complete_edge_buffer_pixels: int = 3,
+    complete_nodata_buffer_pixels: int = 1,
+):
+    """Render the standard hillshade + basin-erate overlay product.
+
+    Returns:
+        Dict with ``out_png``, optional ``joined_basins``, and ``n_joined_basins``.
+    """
+    style = style or MapStyle()
+    if style.cmap == "geo":
+        style = MapStyle(**{**style.__dict__, "cmap": "viridis"})
+    basins_gdf = load_vector(basin_polygons)
+    if require_complete_basins:
+        _ensure_complete_basins(
+            basins_gdf,
+            base_raster,
+            edge_buffer_pixels=complete_edge_buffer_pixels,
+            nodata_buffer_pixels=complete_nodata_buffer_pixels,
+            basin_id_col=basin_id_col,
+        )
+
+    joined = join_basins_with_cosmo_erates(
+        basins_gdf,
+        cosmo_csv,
+        basin_id_col=basin_id_col,
+        erate_col=erate_col,
+        lon_col=lon_col,
+        lat_col=lat_col,
+        sample_col=sample_col,
+        out_erate_col=out_erate_col,
+        erate_input_units=erate_input_units,
+    )
+
+    fig = _render_hillshade_base(
+        base_raster,
+        hillshade_raster,
+        coordinates=coordinates,
+        style=style,
+    )
+    extent = _display_extent_for_raster(base_raster, coordinates=coordinates)
+    fig = render_basins(
+        joined,
+        coordinates=coordinates,
+        fill=fill,
+        transparency=transparency,
+        color_by=out_erate_col,
+        colorbar=colorbar,
+        colorbar_label=colorbar_label,
+        cmap=style.cmap,
+        style=style,
+        fig=fig,
+    )
+
+    title_prefix = plot_title.strip()
+    header = []
+    if title_prefix:
+        header.append(title_prefix)
+    header.extend([
+        f"scaling: {scaling_scheme}",
+        f"atmosphere: {atmosphere}",
+        f"muon: {muon_scheme}",
+    ])
+    _add_header_lines(
+        fig,
+        header,
+        extent,
+    )
+
+    save_figure(fig, out_png, style=style)
+
+    out = {
+        "out_png": Path(out_png),
+        "n_joined_basins": int((joined["n_cosmo_samples"] > 0).sum()),
+    }
+    if joined_basins_out is not None:
+        joined_path = Path(joined_basins_out)
+        joined_path.parent.mkdir(parents=True, exist_ok=True)
+        joined.to_file(joined_path)
+        out["joined_basins"] = joined_path
+    return out
+
+
+def summarize_basin_ksn(
+    fit_nodes_csv: PathLike,
+    fit_segments_csv: PathLike,
+    *,
+    basins: Optional[Sequence[int]] = None,
+):
+    """Summarize per-basin k_sn statistics from chi fit tables.
+
+    Uses per-node ``k_sn`` values (segment value assigned to each chi node) and
+    reports basin-wise median, 25th and 75th percentiles.
+    """
+    import pandas as pd
+
+    from .io.chi import load_chi_fit
+
+    nodes = load_chi_fit(fit_nodes_csv, fit_segments_csv)
+    if basins is not None:
+        basin_set = {int(b) for b in basins}
+        nodes = nodes[nodes["basin_index"].isin(basin_set)]
+
+    nodes = nodes[np.isfinite(pd.to_numeric(nodes["k_sn"], errors="coerce"))]
+    if nodes.empty:
+        raise ValueError("No finite k_sn values were found in chi fit nodes.")
+
+    grouped = (
+        nodes.groupby("basin_index", dropna=False)["k_sn"]
+        .agg(
+            ksn_median="median",
+            ksn_q25=lambda s: float(np.nanpercentile(s, 25)),
+            ksn_q75=lambda s: float(np.nanpercentile(s, 75)),
+            n_ksn_nodes="count",
+        )
+        .reset_index()
+        .sort_values("basin_index")
+    )
+    grouped["ksn_err_low"] = grouped["ksn_median"] - grouped["ksn_q25"]
+    grouped["ksn_err_high"] = grouped["ksn_q75"] - grouped["ksn_median"]
+    return grouped
+
+
+def render_chi_basin_ksn_map(
+    base_raster: PathLike,
+    basin_polygons: PathLike,
+    fit_nodes_csv: PathLike,
+    fit_segments_csv: PathLike,
+    out_png: PathLike,
+    *,
+    hillshade_raster: Optional[PathLike] = None,
+    joined_basins_out: Optional[PathLike] = None,
+    basin_id_col: Optional[str] = None,
+    coordinates: str = "local",
+    transparency: float = 65.0,
+    colorbar: bool = True,
+    colorbar_label: str = "Median k@-sn@-",
+    plot_title: str = "",
+    scaling_scheme: str = "stone",
+    atmosphere: str = "ERA40",
+    muon_scheme: str = "BraucherBorchers",
+    style: Optional[MapStyle] = None,
+    theta: Optional[float] = None,
+    require_complete_basins: bool = True,
+    complete_edge_buffer_pixels: int = 3,
+    complete_nodata_buffer_pixels: int = 1,
+):
+    """Render hillshade + basins colored by basin-median k_sn."""
+    import geopandas as gpd
+    import pandas as pd
+    import rasterio
+    from rasterio.transform import xy as raster_xy
+    from .io.table import load_table
+
+    style = style or MapStyle()
+    if style.cmap == "geo":
+        style = MapStyle(**{**style.__dict__, "cmap": "viridis"})
+    ksn = summarize_basin_ksn(fit_nodes_csv, fit_segments_csv)
+
+    basins_gdf = load_vector(basin_polygons)
+    if require_complete_basins:
+        _ensure_complete_basins(
+            basins_gdf,
+            base_raster,
+            edge_buffer_pixels=complete_edge_buffer_pixels,
+            nodata_buffer_pixels=complete_nodata_buffer_pixels,
+            basin_id_col=basin_id_col,
+        )
+
+    inferred_col = _infer_basin_id_column(basins_gdf, basin_id_col)
+    basins_join = basins_gdf.copy()
+
+    if inferred_col is not None:
+        join_key = inferred_col
+        ksn_df = ksn.rename(columns={"basin_index": join_key})
+        joined = basins_join.merge(ksn_df, on=join_key, how="left")
+    else:
+        fit_nodes = load_table(fit_nodes_csv)
+        outlet = (
+            fit_nodes[["basin_index", "outlet_flat"]]
+            .dropna()
+            .drop_duplicates(subset=["basin_index"])
+        )
+        if outlet.empty:
+            raise ValueError("Cannot map k_sn to basin polygons: fit_nodes has no basin_index/outlet_flat rows.")
+
+        with rasterio.open(base_raster) as src:
+            n_cols = int(src.width)
+            transform = src.transform
+            raster_crs = src.crs
+
+        rows = (outlet["outlet_flat"].astype(int) // n_cols).to_numpy()
+        cols = (outlet["outlet_flat"].astype(int) % n_cols).to_numpy()
+        xs = []
+        ys = []
+        for r, c in zip(rows, cols):
+            x, y = raster_xy(transform, int(r), int(c), offset="center")
+            xs.append(float(x))
+            ys.append(float(y))
+
+        outlets_gdf = gpd.GeoDataFrame(
+            outlet[["basin_index"]].copy(),
+            geometry=gpd.points_from_xy(xs, ys),
+            crs=raster_crs,
+        )
+        if basins_join.crs is not None and outlets_gdf.crs is not None and basins_join.crs != outlets_gdf.crs:
+            outlets_gdf = outlets_gdf.to_crs(basins_join.crs)
+
+        poly_idx_col = "_poly_idx"
+        basins_join[poly_idx_col] = basins_join.index.astype(int)
+        matched = gpd.sjoin(
+            outlets_gdf,
+            basins_join[[poly_idx_col, basins_join.geometry.name]],
+            how="left",
+            predicate="within",
+        ).dropna(subset=[poly_idx_col])
+
+        if matched.empty:
+            raise ValueError("Could not map chi basin outlets into supplied basin polygons.")
+
+        basin_map = matched[[poly_idx_col, "basin_index"]].drop_duplicates(subset=[poly_idx_col])
+        joined = basins_join.merge(basin_map, on=poly_idx_col, how="left")
+        joined = joined.merge(ksn, on="basin_index", how="left")
+        joined = joined.drop(columns=[poly_idx_col])
+
+    fig = _render_hillshade_base(
+        base_raster,
+        hillshade_raster,
+        coordinates=coordinates,
+        style=style,
+    )
+    extent = _display_extent_for_raster(base_raster, coordinates=coordinates)
+    fig = render_basins(
+        joined,
+        coordinates=coordinates,
+        fill="orange",
+        transparency=transparency,
+        color_by="ksn_median",
+        colorbar=colorbar,
+        colorbar_label=colorbar_label,
+        cmap=style.cmap,
+        style=style,
+        fig=fig,
+    )
+
+    title_text = f"@~q@~={theta:g}" if theta is not None else ""
+    if plot_title.strip():
+        title_text = plot_title.strip()
+    _add_header_lines(
+        fig,
+        [title_text],
+        extent,
+    )
+
+    save_figure(fig, out_png, style=style)
+
+    out = {
+        "out_png": Path(out_png),
+        "n_joined_basins": int(pd.to_numeric(joined["n_ksn_nodes"], errors="coerce").fillna(0).gt(0).sum()),
+        "ksn_summary": ksn,
+        "joined_basins": joined,
+    }
+    if joined_basins_out is not None:
+        joined_path = Path(joined_basins_out)
+        joined_path.parent.mkdir(parents=True, exist_ok=True)
+        joined.to_file(joined_path)
+        out["joined_basins_path"] = joined_path
+    return out
+
+
+def render_chi_and_cosmo_basin_workflow(
+    outputs: dict,
+    out_dir: PathLike,
+    *,
+    stem: str = "chi",
+    dpi: int = 300,
+    basin_polygons: Optional[PathLike] = None,
+    base_raster: Optional[PathLike] = None,
+    basin_id_col: Optional[str] = None,
+    cosmo_csv: Optional[PathLike] = None,
+    erate_col: Optional[str] = None,
+    lon_col: Optional[str] = None,
+    lat_col: Optional[str] = None,
+    sample_col: Optional[str] = None,
+    theta: Optional[float] = None,
+    scaling_scheme: str = "stone",
+    atmosphere: str = "ERA40",
+    muon_scheme: str = "BraucherBorchers",
+    erate_input_units: str = "auto",
+    hillshade_raster: Optional[PathLike] = None,
+    require_complete_basins: bool = True,
+    complete_edge_buffer_pixels: int = 3,
+    complete_nodata_buffer_pixels: int = 1,
+    style: Optional[MapStyle] = None,
+):
+    """Render per-basin chi PNGs, basin k_sn summary, and optional k_sn-vs-cosmo.
+
+    If basin polygons and a base raster are provided, also writes a basin-median
+    k_sn map. If cosmo CSV is also provided, writes a k_sn-vs-erate comparison
+    using k_sn IQR (25-75th) and cosmo-reported erosion-rate uncertainties.
+    """
+    import pandas as pd
+
+    from .charts import plot_chi_profile, plot_chi_stacked, plot_ksn_vs_erate
+    from .io.chi import load_chi_fit
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    nodes = load_chi_fit(outputs["fit_nodes"], outputs["fit_segments"])
+    basins = sorted({int(b) for b in nodes["basin_index"].dropna().unique()})
+
+    written = {
+        "chi_profiles": [],
+    }
+
+    fig_stacked, _ = plot_chi_stacked(nodes, basins=basins)
+    stacked_png = out_dir / f"{stem}_stacked.png"
+    fig_stacked.savefig(stacked_png, dpi=dpi, bbox_inches="tight")
+    written["chi_stacked"] = stacked_png
+
+    for basin in basins:
+        fig, _ = plot_chi_profile(nodes, basin=basin)
+        path = out_dir / f"{stem}_profile_basin{basin}.png"
+        fig.savefig(path, dpi=dpi, bbox_inches="tight")
+        written["chi_profiles"].append(path)
+
+    ksn_summary = summarize_basin_ksn(outputs["fit_nodes"], outputs["fit_segments"], basins=basins)
+    ksn_csv = out_dir / f"{stem}_basin_ksn_summary.csv"
+    ksn_summary.to_csv(ksn_csv, index=False)
+    written["ksn_summary_csv"] = ksn_csv
+
+    if basin_polygons is not None and base_raster is not None:
+        ksn_map_png = out_dir / f"{stem}_basin_ksn.png"
+        joined_fgb = out_dir / f"{stem}_basin_ksn.fgb"
+        ksn_map = render_chi_basin_ksn_map(
+            base_raster,
+            basin_polygons,
+            outputs["fit_nodes"],
+            outputs["fit_segments"],
+            ksn_map_png,
+            hillshade_raster=hillshade_raster,
+            joined_basins_out=joined_fgb,
+            basin_id_col=basin_id_col,
+            plot_title="",
+            scaling_scheme=scaling_scheme,
+            atmosphere=atmosphere,
+            muon_scheme=muon_scheme,
+            theta=theta,
+            require_complete_basins=require_complete_basins,
+            complete_edge_buffer_pixels=complete_edge_buffer_pixels,
+            complete_nodata_buffer_pixels=complete_nodata_buffer_pixels,
+            style=style,
+        )
+        written["ksn_map_png"] = ksn_map_png
+        written["ksn_map_joined_basins"] = joined_fgb
+
+        if cosmo_csv is not None:
+            cosmo_joined = join_basins_with_cosmo_erates(
+                basin_polygons,
+                cosmo_csv,
+                basin_id_col=basin_id_col,
+                erate_col=erate_col,
+                lon_col=lon_col,
+                lat_col=lat_col,
+                sample_col=sample_col,
+                erate_input_units=erate_input_units,
+            )
+
+            if basin_id_col is None:
+                inferred_id = _infer_basin_id_column(cosmo_joined)
+                if inferred_id is None:
+                    cosmo_joined = cosmo_joined.copy()
+                    cosmo_joined["_basin_join_id"] = cosmo_joined.index.astype(int)
+                    basin_join_key = "_basin_join_id"
+                else:
+                    basin_join_key = inferred_id
+            else:
+                basin_join_key = basin_id_col
+
+            if basin_join_key not in ksn_map["joined_basins"].columns:
+                ksn_join = ksn_map["joined_basins"].copy()
+                ksn_join[basin_join_key] = ksn_join.index.astype(int)
+            else:
+                ksn_join = ksn_map["joined_basins"]
+
+            compare = ksn_join.merge(
+                pd.DataFrame(cosmo_joined.drop(columns=cosmo_joined.geometry.name)),
+                on=basin_join_key,
+                how="inner",
+                suffixes=("_ksn", "_cosmo"),
+            )
+            compare = compare[
+                np.isfinite(pd.to_numeric(compare["ksn_median"], errors="coerce"))
+                & np.isfinite(pd.to_numeric(compare["inferred_erate_mm_yr"], errors="coerce"))
+                & (pd.to_numeric(compare["n_cosmo_samples"], errors="coerce") > 0)
+            ]
+
+            if not compare.empty:
+                fig_cmp, _ = plot_ksn_vs_erate(compare, theta=theta)
+                cmp_png = out_dir / f"{stem}_ksn_vs_erate.png"
+                fig_cmp.savefig(cmp_png, dpi=dpi, bbox_inches="tight")
+                compare_csv = out_dir / f"{stem}_ksn_vs_erate.csv"
+                compare.to_csv(compare_csv, index=False)
+                written["ksn_vs_erate_png"] = cmp_png
+                written["ksn_vs_erate_csv"] = compare_csv
+
+    return written

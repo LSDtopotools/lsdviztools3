@@ -163,6 +163,8 @@ absolute path:
 | `lsdviz3-drape`    | `lsdviztools3.cli.plot_drape`       |
 | `lsdviz3-channels` | `lsdviztools3.cli.plot_channels`    |
 | `lsdviz3-basins`   | `lsdviztools3.cli.plot_basins`      |
+| `lsdviz3-cosmo-basins` | `lsdviztools3.cli.plot_cosmo_basins` |
+| `lsdviz3-chi-cosmo` | `lsdviztools3.cli.plot_chi_cosmo` |
 | `lsdviz3-basemap`  | `lsdviztools3.cli.plot_basemap`     |
 | `lsdviz3-cosmo-compare` | `lsdviztools3.cli.plot_cosmo_compare` |
 | `lsdviz3-cosmo-published` | `lsdviztools3.cli.plot_cosmo_published` |
@@ -217,6 +219,24 @@ pixi run lsdviz3-cosmo-published \
   --datasets dethier2014,clapp2002,dibiase2010 \
   --mode auto \
   --outdir demo_output/cosmo
+
+# Standard basin map: join cosmo CSV to basin polygons and color by inferred rate
+pixi run lsdviz3-cosmo-basins \
+  --base ../data/sulawasi/sulawasi_group_0001_DEM.tif \
+  --basins ../data/sulawasi/sulawasi_group_0001_basin_outlines.fgb \
+  --cosmo-csv ../data/sulawasi/sulawasi_be10_CN_ERATE.csv \
+  --out demo_output/cosmo/sulawasi_basins_erate.png \
+  --joined-basins-out demo_output/cosmo/sulawasi_basins_erate.fgb \
+  --colorbar
+
+# Chi + basin products (one profile PNG per basin + optional ksn-vs-erate)
+pixi run lsdviz3-chi-cosmo \
+  --fit-nodes-csv ../data/sulawasi/work/sulawasi_chi_fit_nodes_mn_0p45.csv \
+  --fit-segments-csv ../data/sulawasi/work/sulawasi_chi_fit_segments_mn_0p45.csv \
+  --base ../data/sulawasi/work/sulawasi_final_DEM.tif \
+  --basins ../data/sulawasi/work/sulawasi_chi_basin_polygons.fgb \
+  --cosmo-csv ../data/sulawasi/work/sulawasi_be10_CN_ERATE.csv \
+  --outdir demo_output/chi_cosmo
 ```
 
 ## What's implemented
@@ -240,3 +260,11 @@ already in the pixi env.
 For a quick cosmogenic end-to-end example, see
 `examples/cosmo_comparison_workflow.py` and docs section
 `5.9 Cosmo comparison workflows` in `docs/documentation.md`.
+
+For chi + basin summaries, the workflow helpers can now:
+- compute basin-median `k_sn` (+ 25th/75th percentile bounds) from
+  `*_chi_fit_nodes_mn_*.csv` + `*_chi_fit_segments_mn_*.csv`,
+- render a basin map colored by median `k_sn`,
+- and, when a cosmo erosion CSV is also supplied, plot basin median `k_sn`
+  versus inferred erosion rate with uncertainty bars (chi IQR + cosmo-reported
+  erosion-rate errors).
