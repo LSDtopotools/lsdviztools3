@@ -17,7 +17,12 @@ from functools import lru_cache
 from typing import Optional
 
 
-def _matplotlib_to_cpt(name: str, n: int = 256) -> str:
+def _matplotlib_to_cpt(
+    name: str,
+    n: int = 256,
+    *,
+    avoid_pure_gray_bug: bool = True,
+) -> str:
     """Write a continuous GMT CPT (z in 0..1) sampled from a matplotlib cmap.
 
     The file is cached per name; ``makecpt(cmap=<file>, series=[vmin, vmax])``
@@ -29,13 +34,14 @@ def _matplotlib_to_cpt(name: str, n: int = 256) -> str:
     cmap = colormaps[name]
     rgb = (np.asarray([cmap(i / (n - 1))[:3] for i in range(n)]) * 255).round().astype(int)
 
-    # Break pure-grey rows (r == g == b). A grey CPT (e.g. "gray", "Greys",
-    # "binary") combined with a white NaN slot makes GMT's nan_transparent paint
-    # NaN cells solid red — the same quirk documented in _solid_cpt. A +-1/255
-    # nudge on blue is visually invisible but keeps every row non-grey so NaN
-    # stays transparent.
-    grey = (rgb[:, 0] == rgb[:, 1]) & (rgb[:, 1] == rgb[:, 2])
-    rgb[grey, 2] = np.where(rgb[grey, 2] >= 255, 254, rgb[grey, 2] + 1)
+    # Break pure-grey rows (r == g == b) only when we need to guard GMT's
+    # nan_transparent behaviour. A grey CPT (e.g. "gray", "Greys", "binary")
+    # combined with a white NaN slot can make GMT paint NaN cells solid red.
+    # A +-1/255 nudge on blue is visually tiny but not perfectly neutral, so
+    # callers can now disable this when transparency is not in play.
+    if avoid_pure_gray_bug:
+        grey = (rgb[:, 0] == rgb[:, 1]) & (rgb[:, 1] == rgb[:, 2])
+        rgb[grey, 2] = np.where(rgb[grey, 2] >= 255, 254, rgb[grey, 2] + 1)
 
     z = np.linspace(0.0, 1.0, n)
     lines = ["# COLOR_MODEL = RGB", f"# Generated from matplotlib colormap {name!r}"]
@@ -95,7 +101,11 @@ def _solid_cpt(color: str) -> str:
 
 
 @lru_cache(maxsize=None)
-def resolve_cmap(cmap: Optional[str]) -> Optional[str]:
+def resolve_cmap(
+    cmap: Optional[str],
+    *,
+    avoid_pure_gray_bug: bool = True,
+) -> Optional[str]:
     """Resolve a colour-map spec to something ``makecpt(cmap=...)`` accepts.
 
     Resolution order:
@@ -111,6 +121,10 @@ def resolve_cmap(cmap: Optional[str]) -> Optional[str]:
 
     Args:
         cmap: Colour-map name / colour / path, or ``None``.
+        avoid_pure_gray_bug: If ``True`` (default), generated matplotlib grey
+            CPTs are nudged very slightly off pure-grey to avoid GMT's
+            ``nan_transparent`` red-NaN artefact. Set ``False`` for perfectly
+            neutral greys when transparency is disabled.
 
     Returns:
         A GMT-acceptable colour-map spec (name or CPT file path), or ``None``.
@@ -124,7 +138,7 @@ def resolve_cmap(cmap: Optional[str]) -> Optional[str]:
         return cmap  # matplotlib unavailable: let GMT try the name as-is.
 
     if cmap in colormaps:
-        return _matplotlib_to_cpt(cmap)
+        return _matplotlib_to_cpt(cmap, avoid_pure_gray_bug=avoid_pure_gray_bug)
     if cmap in get_named_colors_mapping():
         return _solid_cpt(cmap)
     return cmap

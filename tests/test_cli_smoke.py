@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +18,7 @@ from lsdviztools3.cli import (
     plot_cosmo_published,
     plot_drape,
     plot_hillshade,
+    plot_sti,
     run_lsdtt,
 )
 
@@ -26,6 +28,7 @@ from lsdviztools3.cli import (
     [
         plot_hillshade.build_parser,
         plot_drape.build_parser,
+        plot_sti.build_parser,
         plot_channels.build_parser,
         plot_basins.build_parser,
         plot_basemap.build_parser,
@@ -91,6 +94,102 @@ def test_plot_drape_main_smoke(monkeypatch):
     assert calls["drape"][2]["transparency"] == 40.0
     assert calls["drape"][2]["cmap"] == "roma"
     assert calls["save"][1] == "drape.png"
+
+
+def test_plot_sti_main_smoke(monkeypatch):
+    calls = {}
+
+    def fake_sti(base, sti_path, **kwargs):
+        calls["sti"] = (base, sti_path, kwargs)
+        return object()
+
+    def fake_save(fig, out_path, *, style, high_res=False, directory=None):
+        calls["save"] = (fig, out_path, style, high_res)
+
+    monkeypatch.setattr(plot_sti, "render_sti_p95_drape", fake_sti)
+    monkeypatch.setattr(plot_sti._common, "save_figure", fake_save)
+
+    code = plot_sti.main([
+        "--base", "hs.tif",
+        "--sti", "sti_p95.tif",
+        "--out", "sti.png",
+        "--transparency", "30",
+    ])
+    assert code == 0
+    assert calls["sti"][0] == "hs.tif"
+    assert calls["sti"][1] == "sti_p95.tif"
+    assert calls["sti"][2]["transparency"] == 30.0
+    assert calls["sti"][2]["cmap"] == "YlOrRd"
+    assert calls["save"][1] == "sti.png"
+
+
+def test_plot_sti_writes_non_p95_partner_when_present(monkeypatch, tmp_path):
+    calls = {"drape": [], "save": []}
+
+    def fake_sti(base, sti_path, **kwargs):
+        return object()
+
+    def fake_drape(base, drape, **kwargs):
+        calls["drape"].append((base, drape, kwargs))
+        return object()
+
+    def fake_save(fig, out_path, *, style, high_res=False, directory=None):
+        calls["save"].append(out_path)
+
+    monkeypatch.setattr(plot_sti, "render_sti_p95_drape", fake_sti)
+    monkeypatch.setattr(plot_sti, "render_drape", fake_drape)
+    monkeypatch.setattr(plot_sti._common, "save_figure", fake_save)
+
+    sti_p95 = tmp_path / "Kildavie_sti_p95.tif"
+    sti_full = tmp_path / "Kildavie_sti.tif"
+    sti_p95.write_text("x")
+    sti_full.write_text("x")
+
+    code = plot_sti.main([
+        "--base", "hs.tif",
+        "--sti", str(sti_p95),
+        "--out", "sti.png",
+    ])
+    assert code == 0
+    assert len(calls["drape"]) == 1
+    assert calls["drape"][0][1].endswith("Kildavie_sti.tif")
+    assert calls["save"][-1].endswith("sti_full.png")
+
+
+def test_plot_sti_directory_mode_plots_all_found(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_intermediate(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr(plot_sti, "_render_intermediate", fake_intermediate)
+
+    (tmp_path / "Kildavie_sti.tif").write_text("x")
+    (tmp_path / "Kildavie_sti_p95.tif").write_text("x")
+    (tmp_path / "Kildavie_sti_twi.tif").write_text("x")
+    (tmp_path / "Kildavie_sti_series_codes.tif").write_text("x")
+    (tmp_path / "Kildavie_sti_landuse_codes.tif").write_text("x")
+    (tmp_path / "Kildavie_sti_valid_mask_ksd.tif").write_text("x")
+    (tmp_path / "Kildavie_sti_valid_mask_spr.tif").write_text("x")
+    (tmp_path / "Kildavie_sti.tif.tmp_cog.tif").write_text("x")
+
+    code = plot_sti.main([
+        "--sti-dir", str(tmp_path),
+        "--base", "hs.tif",
+    ])
+    assert code == 0
+    assert len(calls) == 3
+    assert any(c["drape_raster"].endswith("Kildavie_sti.tif") for c in calls)
+    assert any(c["drape_raster"].endswith("Kildavie_sti_p95.tif") for c in calls)
+    assert any(c["drape_raster"].endswith("Kildavie_sti_twi.tif") for c in calls)
+    assert all(not c["drape_raster"].endswith("_sti_series_codes.tif") for c in calls)
+    assert all(not c["drape_raster"].endswith("_sti_landuse_codes.tif") for c in calls)
+    assert all(not c["drape_raster"].endswith("_sti_valid_mask_ksd.tif") for c in calls)
+    assert all(not c["drape_raster"].endswith("_sti_valid_mask_spr.tif") for c in calls)
+
+    by_name = {Path(c["drape_raster"]).name: c for c in calls}
+    assert by_name["Kildavie_sti.tif"]["colorbar"] is True
+    assert by_name["Kildavie_sti_twi.tif"]["cmap"] == "YlOrRd"
 
 
 def test_plot_channels_main_smoke(monkeypatch):

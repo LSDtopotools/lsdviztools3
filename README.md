@@ -161,6 +161,7 @@ absolute path:
 |--------------------|-------------------------------------|
 | `lsdviz3-hillshade`| `lsdviztools3.cli.plot_hillshade`   |
 | `lsdviz3-drape`    | `lsdviztools3.cli.plot_drape`       |
+| `lsdviz3-sti`      | `lsdviztools3.cli.plot_sti`         |
 | `lsdviz3-channels` | `lsdviztools3.cli.plot_channels`    |
 | `lsdviz3-basins`   | `lsdviztools3.cli.plot_basins`      |
 | `lsdviz3-cosmo-basins` | `lsdviztools3.cli.plot_cosmo_basins` |
