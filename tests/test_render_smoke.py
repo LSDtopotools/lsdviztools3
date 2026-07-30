@@ -6,7 +6,7 @@ import pytest
 from shapely.geometry import LineString, Point
 
 from lsdviztools3.io.raster import load_raster
-from lsdviztools3.render import channels, hillshade, points
+from lsdviztools3.render import channels, hillshade, points, sti
 from lsdviztools3.render.style import MapStyle
 
 
@@ -261,6 +261,23 @@ def test_render_hillshade_clean_writes_png(tmp_path):
     assert out.exists() and out.stat().st_size > 0
 
 
+def test_render_sti_p95_drape_writes_png(tmp_path):
+    """STI helper writes a non-empty STI P95 drape PNG."""
+    base = _synthetic_raster(np.outer(np.linspace(0, 1, 12), np.linspace(0, 1, 12)))
+    sti_vals = np.linspace(0.0, 1.0, 144).reshape(12, 12)
+    sti_vals[sti_vals < 0.9] = np.nan
+    drape = _synthetic_raster(sti_vals)
+    fig = sti.render_sti_p95_drape(
+        base,
+        drape,
+        coordinates="local",
+        style=MapStyle(transparent=False),
+    )
+    out = tmp_path / "sti_p95_drape.png"
+    fig.savefig(out)
+    assert out.exists() and out.stat().st_size > 0
+
+
 def test_resolve_cmap_matplotlib_and_solid(tmp_path):
     """Matplotlib-only names -> CPT file; GMT names pass through; colour -> CPT."""
     from lsdviztools3.render.colormaps import resolve_cmap
@@ -275,6 +292,18 @@ def test_resolve_cmap_matplotlib_and_solid(tmp_path):
     # A single named colour -> a solid CPT file (for threshold masks).
     black = resolve_cmap("black")
     assert black.endswith(".cpt")
+
+
+def test_resolve_cmap_gray_nudge_can_be_disabled():
+    """Gray CPT nudge is optional when transparency workaround is unnecessary."""
+    from lsdviztools3.render.colormaps import resolve_cmap
+
+    nudged = resolve_cmap("gray", avoid_pure_gray_bug=True)
+    neutral = resolve_cmap("gray", avoid_pure_gray_bug=False)
+
+    assert nudged.endswith(".cpt")
+    assert neutral.endswith(".cpt")
+    assert nudged != neutral
 
 
 @pytest.mark.network

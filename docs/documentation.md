@@ -1214,6 +1214,7 @@ pixi run python examples/single_channel_basins.py --skip-compute  # replot only
 |---------|---------|-----------|
 | `lsdviz3-hillshade` | shaded-relief PNG | `--in --out --input-is-hillshade` + style (incl. `--clean`) |
 | `lsdviz3-drape` | gray hillshade + coloured semi-transparent drape | `--base --drape --out --shade-base --log --transparency --vmin --vmax --percentile-min --percentile-max --out-of-bounds --colorbar --colorbar-label --colorbar-position` + style (`--cmap` = drape; GMT or matplotlib maps, or a solid colour) |
+| `lsdviz3-sti` | hillshade + STI rasters (single file or directory batch) | single mode: `--base --sti --out`; directory mode: `--sti-dir [--base]` (auto-plots all discovered STI rasters); options: `--transparency --colorbar` + style |
 | `lsdviz3-channels` | hillshade + channel lines | `--base --lines --out` + style |
 | `lsdviz3-basins` | hillshade + basin polygons | `--base --basins --out --fill --transparency` + style |
 | `lsdviz3-cosmo-basins` | standard hillshade + basins colored by inferred erosion rate from cosmo CSV | `--base --basins --cosmo-csv --out [--hillshade --joined-basins-out --colorbar --scaling-scheme --muon-scheme --atmosphere --erate-input-units --allow-incomplete-basins]` |
