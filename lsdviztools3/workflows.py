@@ -2220,3 +2220,113 @@ def render_chi_and_cosmo_basin_workflow(
                 written["ksn_vs_erate_csv"] = compare_csv
 
     return written
+
+def render_divide_migration_figures(
+    prefix: PathLike,
+    out_dir: PathLike,
+    *,
+    base_raster: Optional[PathLike] = None,
+    metric: str = "chi",
+    coordinates: str = "local",
+    base_is_hillshade: bool = False,
+    cmap: str = "roma",
+    point_size: Optional[str] = None,
+    divide_color: str = "black",
+    alpha: float = 0.05,
+    stem: str = "divide_migration",
+    style: Optional[MapStyle] = None,
+    high_res: bool = False,
+    dpi: int = 220,
+) -> dict:
+    """Render the standard figure set for an ``lsdtt-divide-migration`` run.
+
+    Reads an output set written by the CLI (nothing is recomputed) and writes:
+
+    * ``<stem>_map_<metric>.png`` — grey hillshade + divide polylines + channel
+      heads coloured by ``metric`` (only when ``base_raster`` is given);
+    * ``<stem>_pairs_<metric>.png`` — side A vs side B means with Δ = A − B and
+      its uncertainty, per divide pair (needs the pair-summary CSV);
+    * ``<stem>_heads_<metric>.png`` — per-head metric vs distance to divide.
+
+    Args:
+        prefix: The ``<write_path>/<write_fname>`` stem, or a directory holding
+            one output set (see ``io.divide_migration.find_outputs``).
+        out_dir: Output directory for the PNGs.
+        base_raster: DEM (or hillshade) for the map layer. Without it the map is
+            skipped and only the charts are written.
+        metric: ``chi`` / ``relief`` / ``gradient`` / ``head_elevation``.
+        coordinates: Coordinate mode for the map layers.
+        base_is_hillshade: ``base_raster`` is already a hillshade.
+        cmap: Colour map for the channel-head metric.
+        point_size: GMT symbol size for the heads (e.g. ``"0.12c"``).
+        divide_color: Pen colour for the divide polylines.
+        alpha: p-value threshold, used only when the run's uncertainty method is
+            ``ttest``.
+        stem: Filename stem for the outputs.
+        style: Map styling options.
+        high_res: Save the map at the high-res DPI.
+        dpi: PNG dpi for the matplotlib charts.
+
+    Returns:
+        Dict of written figure paths, plus ``n_heads_nan_dropped`` when the map
+        was drawn.
+    """
+    from .charts.divide_migration import (
+        plot_head_metric_vs_distance,
+        plot_pair_comparison,
+    )
+    from .io.divide_migration import (
+        find_outputs, load_channel_heads, load_pair_summary, resolve_metric,
+    )
+    from .render.divide_migration import divide_migration_layers
+
+    metric_key = resolve_metric(metric).key
+    outputs = find_outputs(prefix)
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written = {}
+
+    if base_raster is not None:
+        if not outputs["divides"] or not outputs["channel_heads"]:
+            raise FileNotFoundError(
+                "The map needs both <stem>_divides and <stem>_channel_heads "
+                f"vectors; found divides={outputs['divides']}, "
+                f"heads={outputs['channel_heads']}."
+            )
+        fig, n_dropped = divide_migration_layers(
+            base_raster,
+            outputs["divides"],
+            outputs["channel_heads"],
+            metric=metric_key,
+            coordinates=coordinates,
+            base_is_hillshade=base_is_hillshade,
+            cmap=cmap,
+            point_size=point_size,
+            divide_color=divide_color,
+            style=style,
+        )
+        map_png = out_dir / f"{stem}_map_{metric_key}.png"
+        save_figure(fig, str(map_png), style=style, high_res=high_res)
+        written["map"] = map_png
+        written["n_heads_nan_dropped"] = n_dropped
+
+    if outputs["pair_summary"]:
+        summary = load_pair_summary(outputs["pair_summary"])
+        fig_pairs, _ = plot_pair_comparison(summary, metric=metric_key, alpha=alpha)
+        pairs_png = out_dir / f"{stem}_pairs_{metric_key}.png"
+        fig_pairs.savefig(str(pairs_png), dpi=dpi)
+        written["pair_comparison"] = pairs_png
+
+    heads_path = outputs["metrics_csv"] or outputs["channel_heads"]
+    if heads_path:
+        heads = load_channel_heads(heads_path)
+        fig_heads, _ = plot_head_metric_vs_distance(heads, metric=metric_key)
+        heads_png = out_dir / f"{stem}_heads_{metric_key}.png"
+        fig_heads.savefig(str(heads_png), dpi=dpi)
+        written["head_scatter"] = heads_png
+
+    if not written:
+        raise FileNotFoundError(
+            f"Nothing to render for divide-migration prefix {prefix}."
+        )
+    return written

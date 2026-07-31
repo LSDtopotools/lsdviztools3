@@ -163,6 +163,7 @@ absolute path:
 | `lsdviz3-drape`    | `lsdviztools3.cli.plot_drape`       |
 | `lsdviz3-channels` | `lsdviztools3.cli.plot_channels`    |
 | `lsdviz3-basins`   | `lsdviztools3.cli.plot_basins`      |
+| `lsdviz3-divide-migration` | `lsdviztools3.cli.plot_divide_migration` |
 | `lsdviz3-cosmo-basins` | `lsdviztools3.cli.plot_cosmo_basins` |
 | `lsdviz3-chi-cosmo` | `lsdviztools3.cli.plot_chi_cosmo` |
 | `lsdviz3-basemap`  | `lsdviztools3.cli.plot_basemap`     |
@@ -221,8 +222,10 @@ pixi run lsdviz3-cosmo-published \
   --outdir demo_output/cosmo
 
 # Standard basin map: join cosmo CSV to basin polygons and color by inferred rate
+# (fails by default if plotted basins are clipped/incomplete)
 pixi run lsdviz3-cosmo-basins \
   --base ../data/sulawasi/sulawasi_group_0001_DEM.tif \
+  --hillshade ../data/sulawasi/sulawasi_group_0001_hs_hillshade.tif \
   --basins ../data/sulawasi/sulawasi_group_0001_basin_outlines.fgb \
   --cosmo-csv ../data/sulawasi/sulawasi_be10_CN_ERATE.csv \
   --out demo_output/cosmo/sulawasi_basins_erate.png \
@@ -234,6 +237,7 @@ pixi run lsdviz3-chi-cosmo \
   --fit-nodes-csv ../data/sulawasi/work/sulawasi_chi_fit_nodes_mn_0p45.csv \
   --fit-segments-csv ../data/sulawasi/work/sulawasi_chi_fit_segments_mn_0p45.csv \
   --base ../data/sulawasi/work/sulawasi_final_DEM.tif \
+  --hillshade ../data/sulawasi/work/sulawasi_final_hs_hillshade.tif \
   --basins ../data/sulawasi/work/sulawasi_chi_basin_polygons.fgb \
   --cosmo-csv ../data/sulawasi/work/sulawasi_be10_CN_ERATE.csv \
   --outdir demo_output/chi_cosmo

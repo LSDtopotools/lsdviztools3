@@ -26,6 +26,9 @@ from .cosmo_comparison import (
     load_cosmo_table, plot_cosmo_sweep_panels, plot_cosmo_sample_residuals,
 )
 from .distributions import plot_distributions
+from .divide_migration import (
+    aggressor_annotation, plot_head_metric_vs_distance, plot_pair_comparison,
+)
 from .hand import (
     plot_hand_distance, plot_hand_window_populations, plot_valley_break_metric,
     plot_valley_break_fraction, plot_valley_floor_map, plot_valley_reach_map,
@@ -57,6 +60,8 @@ __all__ = [
     "plot_distributions", "rose_diagram",
     "circular_wasserstein", "kuiper_two_sample", "plot_circular_comparison",
     "load_cosmo_table", "plot_cosmo_sweep_panels", "plot_cosmo_sample_residuals",
+    "plot_pair_comparison", "plot_head_metric_vs_distance",
+    "aggressor_annotation",
     "plot_profile", "plot_slope_area",
 ]
 
