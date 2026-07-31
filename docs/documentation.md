@@ -1214,6 +1214,7 @@ pixi run python examples/single_channel_basins.py --skip-compute  # replot only
 |---------|---------|-----------|
 | `lsdviz3-hillshade` | shaded-relief PNG | `--in --out --input-is-hillshade` + style (incl. `--clean`) |
 | `lsdviz3-drape` | gray hillshade + coloured semi-transparent drape | `--base --drape --out --shade-base --log --transparency --vmin --vmax --percentile-min --percentile-max --out-of-bounds --colorbar --colorbar-label --colorbar-position` + style (`--cmap` = drape; GMT or matplotlib maps, or a solid colour) |
+| `lsdviz3-sti` | hillshade + STI rasters (single file or directory batch) | single mode: `--base --sti --out`; directory mode: `--sti-dir [--base]` (auto-plots all discovered STI rasters); options: `--transparency --colorbar` + style |
 | `lsdviz3-channels` | hillshade + channel lines | `--base --lines --out` + style |
 | `lsdviz3-basins` | hillshade + basin polygons | `--base --basins --out --fill --transparency` + style |
 | `lsdviz3-divide-migration` | `lsdtt-divide-migration` figure set: hillshade + divide polylines + channel heads coloured by a metric, the side-vs-side pair chart (Δ = A − B, A the lower-numbered unit, error bar only when the run's uncertainty method is a dispersion), and a per-head scatter against distance to divide | `--prefix --outdir [--base --base-is-hillshade --metric --point-size --divide-color --alpha --stem --chart-dpi]` + style |

@@ -140,6 +140,21 @@ def _add_header_lines(fig, lines, extent):
         y -= dy
 
 
+def _downsample_raster_for_display(da, factor: int):
+    """Downsample raster data for faster map rendering.
+
+    Uses block means over ``factor x factor`` cells in raster x/y dimensions.
+    Intended for quick-look PNGs, not analysis.
+    """
+    if factor <= 1:
+        return da
+    x_dim = da.rio.x_dim
+    y_dim = da.rio.y_dim
+    out = da.coarsen({y_dim: factor, x_dim: factor}, boundary="trim").mean()
+    out.attrs = da.attrs.copy()
+    return out
+
+
 def lsdtt3_hillshade_channels_basin(
     dem_path: PathLike,
     workdir: PathLike,
@@ -932,6 +947,7 @@ def hillshade_with_vectors(
     legend: bool = True,
     legend_position: str = "JTR+jTR+o0.2c",
     high_res: bool = False,
+    display_downsample: int = 1,
     fig=None,
 ):
     """Render a hillshade and overlay any number of vector layers.
@@ -970,17 +986,29 @@ def hillshade_with_vectors(
             (useful when a vector tile is larger than the raster).
         legend: draw a legend from the layers that have a ``label``.
         legend_position: GMT legend position string.
+        display_downsample: integer factor for plot-time raster downsampling
+            before rendering (``1`` = full resolution, ``2`` = half resolution
+            in x/y, etc.). Use this to speed up large-area QC maps.
         fig: existing ``pygmt.Figure`` to compose onto (``None`` = new).
 
     Returns:
         The ``pygmt.Figure``.
     """
-    # Optional zoom: crop the base raster (region in its NATIVE CRS) to a temp
-    # GeoTIFF so the hillshade region and the valid-data clip follow the zoom.
-    if region is not None:
+    if display_downsample < 1:
+        raise ValueError("display_downsample must be >= 1")
+
+    # Optional prep: zoom and/or display downsampling. We write a temp raster so
+    # hillshade render and valid-footprint clipping use the same grid.
+    if region is not None or display_downsample > 1:
         import tempfile
-        xmin, xmax, ymin, ymax = region
-        da = load_raster(str(base_raster)).rio.clip_box(xmin, ymin, xmax, ymax)
+
+        da = load_raster(str(base_raster))
+        if region is not None:
+            xmin, xmax, ymin, ymax = region
+            da = da.rio.clip_box(xmin, ymin, xmax, ymax)
+        if display_downsample > 1:
+            da = _downsample_raster_for_display(da, int(display_downsample))
+
         tmp = tempfile.NamedTemporaryFile(suffix=".tif", delete=False)
         da.rio.to_raster(tmp.name)
         base_raster = tmp.name
