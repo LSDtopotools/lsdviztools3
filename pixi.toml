@@ -20,6 +20,8 @@ requests = "*"
 pytest = "*"
 pip = "*"
 proj = ">=9.7.1,<10"
+mkdocs = "*"
+mkdocs-material = "*"
 
 [pypi-dependencies]
 lsdviztools3 = { path = ".", editable = true }
@@ -27,6 +29,8 @@ lsdviztools3 = { path = ".", editable = true }
 [tasks]
 install = "pip install -e ."
 test = "pytest"
+mkdocs-serve = "mkdocs serve"
+mkdocs-build = "mkdocs build"
 
 # Example tasks: download a small island DEM (keyless Planetary Computer) and
 # render shaded relief to PNG (headless). No data is committed.
