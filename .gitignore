@@ -46,6 +46,9 @@ ot_api_key*.txt
 *.pdf
 *.ps
 
+# MkDocs static site output
+site/
+
 # Data (large rasters/vectors are not tracked)
 *.tif
 *.tiff

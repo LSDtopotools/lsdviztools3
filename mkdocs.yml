@@ -1,0 +1,43 @@
+site_name: lsdviztools3
+site_description: PyGMT-based visualisation tools for LSDTopoTools v3 (lsdtt3) output.
+repo_url: https://github.com/LSDtopotools/lsdviztools3
+edit_uri: blob/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+
+nav:
+  - Home: index.md
+  - Usage guide: documentation.md
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+      slugify: !!python/name:docs._slugify.github_slugify
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+
+plugins:
+  - search
+
+exclude_docs: |
+  _slugify.py
+  __pycache__/

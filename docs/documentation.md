@@ -4,7 +4,7 @@ Welcome to lsdviztools3 documention. `lsdviztools3` is an update to `lsdviztools
 
 This documentation includes worked examples for different plot types, with the options each one accepts, shown both as **command-line** invocations (headless PNG output) and as **Python /
 notebook** code. For installation and a one-line quick start, see the
-[README](../README.md). 
+[home page](index.md) or the [README on GitHub](https://github.com/LSDtopotools/lsdviztools3#readme).
 
 Contents:
 
