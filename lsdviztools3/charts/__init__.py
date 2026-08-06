@@ -37,6 +37,12 @@ from .hydraulic_breaks import (
     plot_hydraulic_breaks_downstream, hydraulic_break_clusters,
     plot_hydraulic_break_clusters, plot_cross_section_informed_valley_mask,
 )
+from .landslides import (
+    load_landslide_inventory,
+    plot_landslide_area_volume_larsen,
+    plot_sample_effect_apparent_vs_true,
+    plot_sample_effect_ratio,
+)
 from .rose import rose_diagram
 from .swath import plot_swath
 
@@ -58,6 +64,10 @@ __all__ = [
     "plot_hydraulic_break_clusters",
     "plot_cross_section_informed_valley_mask",
     "plot_distributions", "rose_diagram",
+    "load_landslide_inventory",
+    "plot_landslide_area_volume_larsen",
+    "plot_sample_effect_apparent_vs_true",
+    "plot_sample_effect_ratio",
     "circular_wasserstein", "kuiper_two_sample", "plot_circular_comparison",
     "load_cosmo_table", "plot_cosmo_sweep_panels", "plot_cosmo_sample_residuals",
     "plot_pair_comparison", "plot_head_metric_vs_distance",
