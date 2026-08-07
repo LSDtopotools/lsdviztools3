@@ -25,6 +25,10 @@ from .cross_sections import (
 from .cosmo_comparison import (
     load_cosmo_table, plot_cosmo_sweep_panels, plot_cosmo_sample_residuals,
 )
+from .cosmo_transient import (
+    cosmo_transient_title, load_cosmo_transient_table,
+    plot_cosmo_transient_concentration, plot_cosmo_transient_erate_ratio,
+)
 from .distributions import plot_distributions
 from .divide_migration import (
     aggressor_annotation, plot_head_metric_vs_distance, plot_pair_comparison,
@@ -70,6 +74,8 @@ __all__ = [
     "plot_sample_effect_ratio",
     "circular_wasserstein", "kuiper_two_sample", "plot_circular_comparison",
     "load_cosmo_table", "plot_cosmo_sweep_panels", "plot_cosmo_sample_residuals",
+    "load_cosmo_transient_table", "cosmo_transient_title",
+    "plot_cosmo_transient_concentration", "plot_cosmo_transient_erate_ratio",
     "plot_pair_comparison", "plot_head_metric_vs_distance",
     "aggressor_annotation",
     "plot_profile", "plot_slope_area",

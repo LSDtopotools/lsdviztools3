@@ -52,6 +52,7 @@ lsdviz3-animate = "lsdviztools3.cli.plot_animation:main"
 lsdviz3-lem-pulse = "lsdviztools3.cli.plot_lem_pulse:main"
 lsdviz3-cosmo-compare = "lsdviztools3.cli.plot_cosmo_compare:main"
 lsdviz3-cosmo-published = "lsdviztools3.cli.plot_cosmo_published:main"
+lsdviz3-cosmo-transient = "lsdviztools3.cli.plot_cosmo_transient:main"
 lsdviz3-grabdem = "lsdviztools3.cli.grab_dem:main"
 lsdviz3-lsdtt = "lsdviztools3.cli.run_lsdtt:main"
 

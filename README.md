@@ -170,6 +170,7 @@ absolute path:
 | `lsdviz3-basemap`  | `lsdviztools3.cli.plot_basemap`     |
 | `lsdviz3-cosmo-compare` | `lsdviztools3.cli.plot_cosmo_compare` |
 | `lsdviz3-cosmo-published` | `lsdviztools3.cli.plot_cosmo_published` |
+| `lsdviz3-cosmo-transient` | `lsdviztools3.cli.plot_cosmo_transient` |
 | `lsdviz3-grabdem`  | `lsdviztools3.cli.grab_dem`         |
 | `lsdviz3-lsdtt`    | `lsdviztools3.cli.run_lsdtt`        |
 

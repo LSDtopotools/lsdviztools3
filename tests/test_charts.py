@@ -1090,3 +1090,172 @@ def test_plot_chi_profile_unknown_basin_raises():
 
     with pytest.raises(ValueError, match="basin_index=9"):
         plot_chi_profile(_chi_segments_frame(), basin=9)
+
+
+# --- cosmo transient --------------------------------------------------------
+
+
+def _default_cycle_colours(n):
+    """The first n colours of the active (tab10) property cycle, as RGB."""
+    import matplotlib as mpl
+
+    cycle = mpl.rcParams["axes.prop_cycle"].by_key()["color"]
+    return [mpl.colors.to_rgb(c) for c in cycle[:n]]
+
+
+def _line_colours(ax):
+    import matplotlib as mpl
+
+    return [mpl.colors.to_rgb(line.get_color()) for line in ax.lines]
+
+
+def _cosmo_transient_frame(n=25):
+    t = np.linspace(0.0, 50000.0, n)
+    # Synthetic stand-ins for the lsdtt3-computed columns; the charts only draw.
+    frac = {"Be10": 1.0 - np.exp(-t / 8000.0),
+            "Al26": 1.0 - np.exp(-t / 6000.0),
+            "C14": 1.0 - np.exp(-t / 1500.0)}
+    df = pd.DataFrame({
+        "run_label": ["s5_5x_final0p1"] * n,
+        "production_scaling": 5.0,
+        "erosion_ratio": 5.0,
+        "eff_erate_old_g_cm2_yr": 0.02,
+        "eff_erate_new_g_cm2_yr": 0.1,
+        "time_since_step_yr": t,
+        "app_erate_ratio_C14_Be10": 1.0 + 0.8 * np.exp(-t / 12000.0) * (t / 3000.0),
+        "app_erate_ratio_C14_Al26": 1.0 + 0.5 * np.exp(-t / 12000.0) * (t / 3000.0),
+    })
+    for nuc, f in frac.items():
+        df[f"approach_frac_{nuc}"] = f
+        df[f"norm_conc_{nuc}"] = 1.0 - 0.8 * f
+        df[f"norm_full_{nuc}"] = 1.0 - f
+    return df
+
+
+def test_cosmo_transient_title_exact_mathtext():
+    from lsdviztools3.charts import cosmo_transient_title
+
+    assert cosmo_transient_title(s_t=5, erosion_ratio=5, final_eps=0.1) == (
+        r"$S_t$ = 5, erosion ratio = 5, "
+        r"final $\epsilon$ = 0.1 g cm$^{-2}$yr$^{-1}$"
+    )
+
+
+def test_plot_cosmo_transient_concentration_three_series_and_style():
+    from lsdviztools3.charts import plot_cosmo_transient_concentration
+
+    fig, ax = plot_cosmo_transient_concentration(_cosmo_transient_frame())
+    labels = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert labels == [r"$^{10}Be$", r"$^{26}Al$", r"$^{14}C$"]
+    assert ax.get_xlim() == (0.0, 10000.0)
+    assert ax.get_xlabel() == "Time since step change (yrs)"
+    assert ax.get_ylabel() == "Normalised CRN\nconcentration (dimensionless)"
+    assert fig.get_size_inches().tolist() == [5.0, 3.0]
+    assert all(line.get_linewidth() == 2.0 for line in ax.lines)
+    # Default tab10 cycle taken in series order, colours never set explicitly.
+    assert _line_colours(ax) == _default_cycle_colours(3)
+    # Deliberate deviation from the house convention: no gridlines.
+    assert not any(g.get_visible() for g in ax.xaxis.get_gridlines())
+    assert not any(g.get_visible() for g in ax.yaxis.get_gridlines())
+    assert all(sp.get_visible() for sp in ax.spines.values())
+    assert ax.get_title() == (
+        r"$S_t$ = 5, erosion ratio = 5, "
+        r"final $\epsilon$ = 0.1 g cm$^{-2}$yr$^{-1}$"
+    )
+
+
+def test_plot_cosmo_transient_concentration_defaults_to_approach_frac():
+    from lsdviztools3.charts import plot_cosmo_transient_concentration
+
+    df = _cosmo_transient_frame()
+    fig, ax = plot_cosmo_transient_concentration(df)
+    y = ax.lines[0].get_ydata()
+    # approach_frac_ rises from 0 towards 1 (the other prefixes fall from 1).
+    assert y[0] == pytest.approx(0.0)
+    assert y[-1] > y[0]
+    np.testing.assert_allclose(y, df["approach_frac_Be10"].to_numpy())
+
+
+def test_plot_cosmo_transient_concentration_prefix_is_selectable():
+    from lsdviztools3.charts import plot_cosmo_transient_concentration
+
+    df = _cosmo_transient_frame()
+    fig, ax = plot_cosmo_transient_concentration(df, value_prefix="norm_full_")
+    np.testing.assert_allclose(ax.lines[0].get_ydata(),
+                               df["norm_full_Be10"].to_numpy())
+
+
+def test_plot_cosmo_transient_concentration_adopts_an_axes():
+    import matplotlib.pyplot as plt
+    from lsdviztools3.charts import plot_cosmo_transient_concentration
+
+    fig0, ax0 = plt.subplots(figsize=(4.0, 2.0))
+    fig, ax = plot_cosmo_transient_concentration(_cosmo_transient_frame(), ax=ax0)
+    assert ax is ax0 and fig is fig0
+    assert fig.get_size_inches().tolist() == [4.0, 2.0]
+
+
+def test_plot_cosmo_transient_erate_ratio_two_series():
+    from lsdviztools3.charts import plot_cosmo_transient_erate_ratio
+
+    fig, ax = plot_cosmo_transient_erate_ratio(_cosmo_transient_frame())
+    labels = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert labels == [r"$^{14}C$ to $^{10}Be$", r"$^{14}C$ to $^{26}Al$"]
+    assert ax.get_xlim() == (0.0, 50000.0)
+    assert ax.get_ylabel() == "Ratio of apparent\nerosion rates (dimensionless)"
+    assert _line_colours(ax) == _default_cycle_colours(2)
+    assert ax.get_legend().get_texts()[0].get_fontsize() == 16
+
+
+def test_plot_cosmo_transient_show_title_false():
+    from lsdviztools3.charts import plot_cosmo_transient_erate_ratio
+
+    fig, ax = plot_cosmo_transient_erate_ratio(_cosmo_transient_frame(),
+                                               show_title=False)
+    assert ax.get_title() == ""
+
+
+def test_plot_cosmo_transient_missing_columns_raises():
+    from lsdviztools3.charts import plot_cosmo_transient_concentration
+
+    df = _cosmo_transient_frame().drop(columns=["approach_frac_C14"])
+    with pytest.raises(KeyError, match="approach_frac_C14"):
+        plot_cosmo_transient_concentration(df)
+
+
+def test_plot_cosmo_transient_erate_ratio_missing_columns_raises():
+    from lsdviztools3.charts import plot_cosmo_transient_erate_ratio
+
+    df = _cosmo_transient_frame().drop(columns=["app_erate_ratio_C14_Al26"])
+    with pytest.raises(KeyError, match="app_erate_ratio_C14_Al26"):
+        plot_cosmo_transient_erate_ratio(df)
+
+
+def test_plot_cosmo_transient_all_nan_raises():
+    from lsdviztools3.charts import plot_cosmo_transient_erate_ratio
+
+    df = _cosmo_transient_frame()
+    df["app_erate_ratio_C14_Be10"] = np.nan
+    df["app_erate_ratio_C14_Al26"] = "NotAttempted"
+    with pytest.raises(ValueError, match="No finite apparent erosion-rate"):
+        plot_cosmo_transient_erate_ratio(df)
+
+
+def test_plot_cosmo_transient_mixed_run_labels_raises():
+    from lsdviztools3.charts import plot_cosmo_transient_concentration
+
+    df = pd.concat([_cosmo_transient_frame(), _cosmo_transient_frame()],
+                   ignore_index=True)
+    df.loc[df.index[-5:], "run_label"] = "s12_10x_final0p2"
+    with pytest.raises(ValueError, match="single run_label"):
+        plot_cosmo_transient_concentration(df)
+
+
+def test_load_cosmo_transient_table_roundtrip(tmp_path):
+    from lsdviztools3.charts import load_cosmo_transient_table
+
+    csv = tmp_path / "cosmo_transient_sweep_s5_5x_final0p1.csv"
+    _cosmo_transient_frame().to_csv(csv, index=False)
+    df = load_cosmo_transient_table(csv)
+    assert "approach_frac_Be10" in df.columns
+    assert len(df) == 25

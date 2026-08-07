@@ -1489,6 +1489,89 @@ def render_cosmo_comparison_figures(
     return out
 
 
+def render_cosmo_transient_figures(
+    sweep_csvs: Union[PathLike, Sequence[PathLike]],
+    out_dir: PathLike,
+    *,
+    value_prefix: str = "approach_frac_",
+    families: Sequence[str] = ("concentration", "erate_ratio"),
+    concentration_xlim: tuple = (0.0, 10000.0),
+    erate_ratio_xlim: tuple = (0.0, 50000.0),
+    show_title: bool = True,
+    dpi: int = 400,
+) -> dict:
+    """Render the transient (step-change) cosmogenic figure families.
+
+    One PNG per family per sweep CSV. At the default ``figsize=(5.0, 3.0)``
+    and ``dpi=400`` these come out at 2000x1200 px, matching the published
+    figure family.
+
+    Args:
+        sweep_csvs: One path, or a sequence of paths, to
+            ``cosmo_transient_sweep_<label>.csv`` files. Each is plotted
+            separately (one ``run_label`` per figure).
+        out_dir: Output directory for figure PNGs (created if absent).
+        value_prefix: Family A normalisation column prefix; see
+            :data:`lsdviztools3.charts.cosmo_transient.CONCENTRATION_PREFIXES`.
+        families: Which families to render: ``"concentration"`` (A) and/or
+            ``"erate_ratio"`` (B).
+        concentration_xlim: Hard x limits for Family A, in years.
+        erate_ratio_xlim: Hard x limits for Family B, in years.
+        show_title: Draw the standard metadata title on each figure.
+        dpi: PNG output dpi (400 gives the 2000x1200 px target).
+
+    Returns:
+        Dict of ``"<stem>_<family>" -> Path`` for every figure written.
+    """
+    from .charts import (
+        load_cosmo_transient_table,
+        plot_cosmo_transient_concentration,
+        plot_cosmo_transient_erate_ratio,
+    )
+
+    known = {"concentration", "erate_ratio"}
+    unknown = set(families) - known
+    if unknown:
+        raise ValueError(f"Unknown figure families: {sorted(unknown)}")
+    if not families:
+        raise ValueError("No figure families requested.")
+
+    if isinstance(sweep_csvs, (str, Path)):
+        sweep_csvs = [sweep_csvs]
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    written: dict = {}
+    for csv_path in sweep_csvs:
+        csv_path = Path(csv_path)
+        df = load_cosmo_transient_table(csv_path)
+        stem = csv_path.stem
+
+        if "concentration" in families:
+            fig, _ = plot_cosmo_transient_concentration(
+                df,
+                value_prefix=value_prefix,
+                xlim=concentration_xlim,
+                show_title=show_title,
+            )
+            png = out_dir / f"{stem}_norm_conc.png"
+            fig.savefig(str(png), dpi=dpi)
+            written[f"{stem}_concentration"] = png
+
+        if "erate_ratio" in families:
+            fig, _ = plot_cosmo_transient_erate_ratio(
+                df,
+                xlim=erate_ratio_xlim,
+                show_title=show_title,
+            )
+            png = out_dir / f"{stem}_app_erate_ratio.png"
+            fig.savefig(str(png), dpi=dpi)
+            written[f"{stem}_erate_ratio"] = png
+
+    return written
+
+
 def render_cosmo_published_residuals(
     published_dir: PathLike,
     out_dir: PathLike,
