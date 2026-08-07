@@ -229,6 +229,12 @@ def plot_cosmo_transient_concentration(
     ax.legend(fontsize=_LEGEND_SIZE, loc="best")
     if show_title:
         ax.set_title(title if title is not None else _title_from_metadata(df))
+    # Required, not cosmetic: the oversized labels do not fit the default axes
+    # rect at figsize (5, 3) and are clipped without it. tight_layout adjusts
+    # the axes WITHIN the figure, so the saved pixel size is unchanged --
+    # unlike bbox_inches="tight", which would grow the canvas past 2000x1200.
+    if ax.figure is fig:
+        fig.tight_layout()
     return fig, ax
 
 
@@ -293,4 +299,8 @@ def plot_cosmo_transient_erate_ratio(
     ax.legend(fontsize=_LEGEND_SIZE, loc="best")
     if show_title:
         ax.set_title(title if title is not None else _title_from_metadata(df))
+    # See the note in plot_cosmo_transient_concentration: without this the
+    # two-line y label and the x label are clipped at figsize (5, 3).
+    if ax.figure is fig:
+        fig.tight_layout()
     return fig, ax
