@@ -1572,6 +1572,81 @@ def render_cosmo_transient_figures(
     return written
 
 
+def render_cosmo_transient_spatial_figures(
+    joined_csvs: Union[PathLike, Sequence[PathLike]],
+    out_dir: PathLike,
+    *,
+    ratio_cols: Sequence[str] = ("app_erate_ratio_C14_Be10",),
+    families: Sequence[str] = ("vs_steptime", "vs_mean_erate"),
+    cmap: str = "jet",
+    dpi: int = 320,
+) -> dict:
+    """Render the per-sample transient cosmogenic scatter families.
+
+    One PNG per family per ratio column per joined CSV. At the default
+    ``figsize=(10.0, 5.0)`` and ``dpi=320`` these come out at 3200x1600 px,
+    matching the published figure family.
+
+    Args:
+        joined_csvs: One path, or a sequence of paths, to
+            ``<stem>_joined_samples.csv`` files. Each is plotted separately.
+        out_dir: Output directory for figure PNGs (created if absent).
+        ratio_cols: Which apparent-rate ratio columns to draw; see
+            :data:`lsdviztools3.charts.cosmo_transient_spatial.RATIO_LABELS`.
+        families: Which families to render: ``"vs_steptime"`` (B) and/or
+            ``"vs_mean_erate"`` (C).
+        cmap: Colour map for the colour/size encoding.
+        dpi: PNG output dpi (320 gives the 3200x1600 px target).
+
+    Returns:
+        Dict of ``"<stem>_<ratio>_<family>" -> Path`` for every figure written.
+    """
+    from .charts import (
+        load_joined_samples,
+        plot_ratio_vs_mean_erate,
+        plot_ratio_vs_steptime,
+    )
+
+    known = {"vs_steptime", "vs_mean_erate"}
+    unknown = set(families) - known
+    if unknown:
+        raise ValueError(f"Unknown figure families: {sorted(unknown)}")
+    if not families:
+        raise ValueError("No figure families requested.")
+    if not ratio_cols:
+        raise ValueError("No ratio columns requested.")
+
+    if isinstance(joined_csvs, (str, Path)):
+        joined_csvs = [joined_csvs]
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # The ratio column name is long and repeats the whole prefix; the figure
+    # filenames use just the nuclide pair so they stay readable.
+    def _short(col: str) -> str:
+        return col.replace("app_erate_ratio_", "")
+
+    plotters = {
+        "vs_steptime": plot_ratio_vs_steptime,
+        "vs_mean_erate": plot_ratio_vs_mean_erate,
+    }
+
+    written: dict = {}
+    for csv_path in joined_csvs:
+        csv_path = Path(csv_path)
+        df = load_joined_samples(csv_path)
+        stem = csv_path.stem
+        for ratio_col in ratio_cols:
+            for family in families:
+                fig, _ = plotters[family](df, ratio_col=ratio_col, cmap=cmap)
+                png = out_dir / f"{stem}_{_short(ratio_col)}_{family}.png"
+                fig.savefig(str(png), dpi=dpi)
+                written[f"{stem}_{_short(ratio_col)}_{family}"] = png
+
+    return written
+
+
 def render_cosmo_published_residuals(
     published_dir: PathLike,
     out_dir: PathLike,

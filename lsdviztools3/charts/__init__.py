@@ -29,6 +29,9 @@ from .cosmo_transient import (
     cosmo_transient_title, load_cosmo_transient_table,
     plot_cosmo_transient_concentration, plot_cosmo_transient_erate_ratio,
 )
+from .cosmo_transient_spatial import (
+    load_joined_samples, plot_ratio_vs_mean_erate, plot_ratio_vs_steptime,
+)
 from .distributions import plot_distributions
 from .divide_migration import (
     aggressor_annotation, plot_head_metric_vs_distance, plot_pair_comparison,
@@ -76,6 +79,7 @@ __all__ = [
     "load_cosmo_table", "plot_cosmo_sweep_panels", "plot_cosmo_sample_residuals",
     "load_cosmo_transient_table", "cosmo_transient_title",
     "plot_cosmo_transient_concentration", "plot_cosmo_transient_erate_ratio",
+    "load_joined_samples", "plot_ratio_vs_steptime", "plot_ratio_vs_mean_erate",
     "plot_pair_comparison", "plot_head_metric_vs_distance",
     "aggressor_annotation",
     "plot_profile", "plot_slope_area",

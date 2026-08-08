@@ -1259,3 +1259,102 @@ def test_load_cosmo_transient_table_roundtrip(tmp_path):
     df = load_cosmo_transient_table(csv)
     assert "approach_frac_Be10" in df.columns
     assert len(df) == 25
+
+
+# ---------------------------------------------------------------------------
+# Spatial (per-sample) transient cosmogenic scatter charts
+# ---------------------------------------------------------------------------
+
+def _joined_samples_frame(n=30):
+    """A joined sample table with every column the spatial charts need."""
+    rng = np.random.default_rng(11)
+    steptime_yr = np.linspace(0.0, 500000.0, n)
+    return pd.DataFrame({
+        "latitude": np.linspace(25.1, 25.3, n),
+        "longitude": np.linspace(92.0, 92.2, n),
+        "sc_steptime_yr": steptime_yr,
+        "sc_steptime_kyr": steptime_yr / 1000.0,
+        "upstream_mean_eff_erate_g_cm2_yr": np.linspace(0.0265, 0.13, n),
+        "upstream_mean_erate_mm_yr": np.linspace(0.1, 0.49, n),
+        "app_erate_ratio_C14_Be10": 1.0 + 0.3 * rng.random(n),
+        "app_erate_ratio_C14_Al26": 1.0 + 0.2 * rng.random(n),
+    })
+
+
+def test_plot_ratio_vs_steptime_encodes_erate_as_colour_and_size():
+    from lsdviztools3.charts import plot_ratio_vs_steptime
+    import matplotlib.pyplot as plt
+
+    df = _joined_samples_frame()
+    fig, ax = plot_ratio_vs_steptime(df)
+    try:
+        coll = ax.collections[0]
+        # Colour and size must both track the true erosion rate -- size is
+        # redundant with colour by design, so a flat size array is a bug.
+        assert np.allclose(coll.get_array(),
+                           df["upstream_mean_erate_mm_yr"].to_numpy())
+        sizes = coll.get_sizes()
+        assert sizes.size == len(df)
+        assert sizes.max() > sizes.min()
+        assert "knickpoint" in ax.get_xlabel()
+        assert "^{14}C" in ax.get_ylabel()
+    finally:
+        plt.close(fig)
+
+
+def test_plot_ratio_vs_mean_erate_uses_kyr_for_colour():
+    from lsdviztools3.charts import plot_ratio_vs_mean_erate
+    import matplotlib.pyplot as plt
+
+    df = _joined_samples_frame()
+    fig, ax = plot_ratio_vs_mean_erate(df)
+    try:
+        coll = ax.collections[0]
+        assert np.allclose(coll.get_array(), df["sc_steptime_kyr"].to_numpy())
+        assert np.allclose(coll.get_offsets()[:, 0],
+                           df["upstream_mean_erate_mm_yr"].to_numpy())
+        assert "Average upstream erosion" in ax.get_xlabel()
+    finally:
+        plt.close(fig)
+
+
+def test_spatial_charts_drop_only_non_finite_rows():
+    from lsdviztools3.charts import plot_ratio_vs_steptime
+    import matplotlib.pyplot as plt
+
+    df = _joined_samples_frame()
+    df.loc[df.index[3], "app_erate_ratio_C14_Be10"] = np.nan
+    df.loc[df.index[7], "upstream_mean_erate_mm_yr"] = np.nan
+    fig, ax = plot_ratio_vs_steptime(df)
+    try:
+        # A row missing any encoded value cannot be drawn faithfully; it is
+        # dropped rather than given an invented colour or size.
+        assert ax.collections[0].get_offsets().shape[0] == len(df) - 2
+    finally:
+        plt.close(fig)
+
+
+def test_spatial_charts_reject_unknown_ratio_column():
+    from lsdviztools3.charts import plot_ratio_vs_steptime
+
+    with pytest.raises(KeyError, match="Unknown ratio column"):
+        plot_ratio_vs_steptime(_joined_samples_frame(),
+                               ratio_col="app_erate_ratio_Be10_C14")
+
+
+def test_spatial_charts_report_missing_columns():
+    from lsdviztools3.charts import plot_ratio_vs_mean_erate
+
+    df = _joined_samples_frame().drop(columns=["sc_steptime_kyr"])
+    with pytest.raises(KeyError, match="sc_steptime_kyr"):
+        plot_ratio_vs_mean_erate(df)
+
+
+def test_load_joined_samples_roundtrip(tmp_path):
+    from lsdviztools3.charts import load_joined_samples
+
+    csv = tmp_path / "mega_sc5x_joined_samples.csv"
+    _joined_samples_frame().to_csv(csv, index=False)
+    df = load_joined_samples(csv)
+    assert "app_erate_ratio_C14_Be10" in df.columns
+    assert len(df) == 30
