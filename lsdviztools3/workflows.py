@@ -8,7 +8,7 @@ a plain function call you could also run yourself.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Sequence, Union
+from typing import Mapping, Optional, Sequence, Union
 
 import numpy as np
 from rasterio.features import shapes
@@ -1578,6 +1578,7 @@ def render_cosmo_transient_spatial_figures(
     *,
     ratio_cols: Sequence[str] = ("app_erate_ratio_C14_Be10",),
     families: Sequence[str] = ("vs_steptime", "vs_mean_erate"),
+    overlay_sweeps: Optional[Mapping[str, Sequence[tuple]]] = None,
     cmap: str = "jet",
     dpi: int = 320,
 ) -> dict:
@@ -1593,8 +1594,15 @@ def render_cosmo_transient_spatial_figures(
         out_dir: Output directory for figure PNGs (created if absent).
         ratio_cols: Which apparent-rate ratio columns to draw; see
             :data:`lsdviztools3.charts.cosmo_transient_spatial.RATIO_LABELS`.
-        families: Which families to render: ``"vs_steptime"`` (B) and/or
-            ``"vs_mean_erate"`` (C).
+        families: Which families to render: ``"vs_steptime"`` (B),
+            ``"vs_mean_erate"`` (C) and/or ``"overlay_1d"`` (D).
+        overlay_sweeps: Required when ``"overlay_1d"`` is in ``families``.
+            Maps a joined CSV's **stem** to a sequence of
+            ``(curve_label, sweep_csv_path)`` pairs to draw over that run's
+            samples. Keyed per stem rather than shared, because the sweep that
+            matches one run's erosion rates does not match another's; a stem
+            with no entry raises rather than silently rendering a bare scatter
+            that looks like an overlay.
         cmap: Colour map for the colour/size encoding.
         dpi: PNG output dpi (320 gives the 3200x1600 px target).
 
@@ -1602,12 +1610,14 @@ def render_cosmo_transient_spatial_figures(
         Dict of ``"<stem>_<ratio>_<family>" -> Path`` for every figure written.
     """
     from .charts import (
+        load_cosmo_transient_table,
         load_joined_samples,
+        plot_ratio_overlay_1d,
         plot_ratio_vs_mean_erate,
         plot_ratio_vs_steptime,
     )
 
-    known = {"vs_steptime", "vs_mean_erate"}
+    known = {"vs_steptime", "vs_mean_erate", "overlay_1d"}
     unknown = set(families) - known
     if unknown:
         raise ValueError(f"Unknown figure families: {sorted(unknown)}")
@@ -1615,6 +1625,11 @@ def render_cosmo_transient_spatial_figures(
         raise ValueError("No figure families requested.")
     if not ratio_cols:
         raise ValueError("No ratio columns requested.")
+    if "overlay_1d" in families and not overlay_sweeps:
+        raise ValueError(
+            "families includes 'overlay_1d' but overlay_sweeps is empty; "
+            "there would be no 1-D curve to overlay."
+        )
 
     if isinstance(joined_csvs, (str, Path)):
         joined_csvs = [joined_csvs]
@@ -1637,9 +1652,33 @@ def render_cosmo_transient_spatial_figures(
         csv_path = Path(csv_path)
         df = load_joined_samples(csv_path)
         stem = csv_path.stem
+
+        # Loaded once per joined CSV rather than once per ratio column: the
+        # sweep tables are large and carry every ratio already.
+        sweeps: list = []
+        if "overlay_1d" in families:
+            entries = (overlay_sweeps or {}).get(stem)
+            if not entries:
+                raise KeyError(
+                    f"No overlay_sweeps entry for '{stem}'. Every joined CSV "
+                    "needs its own matched sweep; give one, or drop "
+                    "'overlay_1d' from families."
+                )
+            sweeps = [
+                (label, load_cosmo_transient_table(Path(p)))
+                for label, p in entries
+            ]
+
         for ratio_col in ratio_cols:
             for family in families:
-                fig, _ = plotters[family](df, ratio_col=ratio_col, cmap=cmap)
+                if family == "overlay_1d":
+                    fig, _ = plot_ratio_overlay_1d(
+                        df, sweeps, ratio_col=ratio_col, cmap=cmap,
+                    )
+                else:
+                    fig, _ = plotters[family](
+                        df, ratio_col=ratio_col, cmap=cmap,
+                    )
                 png = out_dir / f"{stem}_{_short(ratio_col)}_{family}.png"
                 fig.savefig(str(png), dpi=dpi)
                 written[f"{stem}_{_short(ratio_col)}_{family}"] = png

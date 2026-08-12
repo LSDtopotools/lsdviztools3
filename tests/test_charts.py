@@ -1358,3 +1358,122 @@ def test_load_joined_samples_roundtrip(tmp_path):
     df = load_joined_samples(csv)
     assert "app_erate_ratio_C14_Be10" in df.columns
     assert len(df) == 30
+
+
+# ---------------------------------------------------------------------------
+# Family D: spatial samples overlaid with the 1-D column sweep
+# ---------------------------------------------------------------------------
+
+def _sweep_frame(n=200):
+    """A 1-D step-change sweep table, in the column tool's own schema."""
+    t = np.linspace(0.0, 500000.0, n)
+    # Shape is irrelevant to these tests; only the columns and ordering are.
+    return pd.DataFrame({
+        "run_label": ["matched_5x"] * n,
+        "time_since_step_yr": t,
+        "app_erate_ratio_C14_Be10": 1.0 + 0.5 * np.exp(-t / 20000.0),
+        "app_erate_ratio_C14_Al26": 1.0 + 0.4 * np.exp(-t / 20000.0),
+    })
+
+
+def test_overlay_draws_samples_and_sweep_on_one_axes():
+    from lsdviztools3.charts import plot_ratio_overlay_1d
+    import matplotlib.pyplot as plt
+
+    df = _joined_samples_frame()
+    sweep = _sweep_frame()
+    fig, ax = plot_ratio_overlay_1d(df, [("matched", sweep)])
+    try:
+        # The samples keep Family B's encoding ...
+        coll = ax.collections[0]
+        assert np.allclose(coll.get_array(),
+                           df["upstream_mean_erate_mm_yr"].to_numpy())
+        # ... and the sweep is a line, not a second scatter.
+        assert len(ax.lines) == 1
+        xs, ys = ax.lines[0].get_xdata(), ax.lines[0].get_ydata()
+        assert np.allclose(xs, sweep["time_since_step_yr"].to_numpy())
+        assert np.allclose(ys, sweep["app_erate_ratio_C14_Be10"].to_numpy())
+    finally:
+        plt.close(fig)
+
+
+def test_overlay_reads_the_same_ratio_from_both_tables():
+    """Crossing the nuclide pairs between scatter and curve would be silent."""
+    from lsdviztools3.charts import plot_ratio_overlay_1d
+    import matplotlib.pyplot as plt
+
+    df = _joined_samples_frame()
+    sweep = _sweep_frame()
+    fig, ax = plot_ratio_overlay_1d(
+        df, [("matched", sweep)], ratio_col="app_erate_ratio_C14_Al26",
+    )
+    try:
+        assert np.allclose(ax.collections[0].get_offsets()[:, 1],
+                           df["app_erate_ratio_C14_Al26"].to_numpy())
+        assert np.allclose(ax.lines[0].get_ydata(),
+                           sweep["app_erate_ratio_C14_Al26"].to_numpy())
+    finally:
+        plt.close(fig)
+
+
+def test_overlay_keeps_the_t_zero_anchor_samples():
+    """The t = 0 anchors are the experiment's strongest check; a log x axis
+    would drop them silently, so symlog must draw every one."""
+    from lsdviztools3.charts import plot_ratio_overlay_1d
+    import matplotlib.pyplot as plt
+
+    df = _joined_samples_frame()
+    assert (df["sc_steptime_yr"] == 0.0).sum() >= 1
+    fig, ax = plot_ratio_overlay_1d(df, [("matched", _sweep_frame())])
+    try:
+        assert ax.get_xscale() == "symlog"
+        assert ax.collections[0].get_offsets().shape[0] == len(df)
+    finally:
+        plt.close(fig)
+
+
+def test_overlay_refuses_a_log_x_axis():
+    from lsdviztools3.charts import plot_ratio_overlay_1d
+
+    with pytest.raises(ValueError, match="anchor"):
+        plot_ratio_overlay_1d(
+            _joined_samples_frame(), [("matched", _sweep_frame())],
+            xscale="log",
+        )
+
+
+def test_overlay_sweeps_take_distinct_styles():
+    from lsdviztools3.charts import plot_ratio_overlay_1d
+    import matplotlib.pyplot as plt
+
+    sweeps = [("a", _sweep_frame()), ("b", _sweep_frame()),
+              ("c", _sweep_frame())]
+    fig, ax = plot_ratio_overlay_1d(_joined_samples_frame(), sweeps)
+    try:
+        assert len(ax.lines) == 3
+        styles = {(ln.get_color(), ln.get_linestyle()) for ln in ax.lines}
+        assert len(styles) == 3
+    finally:
+        plt.close(fig)
+
+
+def test_overlay_reports_a_sweep_missing_its_columns():
+    from lsdviztools3.charts import plot_ratio_overlay_1d
+
+    bad = _sweep_frame().drop(columns=["time_since_step_yr"])
+    with pytest.raises(KeyError, match="time_since_step_yr"):
+        plot_ratio_overlay_1d(_joined_samples_frame(), [("bad", bad)])
+
+
+def test_overlay_legend_headroom_clears_the_curve_peak():
+    from lsdviztools3.charts import plot_ratio_overlay_1d
+    import matplotlib.pyplot as plt
+
+    sweep = _sweep_frame()
+    fig, ax = plot_ratio_overlay_1d(_joined_samples_frame(),
+                                    [("matched", sweep)])
+    try:
+        # Headroom is added above the data, so nothing drawn is clipped.
+        assert ax.get_ylim()[1] > sweep["app_erate_ratio_C14_Be10"].max()
+    finally:
+        plt.close(fig)

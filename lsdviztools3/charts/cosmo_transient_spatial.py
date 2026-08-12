@@ -9,6 +9,9 @@ concentration:
   (:func:`plot_ratio_vs_steptime`).
 * **Family C** — the same ratio against that true mean erosion rate, coloured
   and sized by time since the step (:func:`plot_ratio_vs_mean_erate`).
+* **Family D** — Family B with the equivalent 1-D column sweep drawn over it,
+  so the routed landscape and the analytical column can be read against each
+  other (:func:`plot_ratio_overlay_1d`).
 
 Every point is one detrital sample. Both the concentration behind the apparent
 rate and the erosion rate it is compared against are basin averages, because
@@ -49,6 +52,11 @@ _STEPTIME_YR_COL = "sc_steptime_yr"
 _STEPTIME_KYR_COL = "sc_steptime_kyr"
 _MEAN_ERATE_COL = "upstream_mean_erate_mm_yr"
 
+#: Time column in a ``lsdtt-cosmo-column-tool`` step-change sweep table. It is
+#: the same physical quantity as :data:`_STEPTIME_YR_COL` -- years since the
+#: step arrived -- which is what makes the overlay a legitimate comparison.
+_SWEEP_TIME_COL = "time_since_step_yr"
+
 _STEPTIME_LABEL = "Time since passage of knickpoint (yrs)"
 _MEAN_ERATE_LABEL = "Average upstream erosion (mm/yr)"
 _MEAN_ERATE_CBAR = "Average upstream erosion rate (mm/yr)"
@@ -66,6 +74,30 @@ _SIZE_MAX = 190.0
 #: encode a variable that is ALSO shown by marker size, so hue only has to
 #: separate neighbouring points rather than carry the reading on its own.
 _DEFAULT_CMAP = "jet"
+
+#: Line styles cycled by the 1-D sweep curves in the overlay, in draw order.
+#: Neutral greys and dash patterns, never colours: the scatter beneath already
+#: owns the colour channel, so a coloured curve would read as a data value.
+_SWEEP_STYLES = (
+    ("black", "-"),
+    ("0.35", "--"),
+    ("0.55", "-."),
+    ("0.70", ":"),
+)
+
+#: Default symlog linear threshold (yr) for the overlay x axis. Below it the
+#: axis is linear, so samples at exactly t = 0 -- the anchor population, whose
+#: ratio of 1.0 is the strongest check in the experiment -- are drawn rather
+#: than silently dropped as a log axis would drop them.
+#:
+#: 100 rather than a rounder 1000: matplotlib still lays decade ticks inside
+#: the linear region, so a wider threshold crushes the 0 and 10^2 labels into
+#: each other at the origin.
+_OVERLAY_LINTHRESH = 100.0
+
+#: Fraction of the y range added above the data to seat an upper-corner legend
+#: clear of the curve peak. Purely axes headroom -- no drawn value moves.
+_LEGEND_HEADROOM_FRAC = 0.16
 
 
 def _import_mpl():
@@ -292,4 +324,139 @@ def plot_ratio_vs_mean_erate(
         show_colorbar=show_colorbar, figsize=figsize, ax=ax,
         edgecolor=edgecolor, linewidth=linewidth,
     )
+    return fig, ax
+
+
+def plot_ratio_overlay_1d(
+    df: pd.DataFrame,
+    sweeps: Sequence[Tuple[str, pd.DataFrame]],
+    *,
+    ratio_col: str = "app_erate_ratio_C14_Be10",
+    xscale: str = "symlog",
+    linthresh: float = _OVERLAY_LINTHRESH,
+    figsize: Tuple[float, float] = (10.0, 5.0),
+    cmap: str = _DEFAULT_CMAP,
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
+    show_colorbar: bool = True,
+    sweep_linewidth: float = 2.0,
+    show_legend: bool = True,
+    legend_loc: str = "upper left",
+    ax=None,
+):
+    """Family D: the spatial samples with the 1-D column sweep drawn over them.
+
+    Both halves of the step-change experiment predict the same thing -- how the
+    apparent erosion-rate ratio evolves after the step -- by wholly different
+    routes: one routes an 821 km2 landscape and averages each sample's basin,
+    the other advances a single analytical column. Drawing them on one axis is
+    the check that neither is wrong, because the x variable is the same
+    physical quantity in both (``sc_steptime_yr`` for the samples,
+    ``time_since_step_yr`` for the sweep).
+
+    **They are not expected to coincide, and the disagreement is the point.**
+    A detrital sample averages a whole basin, and every pixel upstream of the
+    sample was reached by the knickpoint *later* than the sample itself was --
+    many not at all. So a sample plotted at its own step time carries a mixture
+    whose transient is younger than that abscissa suggests, and the scatter
+    sits to the right of, and below, the column curve. A scatter falling to the
+    *left* of the curve, or an anchor sample away from 1.0, would be the
+    finding worth chasing.
+
+    Args:
+        df: One joined sample table, as for :func:`plot_ratio_vs_steptime`.
+        sweeps: Sequence of ``(label, sweep_df)`` pairs, each a
+            ``lsdtt-cosmo-column-tool`` step-change sweep table carrying
+            ``time_since_step_yr`` and ``ratio_col``. Drawn in order with
+            :data:`_SWEEP_STYLES`. The label is the caller's to write: this
+            function cannot know whether a given sweep's erosion rates and
+            production scaling actually match the spatial run, so it does not
+            imply a match that may not hold.
+        ratio_col: Which apparent-rate ratio to draw. The **same** column is
+            read from the samples and from every sweep, so the two can never be
+            crossed. See :data:`RATIO_LABELS`.
+        xscale: ``"symlog"`` (default) or ``"linear"``. Symlog resolves both
+            the column's rise over the first few thousand years and the
+            samples' full range out to ~500 kyr, and unlike a log axis it can
+            draw the ``t = 0`` anchor samples. A plain log scale is refused
+            rather than offered, because it would drop those samples silently.
+        linthresh: Symlog linear-region half-width in years; ignored when
+            ``xscale="linear"``.
+        figsize: Figure size, used only when creating a new figure.
+        cmap: Colour map for the samples' erosion-rate encoding.
+        vmin: Lower colour limit, or ``None`` to autoscale.
+        vmax: Upper colour limit, or ``None`` to autoscale.
+        show_colorbar: Draw the colourbar for the sample encoding.
+        sweep_linewidth: Line width for the sweep curves.
+        show_legend: Draw a legend naming the sweep curves.
+        legend_loc: Legend position. Defaults to ``"upper left"`` rather than
+            ``"best"``: the upper left is the one corner this figure is always
+            empty in (the column curve is still near 1.0 at small t, and the
+            samples sit far to the right), whereas ``"best"`` scores the dense
+            sample cloud as free space and lands on top of it.
+        ax: Existing matplotlib ``Axes`` or ``None`` for a new one.
+
+    Raises:
+        KeyError: If ``ratio_col`` is unknown, or a sweep lacks the columns.
+        ValueError: If ``xscale`` is not ``"symlog"`` or ``"linear"``, or if a
+            sweep contributes no finite points.
+
+    Returns:
+        ``(fig, ax)``. This function never saves -- see
+        :func:`lsdviztools3.workflows.render_cosmo_transient_spatial_figures`.
+    """
+    if ratio_col not in RATIO_LABELS:
+        raise KeyError(
+            f"Unknown ratio column '{ratio_col}'. "
+            f"Expected one of {sorted(RATIO_LABELS)}."
+        )
+    if xscale not in ("symlog", "linear"):
+        raise ValueError(
+            f"xscale must be 'symlog' or 'linear', not {xscale!r}. A log axis "
+            "is deliberately not offered: it would silently drop the t = 0 "
+            "anchor samples."
+        )
+
+    fig, ax, _ = _scatter(
+        df,
+        x_col=_STEPTIME_YR_COL, y_col=ratio_col, c_col=_MEAN_ERATE_COL,
+        xlabel=_STEPTIME_LABEL, ylabel=RATIO_LABELS[ratio_col],
+        cbar_label=_MEAN_ERATE_CBAR, cmap=cmap, vmin=vmin, vmax=vmax,
+        show_colorbar=show_colorbar, figsize=figsize, ax=ax,
+        edgecolor="none", linewidth=0.0,
+    )
+
+    for i, (label, sweep_df) in enumerate(sweeps):
+        _require_columns(sweep_df, (_SWEEP_TIME_COL, ratio_col))
+        x = pd.to_numeric(sweep_df[_SWEEP_TIME_COL], errors="coerce")
+        y = pd.to_numeric(sweep_df[ratio_col], errors="coerce")
+        keep = np.isfinite(x) & np.isfinite(y)
+        if not keep.any():
+            raise ValueError(
+                f"Sweep '{label}' has no finite '{_SWEEP_TIME_COL}' / "
+                f"'{ratio_col}' pairs to draw."
+            )
+        x = x[keep].to_numpy(dtype=float)
+        y = y[keep].to_numpy(dtype=float)
+        order = np.argsort(x, kind="stable")
+        colour, style = _SWEEP_STYLES[i % len(_SWEEP_STYLES)]
+        # zorder above the default scatter zorder (1) so the curve stays
+        # readable where the sample cloud is dense.
+        ax.plot(
+            x[order], y[order], color=colour, linestyle=style,
+            linewidth=sweep_linewidth, label=label, zorder=3,
+        )
+
+    if xscale == "symlog":
+        ax.set_xscale("symlog", linthresh=linthresh)
+    if show_legend and len(sweeps):
+        if legend_loc.startswith("upper"):
+            # The column curve peaks near the top of the axes and the legend
+            # box would sit on that peak -- which is the figure's headline
+            # number. Reserving a band above the data moves the box off it
+            # without moving any drawn value.
+            lo, hi = ax.get_ylim()
+            ax.set_ylim(lo, hi + _LEGEND_HEADROOM_FRAC * (hi - lo))
+        ax.legend(fontsize=_CBAR_LABEL_SIZE, loc=legend_loc)
+
     return fig, ax
