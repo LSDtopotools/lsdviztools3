@@ -238,6 +238,137 @@ def plot_cosmo_transient_concentration(
     return fig, ax
 
 
+def plot_nuclide_removal_response(
+    retention: pd.DataFrame,
+    sensitivity: pd.DataFrame,
+    net: pd.DataFrame,
+    *,
+    reference_depth: Optional[float] = None,
+    reference_eps: Optional[float] = None,
+    figsize: Tuple[float, float] = (14.0, 4.4),
+    linewidth: float = 2.0,
+    axes=None,
+):
+    """Why stripping a surface moves the apparent 14C/10Be ratio: three panels.
+
+    Explains a result that is counter-intuitive on its own, by separating the
+    two nuclide-specific effects that fight each other when a landslide removes
+    the top of a cosmogenic profile:
+
+    * **Panel A — retention.** ``C(d)/C(0)`` against removal depth. 14C is
+      muon-rich, so relatively more of its inventory sits deep and it loses
+      LESS than 10Be. Read alone, this predicts the transient signal is DAMPED.
+    * **Panel B — inversion sensitivity.** ``|dlnE/dlnC|`` against erosion rate.
+      A given fractional concentration change moves 14C's apparent erosion rate
+      much further, because its steady-state concentration carries a
+      ``Gamma_j*lambda`` term comparable to ``eps`` — largest on the muon
+      pathways. Read alone, this predicts AMPLIFICATION.
+    * **Panel C — net.** The two combined: ``dE/E`` per nuclide against removal
+      depth. Whichever curve is on top decides the sign.
+
+    The panels are deliberately in that order: the intuitive effect first, the
+    one that actually wins last.
+
+    Args:
+        retention: Long-form table with ``depth_g_cm2``, ``nuclide``,
+            ``retention``.
+        sensitivity: Long-form table with ``eps_g_cm2_yr``, ``nuclide``,
+            ``sensitivity_dlnE_dlnC``.
+        net: Long-form table with ``depth_g_cm2``, ``nuclide``, ``dE_over_E``.
+        reference_depth: If given, mark this removal depth in panels A and C.
+            Use the experiment's actual scar depth so the figure says what
+            happened rather than only what could.
+        reference_eps: If given, mark this erosion rate in panel B.
+        figsize: Figure size, used only when creating new axes.
+        linewidth: Series line width.
+        axes: Sequence of three existing ``Axes``, or ``None`` for a new figure.
+
+    Returns:
+        ``(fig, axes)``. Never saves.
+
+    Note:
+        Every value plotted is read from the input tables, which are produced by
+        ``lsdtt-cosmo-column-tool``. Nothing is computed here.
+    """
+    plt = _import_mpl()
+
+    _require_columns(retention, ("depth_g_cm2", "nuclide", "retention"))
+    _require_columns(sensitivity,
+                     ("eps_g_cm2_yr", "nuclide", "sensitivity_dlnE_dlnC"))
+    _require_columns(net, ("depth_g_cm2", "nuclide", "dE_over_E"))
+
+    if axes is None:
+        fig, axes = plt.subplots(1, 3, figsize=figsize, layout="constrained")
+    else:
+        fig = axes[0].figure
+
+    def series(df, xcol, ycol, ax, nuc, label):
+        sub = df[df["nuclide"] == nuc]
+        x = pd.to_numeric(sub[xcol], errors="coerce").to_numpy(float)
+        y = pd.to_numeric(sub[ycol], errors="coerce").to_numpy(float)
+        keep = np.isfinite(x) & np.isfinite(y)
+        order = np.argsort(x[keep])
+        ax.plot(x[keep][order], y[keep][order], linewidth=linewidth,
+                marker="o", ms=3.5, label=label)
+
+    for nuc, label in zip(NUCLIDES, NUCLIDE_LABELS):
+        series(retention, "depth_g_cm2", "retention", axes[0], nuc, label)
+        series(sensitivity, "eps_g_cm2_yr", "sensitivity_dlnE_dlnC",
+               axes[1], nuc, label)
+        series(net, "depth_g_cm2", "dE_over_E", axes[2], nuc, label)
+
+    axes[0].set_xlabel(r"Removal depth (g cm$^{-2}$)", fontsize=_AXIS_LABEL_SIZE)
+    axes[0].set_ylabel("Retention  $C(d)/C(0)$", fontsize=_AXIS_LABEL_SIZE)
+    axes[0].set_title("A. $^{14}$C keeps more\n(muon-rich → deeper inventory)",
+                      fontsize=12)
+
+    axes[1].set_xscale("log")
+    axes[1].set_xlabel(r"Erosion rate (g cm$^{-2}$ yr$^{-1}$)",
+                       fontsize=_AXIS_LABEL_SIZE)
+    axes[1].set_ylabel(r"Sensitivity  $|d\ln E / d\ln C|$",
+                       fontsize=_AXIS_LABEL_SIZE)
+    axes[1].set_title("B. ...but $^{14}$C inverts more steeply\n"
+                      r"($\Gamma\lambda$ comparable to $\epsilon$)", fontsize=12)
+
+    axes[2].set_xlabel(r"Removal depth (g cm$^{-2}$)", fontsize=_AXIS_LABEL_SIZE)
+    axes[2].set_ylabel(r"Apparent-rate change  $\Delta E/E$",
+                       fontsize=_AXIS_LABEL_SIZE)
+    axes[2].set_title("C. Net: sensitivity wins\n$^{14}$C rises further "
+                      "→ ratio UP", fontsize=12)
+
+    # The per-nuclide curves in panel C very nearly coincide -- the effect is a
+    # fraction of a percent -- so the difference between them, which is the
+    # whole result, is invisible at the scale of the curves themselves. Plot it
+    # explicitly on a twin axis rather than asking the reader to eyeball a gap.
+    if "d_ratio_C14_Be10_frac" in net.columns:
+        sub = net[["depth_g_cm2", "d_ratio_C14_Be10_frac"]].dropna()
+        x = pd.to_numeric(sub["depth_g_cm2"], errors="coerce").to_numpy(float)
+        y = pd.to_numeric(sub["d_ratio_C14_Be10_frac"],
+                          errors="coerce").to_numpy(float)
+        keep = np.isfinite(x) & np.isfinite(y)
+        if keep.any():
+            order = np.argsort(x[keep])
+            ax2 = axes[2].twinx()
+            ax2.axhline(0.0, color="0.6", lw=1.0)
+            ax2.plot(x[keep][order], 100.0 * y[keep][order], color="k",
+                     ls="--", lw=2.0, label="apparent ratio change")
+            ax2.set_ylabel("change in apparent $^{14}$C/$^{10}$Be ratio (%)",
+                           fontsize=12)
+            ax2.tick_params(labelsize=11)
+            ax2.legend(fontsize=10, loc="upper left")
+
+    if reference_depth is not None:
+        for ax in (axes[0], axes[2]):
+            ax.axvline(reference_depth, color="0.45", ls="--", lw=1.2, zorder=0)
+    if reference_eps is not None:
+        axes[1].axvline(reference_eps, color="0.45", ls="--", lw=1.2, zorder=0)
+
+    for ax in axes:
+        ax.tick_params(labelsize=11)
+        ax.legend(fontsize=11, loc="best")
+    return fig, axes
+
+
 def plot_cosmo_transient_erate_ratio(
     df: pd.DataFrame,
     *,

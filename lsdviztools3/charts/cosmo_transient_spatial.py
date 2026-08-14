@@ -327,6 +327,93 @@ def plot_ratio_vs_mean_erate(
     return fig, ax
 
 
+def plot_scenario_delta(
+    df: pd.DataFrame,
+    *,
+    delta_col: str = "d_app_erate_ratio_C14_Be10",
+    scenario_col: str = "scenario",
+    scenario_order: Optional[Sequence[str]] = None,
+    scenario_labels: Optional[dict] = None,
+    xscale: str = "symlog",
+    linthresh: float = _OVERLAY_LINTHRESH,
+    figsize: Tuple[float, float] = (10.0, 5.0),
+    show_legend: bool = True,
+    ax=None,
+):
+    """Family E: paired change in the apparent-rate ratio, one series per scenario.
+
+    Each point is one detrital sample differenced against **itself** in the
+    no-landslide control, so the control's own sample-to-sample scatter (which
+    spans the whole 1.0-1.55 range of the transient) cancels exactly. That is
+    what makes a sub-1 % shift visible at all; an unpaired comparison of two
+    distributions would be swamped by the scatter.
+
+    A horizontal line at zero is drawn because it is the decision boundary, not
+    decoration: above it the perturbation amplifies the transient signal, below
+    it the perturbation damps it.
+
+    Args:
+        df: Long-form comparison table -- one row per sample per scenario -- as
+            written by the experiment's ``scenario_delta.py``. Must carry
+            ``sc_steptime_yr``, ``scenario_col`` and ``delta_col``. The delta is
+            read from the file; nothing is subtracted here.
+        delta_col: Which paired-difference column to draw.
+        scenario_col: Column holding the scenario label.
+        scenario_order: Draw order, and hence colour order. ``None`` uses the
+            order of first appearance, which keeps the figure stable against a
+            re-sorted input file.
+        scenario_labels: Optional map from scenario id to legend label.
+        xscale: ``"symlog"`` (default) or ``"linear"``. As for
+            :func:`plot_ratio_overlay_1d`, a log axis is refused because it
+            would silently drop the ``t = 0`` anchor samples -- and here those
+            are the samples whose delta MUST be zero, so losing them would hide
+            the strongest check in the figure.
+        linthresh: Symlog linear-region half-width in years.
+        figsize: Figure size, used only when creating a new figure.
+        show_legend: Draw the scenario legend.
+        ax: Existing matplotlib ``Axes`` or ``None`` for a new one.
+
+    Returns:
+        ``(fig, ax)``. This function never saves.
+    """
+    plt = _import_mpl()
+    if xscale not in ("symlog", "linear"):
+        raise ValueError(
+            f"xscale must be 'symlog' or 'linear', not {xscale!r}. A log axis "
+            "would silently drop the t = 0 anchor samples, which are exactly "
+            "the ones whose delta must be zero."
+        )
+    _require_columns(df, (_STEPTIME_YR_COL, scenario_col, delta_col))
+
+    if scenario_order is None:
+        scenario_order = list(pd.unique(df[scenario_col].dropna()))
+
+    fig, ax = _new_or_adopted_axes(plt, ax, figsize)
+
+    # Zero first and behind: it is the decision boundary the eye reads against.
+    ax.axhline(0.0, color="0.4", linewidth=1.2, zorder=1)
+
+    for name in scenario_order:
+        sub = df[df[scenario_col] == name]
+        x = pd.to_numeric(sub[_STEPTIME_YR_COL], errors="coerce").to_numpy(float)
+        y = pd.to_numeric(sub[delta_col], errors="coerce").to_numpy(float)
+        keep = np.isfinite(x) & np.isfinite(y)
+        if not keep.any():
+            continue
+        label = (scenario_labels or {}).get(name, str(name))
+        ax.scatter(x[keep], y[keep], s=26, alpha=0.75, edgecolors="none",
+                   label=label, zorder=2)
+
+    if xscale == "symlog":
+        ax.set_xscale("symlog", linthresh=linthresh)
+    ax.set_xlabel(_STEPTIME_LABEL, fontsize=_AXIS_LABEL_SIZE)
+    ax.set_ylabel("change in apparent\nerosion-rate ratio", fontsize=_AXIS_LABEL_SIZE)
+    ax.tick_params(labelsize=_TICK_LABEL_SIZE)
+    if show_legend and len(scenario_order):
+        ax.legend(fontsize=_CBAR_LABEL_SIZE, loc="upper left")
+    return fig, ax
+
+
 def plot_ratio_overlay_1d(
     df: pd.DataFrame,
     sweeps: Sequence[Tuple[str, pd.DataFrame]],
