@@ -53,6 +53,10 @@ from .landslides import (
     plot_sample_effect_apparent_vs_true,
     plot_sample_effect_ratio,
 )
+from .network_geometry import (
+    plot_delta_L_cdf, plot_edge_basin_cdf, plot_junction_angle_cdf,
+    plot_metric_panels, plot_metric_vs_temperature,
+)
 from .rose import rose_diagram
 from .swath import plot_swath
 
@@ -87,6 +91,8 @@ __all__ = [
     "plot_ratio_overlay_1d", "plot_scenario_delta",
     "plot_pair_comparison", "plot_head_metric_vs_distance",
     "aggressor_annotation",
+    "plot_junction_angle_cdf", "plot_delta_L_cdf", "plot_edge_basin_cdf",
+    "plot_metric_panels", "plot_metric_vs_temperature",
     "plot_profile", "plot_slope_area",
 ]
 

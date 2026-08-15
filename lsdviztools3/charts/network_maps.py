@@ -220,21 +220,35 @@ def plot_network(flowdir, area, *, cell_size=1.0, min_area_cells=0.0,
 
 def plot_network_on_hillshade(z, flowdir, area, *, cell_size=1.0, z_factor=1.0,
                               min_area_cells=0.0, title="", settings=None,
-                              color="#0b3d91", figsize=(11.0, 6.0), ax=None):
-    """Channel network drawn over shaded relief. See plot_hillshade re z_factor."""
+                              color="#0b3d91", hillshade_alpha=0.45,
+                              figsize=(11.0, 6.0), ax=None):
+    """Channel network drawn over shaded relief. See plot_hillshade re z_factor.
+
+    ``hillshade_alpha`` fades the relief so the network reads as the subject of
+    the figure rather than competing with the topography. At full opacity the
+    channel lines disappear into a busy hillshade; the default 0.45 keeps the
+    relief legible as context while the lines stay dominant. Set 1.0 for an
+    un-faded hillshade.
+    """
     plt = _import_mpl()
     from matplotlib.collections import LineCollection
 
     fig, ax = (plt.subplots(figsize=figsize) if ax is None else (ax.figure, ax))
     ext = _extent(np.shape(z), cell_size)
+    # White ground under a faded hillshade, so fading lightens the relief
+    # instead of muddying it toward the figure background.
+    ax.set_facecolor("white")
     ax.imshow(hillshade(z, cell_size=cell_size, z_factor=z_factor),
-              cmap="gray", vmin=0, vmax=1, extent=ext, origin="upper")
+              cmap="gray", vmin=0, vmax=1, extent=ext, origin="upper",
+              alpha=hillshade_alpha)
     segs, areas = network_segments(flowdir, area, cell_size=cell_size,
                                    min_area_cells=min_area_cells)
     if segs.shape[0]:
-        ax.add_collection(LineCollection(segs, linewidths=_linewidths(areas),
-                                         colors=color, capstyle="round",
-                                         alpha=0.95))
+        # Slightly heavier than the standalone network panel: the lines have to
+        # win against the relief behind them.
+        ax.add_collection(LineCollection(
+            segs, linewidths=_linewidths(areas, min_lw=0.25, max_lw=3.0),
+            colors=color, capstyle="round", alpha=1.0, zorder=3))
     _header(fig, ax, title, settings)
     _finish(ax, ext)
     fig.tight_layout()
