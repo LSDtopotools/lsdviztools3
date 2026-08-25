@@ -54,6 +54,8 @@ lsdviz3-cosmo-compare = "lsdviztools3.cli.plot_cosmo_compare:main"
 lsdviz3-cosmo-published = "lsdviztools3.cli.plot_cosmo_published:main"
 lsdviz3-cosmo-transient = "lsdviztools3.cli.plot_cosmo_transient:main"
 lsdviz3-grabdem = "lsdviztools3.cli.grab_dem:main"
+lsdviz3-hilltop-coupling = "lsdviztools3.cli.plot_hilltop_coupling:main"
+lsdviz3-estar-rstar = "lsdviztools3.cli.plot_estar_rstar:main"
 lsdviz3-lsdtt = "lsdviztools3.cli.run_lsdtt:main"
 
 [tool.hatch.build.targets.wheel]
