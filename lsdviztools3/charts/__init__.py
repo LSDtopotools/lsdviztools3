@@ -94,7 +94,7 @@ __all__ = [
     "plot_junction_angle_cdf", "plot_delta_L_cdf", "plot_edge_basin_cdf",
     "plot_metric_panels", "plot_metric_vs_temperature",
     "plot_profile", "plot_slope_area", "plot_gradient_curvature",
-    "plot_valley_spectrum", "plot_spacing_vs_ci",
+    "plot_valley_spectrum", "plot_spacing_vs_ci", "plot_landscape_panel",
 ]
 
 _DEFERRED_MSG = (
@@ -127,6 +127,14 @@ def plot_spacing_vs_ci(*args, **kwargs):
     See :mod:`lsdviztools3.charts.valley_spacing`.
     """
     from .valley_spacing import plot_spacing_vs_ci as _impl
+    return _impl(*args, **kwargs)
+
+def plot_landscape_panel(*args, **kwargs):
+    """Hillshade a set of landscapes side by side, for a visual sniff test.
+
+    See :mod:`lsdviztools3.charts.valley_spacing`.
+    """
+    from .valley_spacing import plot_landscape_panel as _impl
     return _impl(*args, **kwargs)
 
 def plot_gradient_curvature(*args, **kwargs):

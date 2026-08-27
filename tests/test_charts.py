@@ -1477,3 +1477,90 @@ def test_overlay_legend_headroom_clears_the_curve_peak():
         assert ax.get_ylim()[1] > sweep["app_erate_ratio_C14_Be10"].max()
     finally:
         plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Valley spacing
+#
+# The charts exist to make two failure modes VISIBLE, so the tests check that
+# they stay visible rather than merely that a figure is produced.
+# ---------------------------------------------------------------------------
+
+def _spacing_frame():
+    import pandas as pd
+    return pd.DataFrame({
+        "stem": ["a", "b", "c"],
+        "channelization_index": [31.0, 78.0, 780.0],
+        "convex_wavelength": [412.0, 245.0, 58.0],
+        "spectral_wavelength": [500.0, 262.0, 287.0],
+        "spectral_peak_wavelength": [500.0, 250.0, 250.0],
+        "alpha": [-2.3, -3.7, -3.4],
+        "alpha_predicted": [-2.1, -2.1, -2.1],
+        "valleys_in_domain": [2.4, 4.1, 17.2],
+        "under_sampled": [True, True, False],
+    })
+
+
+def test_spacing_vs_ci_shows_the_critical_band():
+    """The Bonetti band must be INSIDE the axes, not clipped to the spine.
+
+    The lowest run sits at CI = 31 and the band spans 32-37, so without an
+    explicit x-limit the shading lands against the left edge and the legend
+    carries an entry with no visible swatch -- a legend that promises a
+    comparison the reader cannot actually make.
+    """
+    from lsdviztools3.charts import plot_spacing_vs_ci
+    from lsdviztools3.io.valley_spacing import CI_CRITICAL_HIGH, CI_CRITICAL_LOW
+
+    fig = plot_spacing_vs_ci(_spacing_frame())
+    ax = fig.axes[0]
+    lo, hi = ax.get_xlim()
+    assert lo < CI_CRITICAL_LOW, "critical band clipped at the left spine"
+    assert hi > CI_CRITICAL_HIGH
+    labels = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert any("Bonetti" in t for t in labels)
+
+
+def test_spacing_vs_ci_marks_under_sampled_points_separately():
+    """Under-sampled spectral points are drawn, but not joined by a trend line."""
+    from lsdviztools3.charts import plot_spacing_vs_ci
+
+    fig = plot_spacing_vs_ci(_spacing_frame())
+    labels = [t.get_text() for t in fig.axes[0].get_legend().get_texts()]
+    assert any("too few valleys" in t for t in labels)
+
+
+def test_spacing_vs_ci_optional_bonetti_reference():
+    """The published lambda_c is opt-in: absent unless the caller asks for it."""
+    from lsdviztools3.charts import plot_spacing_vs_ci
+
+    without = plot_spacing_vs_ci(_spacing_frame())
+    assert not any("lambda_c" in t.get_text() or "\\lambda_c" in t.get_text()
+                   for t in without.axes[0].get_legend().get_texts())
+
+    with_ref = plot_spacing_vs_ci(_spacing_frame(), bonetti_lambda_c=42.0)
+    assert len(with_ref.axes[0].get_legend().get_texts()) > \
+           len(without.axes[0].get_legend().get_texts())
+
+
+def test_landscape_panel_one_axis_per_raster(tmp_path):
+    """A sniff-test panel that silently drops a landscape is worse than none."""
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+    from lsdviztools3.charts import plot_landscape_panel
+
+    paths = []
+    for i in range(3):
+        p = tmp_path / f"dem{i}.tif"
+        z = np.tile(np.sin(np.linspace(0, 6 * np.pi, 40)) * (i + 1), (40, 1))
+        with rasterio.open(p, "w", driver="GTiff", height=40, width=40, count=1,
+                           dtype="float32",
+                           transform=from_origin(0, 200, 5, 5)) as dst:
+            dst.write(z.astype("float32"), 1)
+        paths.append(p)
+
+    fig = plot_landscape_panel(paths, labels=["a", "b", "c"], ncols=3,
+                               spacings=[100.0, 100.0, 100.0])
+    drawn = [ax for ax in fig.axes if ax.images]
+    assert len(drawn) == 3

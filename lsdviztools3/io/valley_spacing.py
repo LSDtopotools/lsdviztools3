@@ -44,6 +44,20 @@ class ValleySpacing:
         except (TypeError, ValueError):
             return default
 
+    @property
+    def hillslope_length(self):
+        """Distance-transform hillslope length -- the primary measure.
+
+        Robust to branching, unlike the row-transect measures: oblique
+        tributaries do not inflate it and it does not mix first-order hillslopes
+        with inter-basin divides.
+        """
+        return self._get("hillslope_length_mean")
+
+    @property
+    def hillslope_length_median(self):
+        return self._get("hillslope_length_median")
+
     # The three measures, named as the papers name them.
     @property
     def convex_wavelength(self):
@@ -132,6 +146,8 @@ def load_valley_spacing_sweep(paths) -> pd.DataFrame:
             continue
         rows.append({
             "stem": vs.stem,
+            "hillslope_length": vs.hillslope_length,
+            "hillslope_length_median": vs.hillslope_length_median,
             "channelization_index": vs.channelization_index,
             "convex_wavelength": vs.convex_wavelength,
             "spectral_wavelength": vs.spectral_wavelength,

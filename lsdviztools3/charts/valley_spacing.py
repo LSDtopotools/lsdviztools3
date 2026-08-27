@@ -104,7 +104,7 @@ def plot_valley_spectrum(vs, ax=None, title=None):
     return fig
 
 
-def plot_spacing_vs_ci(frame, ax=None, title=None):
+def plot_spacing_vs_ci(frame, ax=None, title=None, bonetti_lambda_c=None):
     """Plot spacing against the channelization index for a sweep.
 
     Args:
@@ -112,6 +112,10 @@ def plot_spacing_vs_ci(frame, ax=None, title=None):
             :func:`~lsdviztools3.io.valley_spacing.load_valley_spacing_sweep`.
         ax: existing axes, or None to create a figure.
         title: figure title.
+        bonetti_lambda_c: valley spacing Bonetti et al. report at the critical
+            index (~42 m in their configuration). Drawn as a reference line when
+            given. It is only comparable if the domain and exponents match
+            theirs, so it is opt-in rather than assumed.
 
     Returns:
         The matplotlib Figure.
@@ -131,12 +135,37 @@ def plot_spacing_vs_ci(frame, ax=None, title=None):
 
     # The published transition, so a reader can see which runs are even in the
     # channelized regime.
-    ax.axvspan(CI_CRITICAL_LOW, CI_CRITICAL_HIGH, color="#cccccc", alpha=0.55,
-               label=f"CI$_c$ {CI_CRITICAL_LOW:.0f}-{CI_CRITICAL_HIGH:.0f} "
-                     "(Bonetti 2020)")
+    #
+    # The axis limits are set FIRST and forced to bracket the critical band. On a
+    # log axis a band from 32 to 37 is narrow, and if the lowest run sits at
+    # CI = 31 the band lands hard against the left spine -- the legend then shows
+    # an entry with no visible swatch, which is worse than not drawing it, because
+    # the reader cannot check the comparison the legend claims to offer.
+    lo = min(float(np.nanmin(ci)), CI_CRITICAL_LOW) / 1.6
+    hi = max(float(np.nanmax(ci)), CI_CRITICAL_HIGH) * 1.6
+    ax.set_xlim(lo, hi)
 
-    ax.loglog(ci, frame["convex_wavelength"], "o-", color="#d62728",
-              label="convex half-width x2")
+    ax.axvspan(CI_CRITICAL_LOW, CI_CRITICAL_HIGH, color="#f0c674", alpha=0.75,
+               zorder=0,
+               label=f"CI$_c$ = {CI_CRITICAL_LOW:.0f}–{CI_CRITICAL_HIGH:.0f}, first "
+                     "channelization\n(Bonetti et al. 2020)")
+    ax.axvline(CI_CRITICAL_LOW, color="#b58900", lw=0.8, zorder=0)
+    ax.axvline(CI_CRITICAL_HIGH, color="#b58900", lw=0.8, zorder=0)
+
+    # Bonetti's own reported spacing at the transition, so the comparison the
+    # shaded band invites can actually be made rather than merely suggested.
+    if bonetti_lambda_c is not None:
+        ax.axhline(bonetti_lambda_c, color="#b58900", ls=":", lw=1.4, zorder=0,
+                   label=f"Bonetti $\\lambda_c$ ≈ {bonetti_lambda_c:.0f} m at CI$_c$")
+
+    # The distance-transform hillslope length is the primary measure: it is the
+    # only one of the three that survives branching (see the module docstring).
+    if "hillslope_length" in frame.columns and frame["hillslope_length"].notna().any():
+        ax.loglog(ci, frame["hillslope_length"], "o-", color="#d62728",
+                  label="hillslope length (distance transform)")
+    else:
+        ax.loglog(ci, frame["convex_wavelength"], "o-", color="#d62728",
+                  label="convex half-width x2")
 
     # Distinguish the spectral points that are under-sampled: they are plotted,
     # because hiding them would hide the failure, but they are not joined by a
@@ -156,3 +185,98 @@ def plot_spacing_vs_ci(frame, ax=None, title=None):
     ax.grid(True, which="both", alpha=0.25)
     fig.tight_layout()
     return fig
+
+
+def plot_landscape_panel(rasters, labels=None, ncols=None, title=None,
+                         spacings=None, azimuth=315.0, altitude=45.0):
+    """Hillshade every landscape in a sweep, side by side, for a sniff test.
+
+    A scaling law fitted to numbers can look convincing while the landscapes it
+    came from are nonsense -- all channel, or a single valley, or a grid
+    artefact. This exists so that judgement can be made by eye before any number
+    is believed.
+
+    Args:
+        rasters: paths to the DEMs, in the order to display.
+        labels: per-panel captions; defaults to file stems.
+        ncols: panels per row; defaults to a near-square layout.
+        title: figure title.
+        spacings: optional per-panel valley spacing in metres. When given, a
+            horizontal scale bar of that length is drawn on each panel, so the
+            measured spacing can be compared against the ridges actually visible.
+            That comparison is the whole point of the panel.
+        azimuth, altitude: illumination, presentation only.
+
+    Returns:
+        The matplotlib Figure.
+
+    Raises:
+        ValueError: if no rasters were given.
+    """
+    import rasterio
+
+    paths = list(rasters)
+    if not paths:
+        raise ValueError("no rasters given")
+
+    if labels is None:
+        labels = [str(p).split("/")[-1] for p in paths]
+    n = len(paths)
+    if ncols is None:
+        ncols = int(np.ceil(np.sqrt(n)))
+    nrows = int(np.ceil(n / ncols))
+
+    fig, axes = plt.subplots(nrows, ncols,
+                             figsize=(3.6 * ncols, 3.8 * nrows),
+                             squeeze=False)
+
+    for idx, path in enumerate(paths):
+        ax = axes[idx // ncols][idx % ncols]
+        with rasterio.open(path) as src:
+            z = src.read(1).astype(float)
+            cell = abs(src.transform.a)
+        z[z < -1e30] = np.nan
+
+        ax.imshow(_hillshade_local(z, cell, azimuth, altitude),
+                  cmap="gray", vmin=0, vmax=1, interpolation="nearest")
+        ax.set_title(labels[idx], fontsize=9)
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        if spacings is not None and idx < len(spacings):
+            lam = spacings[idx]
+            if lam and np.isfinite(lam):
+                px = lam / cell
+                y = z.shape[0] * 0.93
+                x0 = z.shape[1] * 0.06
+                ax.plot([x0, x0 + px], [y, y], color="#d62728", lw=2.5,
+                        solid_capstyle="butt")
+                ax.text(x0, y - z.shape[0] * 0.035, f"{lam:.0f} m",
+                        color="#d62728", fontsize=8, va="bottom")
+
+    for idx in range(n, nrows * ncols):
+        axes[idx // ncols][idx % ncols].axis("off")
+
+    if title:
+        fig.suptitle(title, fontsize=11)
+    fig.tight_layout()
+    return fig
+
+
+def _hillshade_local(z, cell, azimuth=315.0, altitude=45.0):
+    """Horn hillshade, GDAL's convention.
+
+    aspect = atan2(dz/drow, -dz/dcol). The sign is easy to get wrong because row
+    increases southward in a north-up raster; getting it wrong inverts the image
+    so ridges read as valleys, which is exactly the error this panel exists to
+    catch elsewhere.
+    """
+    dy, dx = np.gradient(z, cell)
+    slope = np.arctan(np.hypot(dx, dy))
+    aspect = np.arctan2(dy, -dx)
+    az = np.radians(360.0 - azimuth + 90.0)
+    alt = np.radians(altitude)
+    shade = (np.sin(alt) * np.cos(slope)
+             + np.cos(alt) * np.sin(slope) * np.cos(az - aspect))
+    return np.clip(shade, 0.0, 1.0)
+
