@@ -94,6 +94,7 @@ __all__ = [
     "plot_junction_angle_cdf", "plot_delta_L_cdf", "plot_edge_basin_cdf",
     "plot_metric_panels", "plot_metric_vs_temperature",
     "plot_profile", "plot_slope_area", "plot_gradient_curvature",
+    "plot_valley_spectrum", "plot_spacing_vs_ci",
 ]
 
 _DEFERRED_MSG = (
@@ -110,6 +111,22 @@ def plot_profile(*args, **kwargs):
 def plot_slope_area(*args, **kwargs):
     """Slope-area "boomerang" -- see :mod:`lsdviztools3.charts.slope_area`."""
     from .slope_area import plot_slope_area as _impl
+    return _impl(*args, **kwargs)
+
+def plot_valley_spectrum(*args, **kwargs):
+    """One landscape's spectrum with both spacing measures marked.
+
+    See :mod:`lsdviztools3.charts.valley_spacing`.
+    """
+    from .valley_spacing import plot_valley_spectrum as _impl
+    return _impl(*args, **kwargs)
+
+def plot_spacing_vs_ci(*args, **kwargs):
+    """Valley spacing against the Bonetti channelization index, for a sweep.
+
+    See :mod:`lsdviztools3.charts.valley_spacing`.
+    """
+    from .valley_spacing import plot_spacing_vs_ci as _impl
     return _impl(*args, **kwargs)
 
 def plot_gradient_curvature(*args, **kwargs):
