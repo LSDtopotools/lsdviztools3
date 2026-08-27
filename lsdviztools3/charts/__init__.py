@@ -93,7 +93,7 @@ __all__ = [
     "aggressor_annotation",
     "plot_junction_angle_cdf", "plot_delta_L_cdf", "plot_edge_basin_cdf",
     "plot_metric_panels", "plot_metric_vs_temperature",
-    "plot_profile", "plot_slope_area",
+    "plot_profile", "plot_slope_area", "plot_gradient_curvature",
 ]
 
 _DEFERRED_MSG = (
@@ -108,5 +108,14 @@ def plot_profile(*args, **kwargs):
 
 
 def plot_slope_area(*args, **kwargs):
-    """Slope-area plot. Deferred to a later release."""
-    raise NotImplementedError(_DEFERRED_MSG)
+    """Slope-area "boomerang" -- see :mod:`lsdviztools3.charts.slope_area`."""
+    from .slope_area import plot_slope_area as _impl
+    return _impl(*args, **kwargs)
+
+def plot_gradient_curvature(*args, **kwargs):
+    """Gradient-curvature diagnostic after Roering (2008).
+
+    See :mod:`lsdviztools3.charts.gradient_curvature`.
+    """
+    from .gradient_curvature import plot_gradient_curvature as _impl
+    return _impl(*args, **kwargs)
