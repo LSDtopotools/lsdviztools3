@@ -23,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fps", type=float, default=4.0)
     parser.add_argument("--loop", type=int, default=0)
     parser.add_argument("--keep-frames", action="store_true")
+    parser.add_argument("--layout", choices=("2d", "strip"), default="2d")
     return parser
 
 
@@ -31,7 +32,7 @@ def main(argv=None) -> int:
     output = render_hillslope_comparison_animation(
         args.newton, args.cellular, args.out, pattern=args.glob,
         fps=args.fps, loop=args.loop, stats_csv=args.stats_csv,
-        keep_frames=args.keep_frames,
+        keep_frames=args.keep_frames, layout=args.layout,
     )
     print(f"Wrote animation: {output}")
     return 0

@@ -76,6 +76,7 @@ def plot_hillslope_profiles(
     channel_indices: Optional[Sequence[int]] = None,
     figsize=(12, 10),
     title: Optional[str] = None,
+    include_residuals: bool = True,
 ):
     """Plot elevation, gradient, curvature and residual panels.
 
@@ -115,11 +116,12 @@ def plot_hillslope_profiles(
             item["gradient"], item["curvature"] = profile_derivatives(x, item["elevation"])
         analytic_prepared[label] = item
 
-    fig, axes = plt.subplots(4, 1, figsize=figsize, sharex=True,
-                             gridspec_kw={"height_ratios": (2, 1, 1, 1.4)})
+    ratios = (2, 1, 1, 1.4) if include_residuals else (2, 1, 1)
+    fig, axes = plt.subplots(len(ratios), 1, figsize=figsize, sharex=True,
+                             gridspec_kw={"height_ratios": ratios})
     quantities = (("elevation", "Elevation (m)"),
                   ("gradient", "Gradient dz/dx"),
-                  ("curvature", "Signed curvature d2z/dx2 (m-1)"))
+                  ("curvature", "Laplacian d2z/dx2 (m-1)"))
     for key, ylabel in quantities:
         ax = axes[quantities.index((key, ylabel))]
         for label, item in prepared.items():
@@ -133,26 +135,29 @@ def plot_hillslope_profiles(
             for index in np.asarray(channel_indices, int):
                 ax.axvline(x[index], color="0.3", ls=":", lw=0.8)
 
-    residual_ax = axes[3]
-    reference_names = []
-    for ref_name in ("linear", "roering"):
-        if ref_name in analytic_prepared:
-            reference_names.append(ref_name)
-            for label, item in prepared.items():
-                residual_ax.plot(x, item["elevation"] - analytic_prepared[ref_name]["elevation"],
-                                 label=f"{label} - {ref_name}")
-    if "Newton" in prepared and "cellular" in prepared:
-        residual_ax.plot(x, prepared["cellular"]["elevation"] - prepared["Newton"]["elevation"],
-                         label="cellular - Newton")
-    if not reference_names and not ("Newton" in prepared and "cellular" in prepared):
-        residual_ax.text(0.5, 0.5, "No residual references supplied",
-                         transform=residual_ax.transAxes, ha="center")
-    residual_ax.axhline(0, color="k", lw=0.8)
-    residual_ax.set_ylabel("Elevation residual (m)")
-    residual_ax.set_xlabel("Distance from divide (m)")
-    residual_ax.grid(alpha=0.25)
+    if include_residuals:
+        residual_ax = axes[3]
+        reference_names = []
+        for ref_name in ("linear", "roering"):
+            if ref_name in analytic_prepared:
+                reference_names.append(ref_name)
+                for label, item in prepared.items():
+                    residual_ax.plot(
+                        x, item["elevation"] - analytic_prepared[ref_name]["elevation"],
+                        label=f"{label} - {ref_name}")
+        if "Newton" in prepared and "cellular" in prepared:
+            residual_ax.plot(
+                x, prepared["cellular"]["elevation"] - prepared["Newton"]["elevation"],
+                label="cellular - Newton")
+        if not reference_names and not ("Newton" in prepared and "cellular" in prepared):
+            residual_ax.text(0.5, 0.5, "No residual references supplied",
+                             transform=residual_ax.transAxes, ha="center")
+        residual_ax.axhline(0, color="k", lw=0.8)
+        residual_ax.set_ylabel("Elevation residual (m)")
+        residual_ax.grid(alpha=0.25)
+        residual_ax.legend(fontsize=7, ncol=2)
+    axes[-1].set_xlabel("Distance from divide (m)")
     axes[0].legend(fontsize=8, ncol=2)
-    residual_ax.legend(fontsize=7, ncol=2)
     if title:
         fig.suptitle(title)
     fig.tight_layout()

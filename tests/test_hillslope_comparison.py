@@ -15,6 +15,8 @@ from lsdviztools3.charts.hillslope_transient_residuals import (
 )
 from lsdviztools3.render.hillslope_comparison_animation import discover_frame_pairs
 from lsdviztools3.render.hillslope_comparison_animation import (
+    _laplacian,
+    render_hillslope_comparison_frame,
     render_hillslope_comparison_animation,
 )
 
@@ -90,3 +92,33 @@ def test_animation_smoke_with_tiny_geotiffs(tmp_path):
     output = render_hillslope_comparison_animation(newton, cellular,
                                                     tmp_path / "comparison.gif")
     assert output.is_file()
+    strip = render_hillslope_comparison_animation(
+        newton, cellular, tmp_path / "strip.gif", layout="strip"
+    )
+    assert strip.is_file()
+
+    fig, _ = render_hillslope_comparison_frame(
+        newton / "surface_iteration_0.tif",
+        cellular / "surface_iteration_0.tif",
+        elevation_limits=(0, 1), residual_limit=1,
+        laplacian_residual_limit=1, time=0,
+        history=(np.array([0]), np.array([0]), np.array([0])),
+    )
+    labels = [ax.get_xlabel() for ax in fig.axes] + [ax.get_ylabel() for ax in fig.axes]
+    legend_text = [text.get_text() for ax in fig.axes if ax.get_legend()
+                   for text in ax.get_legend().get_texts()]
+    assert "x (m)" in labels and "y (m)" in labels
+    assert "residual (m)" in labels
+    assert "maximum absolute residual" in legend_text
+    assert "Linf" not in legend_text
+    fig.clf()
+
+
+def test_laplacian_uses_metric_cell_sizes():
+    from rasterio.transform import from_origin
+
+    transform = from_origin(0, 15, 2, 3)
+    y, x = np.mgrid[0:5, 0:5]
+    values = (2 * x) ** 2 + 2 * (3 * y) ** 2
+    laplacian = _laplacian(values.astype(float), transform)
+    np.testing.assert_allclose(laplacian[2, 2], 6.0)

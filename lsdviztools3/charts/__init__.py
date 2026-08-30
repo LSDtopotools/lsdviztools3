@@ -36,6 +36,7 @@ from .cosmo_transient_spatial import (
     plot_ratio_vs_steptime,
 )
 from .distributions import plot_distributions
+from .estar_rstar import plot_estar_rstar_model_scan
 from .divide_migration import (
     aggressor_annotation, plot_head_metric_vs_distance, plot_pair_comparison,
 )
@@ -70,7 +71,7 @@ from .hillslope_residuals import (
 )
 from .hillslope_transient_residuals import (
     load_transient_residuals, plot_transient_residuals,
-    plot_hillslope_transient_residuals,
+    plot_hillslope_transient_residuals, plot_strip_transient_metrics,
 )
 
 __all__ = [
@@ -91,6 +92,7 @@ __all__ = [
     "plot_hydraulic_break_clusters",
     "plot_cross_section_informed_valley_mask",
     "plot_distributions", "rose_diagram",
+    "plot_estar_rstar_model_scan",
     "load_landslide_inventory",
     "plot_landslide_area_volume_larsen",
     "plot_sample_effect_apparent_vs_true",
@@ -112,7 +114,7 @@ __all__ = [
     "summarise_residuals", "plot_residual_density", "plot_hillslope_residual_density",
     "plot_hillslope_residuals", "summarize_residuals", "plot_residual_raster",
     "load_transient_residuals", "plot_transient_residuals",
-    "plot_hillslope_transient_residuals",
+    "plot_hillslope_transient_residuals", "plot_strip_transient_metrics",
     "plot_profile", "plot_slope_area", "plot_gradient_curvature",
     "plot_valley_spectrum", "plot_spacing_vs_ci", "plot_landscape_panel",
 ]

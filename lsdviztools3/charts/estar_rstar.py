@@ -71,6 +71,48 @@ def rstar_theory(e_star: np.ndarray | float) -> np.ndarray:
     return out
 
 
+def plot_estar_rstar_model_scan(data, *, figsize=(11, 5), title=None):
+    """Compare analytical, Newton and cellular strip results in E*-R* space."""
+    plt = _import_mpl()
+    frame = data.copy() if isinstance(data, pd.DataFrame) else pd.read_csv(data)
+    required = {"case", "model", "E_star", "R_star"}
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise KeyError(f"Missing E*-R* scan columns: {missing}")
+    fig, axes = plt.subplots(1, 2, figsize=figsize)
+    e_min = max(0.05, float(frame.E_star.min()) * 0.8)
+    e_max = float(frame.E_star.max()) * 1.25
+    theory_e = np.logspace(np.log10(e_min), np.log10(e_max), 400)
+    axes[0].plot(theory_e, rstar_theory(theory_e), "k-", lw=2,
+                 label="analytical Roering")
+    styles = {"analytical": ("o", "black"), "newton": ("s", "#0072B2"),
+              "cellular": ("^", "#D55E00")}
+    for model in ("analytical", "newton", "cellular"):
+        subset = frame[frame.model == model]
+        marker, color = styles[model]
+        axes[0].scatter(subset.E_star, subset.R_star, marker=marker, color=color,
+                        s=45, label=model.capitalize(), zorder=4)
+        residual = subset.R_star.to_numpy() - rstar_theory(subset.E_star.to_numpy())
+        axes[1].scatter(subset.E_star, residual, marker=marker, color=color,
+                        s=45, label=model.capitalize())
+    for case, subset in frame.groupby("case"):
+        axes[0].plot(subset.E_star, subset.R_star, color="0.75", lw=0.8, zorder=1)
+        row = subset[subset.model == "analytical"].iloc[0]
+        axes[0].annotate(str(case), (row.E_star, row.R_star), xytext=(3, 3),
+                         textcoords="offset points", fontsize=7)
+    for ax in axes:
+        ax.set_xscale("log"); ax.set_xlabel("E* = 2 |Laplacian at divide| Lh / Sc")
+        ax.grid(alpha=0.25); ax.legend(fontsize=8)
+    axes[0].set_ylabel("R* = relief / (Lh Sc)")
+    axes[0].set_title("Dimensionless erosion-relief relation")
+    axes[1].axhline(0, color="k", lw=1)
+    axes[1].set_ylabel("R* residual from analytical Roering")
+    axes[1].set_title("Numerical model residual")
+    fig.suptitle(title or "Roering strip scan across D, Sc and Lh")
+    fig.tight_layout()
+    return fig, axes
+
+
 def usable_rows(df: pd.DataFrame) -> pd.DataFrame:
     """Rows whose E* and R* are meaningful.
 
