@@ -46,13 +46,21 @@ class ValleySpacing:
 
     @property
     def hillslope_length(self):
-        """Distance-transform hillslope length -- the primary measure.
+        """Distance-transform hillslope length (p90) -- the primary measure.
 
         Robust to branching, unlike the row-transect measures: oblique
         tributaries do not inflate it and it does not mix first-order hillslopes
         with inter-basin divides.
+
+        The p90 rather than the mean: cells sit roughly uniformly at 0..L from
+        the valley, so the mean is L/2 and would understate the length twofold by
+        construction. Falls back to 2 x mean for output written before the p90
+        was recorded.
         """
-        return self._get("hillslope_length_mean")
+        v = self._get("hillslope_length")
+        if v == v and v > 0:          # not NaN
+            return v
+        return 2.0 * self._get("hillslope_length_mean")
 
     @property
     def hillslope_length_median(self):

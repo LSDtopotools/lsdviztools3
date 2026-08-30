@@ -188,7 +188,8 @@ def plot_spacing_vs_ci(frame, ax=None, title=None, bonetti_lambda_c=None):
 
 
 def plot_landscape_panel(rasters, labels=None, ncols=None, title=None,
-                         spacings=None, azimuth=315.0, altitude=45.0):
+                         spacings=None, spacing_label="L$_h$",
+                         azimuth=315.0, altitude=45.0):
     """Hillshade every landscape in a sweep, side by side, for a sniff test.
 
     A scaling law fitted to numbers can look convincing while the landscapes it
@@ -201,10 +202,13 @@ def plot_landscape_panel(rasters, labels=None, ncols=None, title=None,
         labels: per-panel captions; defaults to file stems.
         ncols: panels per row; defaults to a near-square layout.
         title: figure title.
-        spacings: optional per-panel valley spacing in metres. When given, a
-            horizontal scale bar of that length is drawn on each panel, so the
-            measured spacing can be compared against the ridges actually visible.
+        spacings: optional per-panel length in metres. When given, a horizontal
+            bar of that length is drawn TO SCALE on each panel and labelled, so
+            the measured value can be held against the ridges actually visible.
             That comparison is the whole point of the panel.
+        spacing_label: what the bar represents, used in its label. Defaults to
+            "L_h"; pass e.g. "spacing" if the bar is a valley spacing rather than
+            a hillslope length.
         azimuth, altitude: illumination, presentation only.
 
     Returns:
@@ -246,20 +250,36 @@ def plot_landscape_panel(rasters, labels=None, ncols=None, title=None,
         if spacings is not None and idx < len(spacings):
             lam = spacings[idx]
             if lam and np.isfinite(lam):
+                # Drawn TO SCALE against the hillshade, so the reader can hold the
+                # measured number against the ridges actually visible. That
+                # comparison is the entire point of the panel, and an unlabelled
+                # bar invites the reader to guess what it represents.
                 px = lam / cell
-                y = z.shape[0] * 0.93
+                y = z.shape[0] * 0.90
                 x0 = z.shape[1] * 0.06
-                ax.plot([x0, x0 + px], [y, y], color="#d62728", lw=2.5,
-                        solid_capstyle="butt")
-                ax.text(x0, y - z.shape[0] * 0.035, f"{lam:.0f} m",
-                        color="#d62728", fontsize=8, va="bottom")
+                ax.plot([x0, x0 + px], [y, y], color="#d62728", lw=3.0,
+                        solid_capstyle="butt", zorder=5)
+                for xe in (x0, x0 + px):                    # end ticks
+                    ax.plot([xe, xe], [y - z.shape[0] * 0.018,
+                                       y + z.shape[0] * 0.018],
+                            color="#d62728", lw=1.5, zorder=5)
+                ax.text(x0, y - z.shape[0] * 0.030,
+                        f"{spacing_label} = {lam:.0f} m",
+                        color="#d62728", fontsize=7.5, va="bottom", zorder=5,
+                        bbox=dict(boxstyle="square,pad=0.15", fc="white",
+                                  ec="none", alpha=0.75))
 
     for idx in range(n, nrows * ncols):
         axes[idx // ncols][idx % ncols].axis("off")
 
     if title:
+        # tight_layout does not know about suptitle, so the panel titles ride up
+        # into it. Lay out first, then reserve a strip at the top.
+        fig.tight_layout()
+        fig.subplots_adjust(top=1.0 - 0.4 / max(1.0, nrows * 3.8))
         fig.suptitle(title, fontsize=11)
-    fig.tight_layout()
+    else:
+        fig.tight_layout()
     return fig
 
 

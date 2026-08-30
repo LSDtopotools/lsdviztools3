@@ -59,6 +59,19 @@ from .network_geometry import (
 )
 from .rose import rose_diagram
 from .swath import plot_swath
+from .hillslope_profiles import (
+    load_profile_raster, profile_derivatives, profile_residuals,
+    plot_hillslope_profiles, plot_hillslope_profile, plot_profile_residual_panels,
+)
+from .hillslope_residuals import (
+    residual_statistics, summarise_residuals, plot_residual_density,
+    plot_hillslope_residual_density, plot_hillslope_residuals,
+    summarize_residuals, plot_residual_raster,
+)
+from .hillslope_transient_residuals import (
+    load_transient_residuals, plot_transient_residuals,
+    plot_hillslope_transient_residuals,
+)
 
 __all__ = [
     "plot_chi_profile", "plot_chi_stacked", "plot_ksn_vs_erate", "plot_swath",
@@ -93,6 +106,13 @@ __all__ = [
     "aggressor_annotation",
     "plot_junction_angle_cdf", "plot_delta_L_cdf", "plot_edge_basin_cdf",
     "plot_metric_panels", "plot_metric_vs_temperature",
+    "load_profile_raster", "profile_derivatives", "profile_residuals",
+    "plot_hillslope_profiles", "plot_hillslope_profile", "plot_profile_residual_panels",
+    "residual_statistics",
+    "summarise_residuals", "plot_residual_density", "plot_hillslope_residual_density",
+    "plot_hillslope_residuals", "summarize_residuals", "plot_residual_raster",
+    "load_transient_residuals", "plot_transient_residuals",
+    "plot_hillslope_transient_residuals",
     "plot_profile", "plot_slope_area", "plot_gradient_curvature",
     "plot_valley_spectrum", "plot_spacing_vs_ci", "plot_landscape_panel",
 ]
