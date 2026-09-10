@@ -34,6 +34,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--field", default=None,
                         help="Optional raster sampled at each section point, "
                              "normally the HAND raster.")
+    parser.add_argument("--bands", default=None,
+                        help="<stem>_band_index.tif; colours the field points "
+                             "by ladder band.")
     parser.add_argument("--field-label", default="HAND (m)")
     parser.add_argument("--max-panels", type=int, default=30)
     parser.add_argument("--n-cols", type=int, default=5)
@@ -58,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     png = plot_valley_sections(args.samples, args.out,
                                source_id=args.source_id,
                                field_raster=args.field,
+                               band_raster=args.bands,
                                field_label=args.field_label,
                                max_panels=args.max_panels,
                                n_cols=args.n_cols,

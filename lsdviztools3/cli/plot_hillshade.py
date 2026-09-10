@@ -46,6 +46,14 @@ def main(argv=None) -> int:
     """
     args = build_parser().parse_args(argv)
     style = _common.style_from_args(args)
+    # A pre-computed hillshade is illumination, not elevation: colouring it with
+    # the elevation colour map paints slope aspect in browns and greens. Grey
+    # unless the caller asked for something else.
+    if args.input_is_hillshade:
+        from dataclasses import replace
+        from ..render.style import MapStyle
+        if args.cmap == MapStyle().cmap:
+            style = replace(style, cmap="gray")
     fig = render_hillshade(
         args.input_raster,
         coordinates=args.coordinates,

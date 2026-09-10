@@ -61,6 +61,8 @@ lsdviz3-hillslope-comparison = "lsdviztools3.cli.plot_hillslope_comparison:main"
 lsdviz3-ladder-windows = "lsdviztools3.cli.plot_ladder_windows:main"
 lsdviz3-ladder-density = "lsdviztools3.cli.plot_ladder_density:main"
 lsdviz3-valley-sections = "lsdviztools3.cli.plot_valley_sections:main"
+lsdviz3-valley-section-map = "lsdviztools3.cli.plot_valley_section_map:main"
+lsdviz3-ladder-bands = "lsdviztools3.cli.plot_ladder_band_map:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["lsdviztools3"]

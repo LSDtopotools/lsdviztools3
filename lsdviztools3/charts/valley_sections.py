@@ -38,6 +38,14 @@ import numpy as np
 import pandas as pd
 
 
+# Band colours. Ordered dark-to-light up the ladder so a tread reads as a step
+# in shade as well as in position, and kept away from the green/red the section
+# sides use.
+_BAND_COLOURS = ["#08519c", "#e6550d", "#6a51a3", "#31a354",
+                 "#d94801", "#756bb1", "#78c679"]
+_N_BAND_COLOURS = len(_BAND_COLOURS)
+
+
 def _sample_raster(path, xs, ys):
     """Nearest-cell sample of a raster at projected coordinates.
 
@@ -76,6 +84,7 @@ def plot_valley_sections(
     source_id: int = 0,
     field_raster: str | Path | None = None,
     field_label: str = "HAND (m)",
+    band_raster: str | Path | None = None,
     max_panels: int = 30,
     n_cols: int = 5,
     title: str | None = None,
@@ -89,6 +98,11 @@ def plot_valley_sections(
         source_id: Which channel to plot.
         field_raster: Optional raster sampled at each point (normally HAND).
         field_label: Axis label for that field.
+        band_raster: Optional ladder band-index raster. When given, the field
+            points are coloured by band instead of one colour, which is what
+            shows whether a band is a terrace tread or a slice of hillslope.
+            Band indices are PER WINDOW, so the same colour at two stations far
+            apart is not the same height.
         max_panels: Cap on panels, sampled evenly downstream.
         n_cols: Panels per row.
         title: Figure title.
@@ -107,11 +121,18 @@ def plot_valley_sections(
         idx = np.linspace(0, len(stations) - 1, max_panels).astype(int)
         stations = [stations[i] for i in idx]
 
+    bands = None
+    if band_raster is not None:
+        bands = _sample_raster(band_raster, df["x"].to_numpy(),
+                               df["y"].to_numpy())
+
     field = None
     if field_raster is not None:
         field = _sample_raster(field_raster, df["x"].to_numpy(),
                                df["y"].to_numpy())
         df = df.assign(_field=field)
+    if bands is not None:
+        df = df.assign(_band=bands)
 
     n_rows = int(np.ceil(len(stations) / n_cols))
     fig, axes = plt.subplots(n_rows, n_cols,
@@ -150,8 +171,21 @@ def plot_valley_sections(
 
         if field is not None:
             axf = ax.twinx()
-            axf.plot(off, s["_field"].to_numpy(), ".", color="#e6550d",
-                     ms=2.5, zorder=2)
+            if bands is not None:
+                bv = s["_band"].to_numpy()
+                fv = s["_field"].to_numpy()
+                for bi in range(_N_BAND_COLOURS):
+                    sel = bv == bi
+                    if sel.any():
+                        axf.plot(off[sel], fv[sel], ".",
+                                 color=_BAND_COLOURS[bi], ms=3.0, zorder=2)
+                sel = ~np.isin(bv, np.arange(_N_BAND_COLOURS))
+                if sel.any():
+                    axf.plot(off[sel], fv[sel], ".", color="#bbbbbb",
+                             ms=2.0, zorder=2)
+            else:
+                axf.plot(off, s["_field"].to_numpy(), ".", color="#e6550d",
+                         ms=2.5, zorder=2)
             axf.tick_params(axis="y", labelsize=6, colors="#e6550d")
             if k % n_cols == n_cols - 1:
                 axf.set_ylabel(field_label, fontsize=7, color="#e6550d")
@@ -175,16 +209,25 @@ def plot_valley_sections(
         plt.Line2D([], [], color="#08519c", marker="v", ls="none",
                    label="section low point"),
     ]
-    if field is not None:
+    if field is not None and bands is None:
         handles.append(plt.Line2D([], [], color="#e6550d", marker=".",
                                   ls="none", label=field_label))
-    fig.legend(handles=handles, loc="upper right", ncol=len(handles),
-               fontsize=8, frameon=False)
-
+    if field is not None and bands is not None:
+        for bi in range(_N_BAND_COLOURS):
+            handles.append(plt.Line2D([], [], color=_BAND_COLOURS[bi],
+                                      marker=".", ls="none",
+                                      label=f"band {bi}"))
+        handles.append(plt.Line2D([], [], color="#bbbbbb", marker=".",
+                                  ls="none", label="unbanded"))
+    # Legend below the title rather than beside it: at five or six entries it
+    # is wider than the space left over on the title row and overlaps it.
     fig.suptitle(title or
                  f"channel {source_id}: valley cross sections "
-                 "(orthogonal to centreline)", y=1.0)
-    fig.tight_layout(rect=[0, 0, 1, 0.97])
+                 "(orthogonal to centreline)", y=0.995, fontsize=11)
+    fig.legend(handles=handles, loc="upper center",
+               bbox_to_anchor=(0.5, 0.972), ncol=len(handles),
+               fontsize=8, frameon=False)
+    fig.tight_layout(rect=[0, 0, 1, 0.955])
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_png, dpi=dpi, bbox_inches="tight")
