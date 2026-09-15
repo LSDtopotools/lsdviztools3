@@ -147,13 +147,47 @@ def write_gif(
     if not frame_pngs:
         raise ValueError("No frames to write.")
 
-    images = []
-    for png in frame_pngs:
+    def _rgb(png: Path) -> np.ndarray:
         rgba = Image.open(png).convert("RGBA")
         bg = Image.new("RGBA", rgba.size, background)
-        images.append(
-            Image.alpha_composite(bg, rgba).convert("P", palette=Image.ADAPTIVE)
-        )
+        return np.asarray(Image.alpha_composite(bg, rgba).convert("RGB"))
+
+    def _keys(a: np.ndarray) -> np.ndarray:
+        a = a.reshape(-1, 3).astype(np.int64)
+        return (a[:, 0] << 16) | (a[:, 1] << 8) | a[:, 2]
+
+    # ONE palette for the whole animation, from the exact colours of frames
+    # sampled across it, ranked by frequency.
+    #
+    # This replaced per-frame convert("P", ADAPTIVE) + optimize=True, which
+    # banded continuous colour maps into visible steps: a 260-colour hillshade
+    # frame came out of the GIF with 20 colours. Pillow's own quantize(palette=)
+    # is no fix either -- it matches at reduced precision and gave 67 colours
+    # from a palette that held an exact match for all but 20 of 462,434 pixels.
+    # So the pixel -> palette mapping is done here, exactly where the colour is
+    # in the palette and to the nearest entry where it is not.
+    sample = np.unique(np.linspace(0, len(frame_pngs) - 1,
+                                   min(16, len(frame_pngs))).astype(int))
+    colours, counts = np.unique(
+        np.concatenate([_keys(_rgb(frame_pngs[i])) for i in sample]),
+        return_counts=True)
+    top = colours[np.argsort(counts)[::-1][:256]]
+    palette = np.stack([(top >> 16) & 255, (top >> 8) & 255, top & 255], axis=1)
+    flat_palette = palette.astype(np.uint8).reshape(-1).tolist()
+
+    def _indexed(a: np.ndarray):
+        keys = _keys(a)
+        uniq, inverse = np.unique(keys, return_inverse=True)
+        rgb = np.stack([(uniq >> 16) & 255, (uniq >> 8) & 255, uniq & 255], axis=1)
+        nearest = np.empty(len(uniq), dtype=np.uint8)
+        for start in range(0, len(uniq), 4096):   # bound the distance matrix
+            d = ((rgb[start:start + 4096, None, :] - palette[None, :, :]) ** 2).sum(-1)
+            nearest[start:start + 4096] = d.argmin(axis=1)
+        im = Image.fromarray(nearest[inverse].reshape(a.shape[:2]), mode="P")
+        im.putpalette(flat_palette)
+        return im
+
+    images = [_indexed(_rgb(png)) for png in frame_pngs]
 
     out_gif = Path(out_gif)
     out_gif.parent.mkdir(parents=True, exist_ok=True)
@@ -163,8 +197,8 @@ def write_gif(
         append_images=images[1:],
         duration=int(round(1000.0 / fps)),
         loop=loop,
-        disposal=2,
-        optimize=True,
+        disposal=1,
+        optimize=False,   # optimize re-quantizes and reintroduces the banding
     )
     return out_gif
 

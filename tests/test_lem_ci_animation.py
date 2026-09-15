@@ -67,3 +67,29 @@ def test_animation_writes_one_gif_frame_per_raster(ci_run, view):
     with Image.open(out) as gif:
         assert gif.n_frames == 4
         assert gif.info["duration"] == 100
+
+
+def test_gif_keeps_a_continuous_grey_ramp(tmp_path):
+    """write_gif must not band a smooth colour ramp into a few steps.
+
+    The previous writer (per-frame ADAPTIVE palettes + optimize) turned a
+    256-level grey ramp into ~20 levels. With one shared, exactly-mapped palette
+    every level survives.
+    """
+    from PIL import Image
+    from lsdviztools3.render.animation import write_gif
+
+    ramp = np.tile(np.arange(256, dtype=np.uint8), (40, 1))
+    pngs = []
+    for i in range(3):
+        rgb = np.stack([ramp, ramp, ramp], axis=-1)
+        p = tmp_path / f"f{i}.png"
+        Image.fromarray(rgb).save(p)
+        pngs.append(p)
+    out = write_gif(pngs, tmp_path / "ramp.gif", fps=10)
+    with Image.open(out) as gif:
+        for k in range(gif.n_frames):
+            gif.seek(k)
+            back = np.asarray(gif.convert("L")).astype(int)
+            assert len(np.unique(back)) == 256
+            assert np.abs(back - ramp.astype(int)).max() == 0

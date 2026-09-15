@@ -41,3 +41,13 @@ demo-solomon = "python examples/island_demo.py guadalcanal"
 
 # Full lsdtt3 -> render pipeline (needs lsdtt3 on LSDTT3_DIR / config / PATH).
 demo-lsdtt3 = "python examples/lsdtt3_workflow.py eigg"
+
+# Video encoding (ffmpeg) lives in its OWN environment. Adding ffmpeg to the
+# default environment re-solved the GIS stack and moved libjxl 0.11 -> 0.12 under
+# a GDAL/rasterio built against 0.11, which broke every raster import. Use:
+#   pixi run -e video ffmpeg ...
+[feature.video.dependencies]
+ffmpeg = "*"
+
+[environments]
+video = { features = ["video"], no-default-feature = true }
