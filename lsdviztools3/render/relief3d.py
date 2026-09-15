@@ -73,6 +73,7 @@ def render_relief3d(
     cmap: Optional[str] = None,
     style: Optional[MapStyle] = None,
     fig=None,
+    zlimits: Optional[tuple] = None,
 ):
     """Render a DEM as a 3D perspective relief surface (``grdview``).
 
@@ -93,6 +94,10 @@ def render_relief3d(
         cmap: CPT name (defaults to ``style.cmap``; ``"geo"`` suits elevation).
         style: Styling options (``cmap``, ``figure_size``, fonts, ...).
         fig: Existing ``pygmt.Figure`` to draw onto, or ``None`` for a new one.
+        zlimits: Optional fixed ``(zmin, zmax)`` for the z axis, the vertical
+            scale and the colour range. ``None`` uses this raster's own range.
+            An animation must pin it, or every frame is rescaled and relief
+            growth is invisible.
 
     Returns:
         The ``pygmt.Figure``.
@@ -106,7 +111,12 @@ def render_relief3d(
     grid, extent = grid_to_display(to_gmt_grid(da), crs)
     set_grid_gtype(grid, crs)
 
-    zmin, zmax = _finite_range(grid.values)
+    if zlimits is not None:
+        zmin, zmax = float(zlimits[0]), float(zlimits[1])
+        if zmax <= zmin:
+            zmax = zmin + 1.0
+    else:
+        zmin, zmax = _finite_range(grid.values)
     region = [extent[0], extent[1], extent[2], extent[3], zmin, zmax]
 
     if vertical_exaggeration is not None and is_projected(crs):
