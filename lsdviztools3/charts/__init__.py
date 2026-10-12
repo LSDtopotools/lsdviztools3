@@ -1,9 +1,8 @@
 """Statistics (x-y) plotting.
 
-Chi-profile plotting is implemented here (:func:`plot_chi_profile`,
-:func:`plot_chi_stacked`) on a matplotlib engine (DESIGN decision #1), imported
-lazily so the core maps install stays lean. The remaining x-y plots (channel
-longitudinal profiles, slope-area) are still deferred and raise
+All x-y charts are implemented on a matplotlib engine (DESIGN decision #1),
+imported lazily so the core maps install stays lean. Only the channel
+longitudinal profile (:func:`plot_profile`) is still deferred and raises
 ``NotImplementedError``.
 """
 

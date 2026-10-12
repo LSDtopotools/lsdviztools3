@@ -1,6 +1,6 @@
 # lsdviztools3
 
-Welcome to `lsdviztools3`, the visualisation package for [`lsdtts3`](https://github.com/LSDtopotools/lsdtt3). `lsdtt3` is a software package for topographic analysis, landscape evolution modelling, and hydrology, which runs in a command line environment. Outputs from `lsdtt3` can be visualised in any GIS software package, but `lsdviztools3` has been built to 
+Welcome to `lsdviztools3`, the visualisation package for [`lsdtt3`](https://github.com/LSDtopotools/lsdtt3). `lsdtt3` is a software package for topographic analysis, landscape evolution modelling, and hydrology, which runs in a command line environment. Outputs from `lsdtt3` can be visualised in any GIS software package, but `lsdviztools3` has been built to 
 
 * Enable production of publication-ready figures from `lsdtt3` outputs. It can also work with other standard geographic outputs generated from alternative topographic analysis packages. 
 * Provide python based wrappers around `lsdtt3` command line programs so analysis can be run in python notebooks. 
@@ -171,6 +171,18 @@ absolute path:
 | `lsdviz3-cosmo-compare` | `lsdviztools3.cli.plot_cosmo_compare` |
 | `lsdviz3-cosmo-published` | `lsdviztools3.cli.plot_cosmo_published` |
 | `lsdviz3-cosmo-transient` | `lsdviztools3.cli.plot_cosmo_transient` |
+| `lsdviz3-cosmo-transient` | `lsdviztools3.cli.plot_cosmo_transient` |
+| `lsdviz3-animate`  | `lsdviztools3.cli.plot_animation`   |
+| `lsdviz3-lem-pulse` | `lsdviztools3.cli.plot_lem_pulse` |
+| `lsdviz3-lem-ci`   | `lsdviztools3.cli.plot_lem_ci_animation` |
+| `lsdviz3-hillslope-comparison` | `lsdviztools3.cli.plot_hillslope_comparison` |
+| `lsdviz3-hilltop-coupling` | `lsdviztools3.cli.plot_hilltop_coupling` |
+| `lsdviz3-estar-rstar` | `lsdviztools3.cli.plot_estar_rstar` |
+| `lsdviz3-ladder-windows` | `lsdviztools3.cli.plot_ladder_windows` |
+| `lsdviz3-ladder-density` | `lsdviztools3.cli.plot_ladder_density` |
+| `lsdviz3-ladder-bands` | `lsdviztools3.cli.plot_ladder_band_map` |
+| `lsdviz3-valley-sections` | `lsdviztools3.cli.plot_valley_sections` |
+| `lsdviz3-valley-section-map` | `lsdviztools3.cli.plot_valley_section_map` |
 | `lsdviz3-grabdem`  | `lsdviztools3.cli.grab_dem`         |
 | `lsdviz3-lsdtt`    | `lsdviztools3.cli.run_lsdtt`        |
 
@@ -248,18 +260,25 @@ pixi run lsdviz3-chi-cosmo \
 ## What's implemented
 
 Maps (`render.*`, PyGMT): hillshade, channels (incl. colour-by log₁₀ k_sn),
-points (incl. size-by drainage area), basins, orthographic/aerial basemap,
-3D perspective relief (`render.relief3d`, `grdview`), scale bar + colourbar.
-Charts (`charts.*`, matplotlib): chi profiles
-(individual + stacked), swath profiles, rose diagrams of bearings (North-up,
-grouped/stacked by e.g. stream order), and circular/directional comparison of
-two bearing samples (`circular_wasserstein`, `kuiper_two_sample`,
-`plot_circular_comparison`), plus cosmogenic comparison charts for lsdtt3-vs-
-reference CSVs (`plot_cosmo_sweep_panels`, `plot_cosmo_sample_residuals`).
-Plus IO (`io.*`), DEM download
-(`download.*`), the lsdtt3 driver (`driver.*`), and chained `workflows`.
+points (incl. size-by drainage area), basins, raster drapes (incl. binary masks
+and STI), divide migration, orthographic/aerial basemap, 3D perspective relief
+(`render.relief3d`, `grdview`), scale bar + colourbar, and GIF animations of
+`lsdtt-lem` runs (transient, incision pulse, channelization-index ladder) and of
+paired hillslope solvers.
+
+Charts (`charts.*`, matplotlib): chi profiles (individual + stacked), swath
+profiles, rose diagrams and circular comparison of bearings, distributions,
+valley floor / HAND, valley cross sections and hydraulic breaks, the
+fluvial-surface ladder, cosmogenic comparison and transient (step-change)
+charts, landslide sample effects, slope–area, gradient–curvature, E*–R*,
+hilltop/channel coupling, hillslope model residuals, divide migration, network
+geometry, synthetic-network and snapping sweeps, and valley spacing.
+
+Plus IO (`io.*`), DEM download (`download.*`), the lsdtt3 driver (`driver.*`),
+and chained `workflows`.
 Deferred (raise `NotImplementedError`): `charts.plot_profile`,
-`charts.plot_slope_area`, `render.decorations.add_inset`. The matplotlib chart
+`render.categorical.render_categorical_drape`, `io.grids.make_hillshade`,
+`render.decorations.add_inset`, `io.vector.to_xy`. The matplotlib chart
 plots need the optional `charts` extra (`pip install lsdviztools3[charts]`); it is
 already in the pixi env.
 

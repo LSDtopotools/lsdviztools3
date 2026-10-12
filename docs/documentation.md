@@ -36,6 +36,11 @@ Contents:
    - [Valley cross sections](#57-valley-cross-sections)
    - [Hydraulic breaks](#58-hydraulic-breaks)
    - [Cosmo comparison workflows](#59-cosmo-comparison-workflows)
+   - [Transient cosmogenic and landslide charts](#510-transient-cosmogenic-and-landslide-charts)
+   - [Hillslope charts](#511-hillslope-charts)
+   - [Fluvial-surface ladder and valley sections](#512-fluvial-surface-ladder-and-valley-sections)
+   - [Divide migration charts](#513-divide-migration-charts)
+   - [Network geometry, synthetic networks and valley spacing](#514-network-geometry-synthetic-networks-and-valley-spacing)
 6. [End-to-end workflows](#6-end-to-end-workflows)
 7. [CLI reference](#7-cli-reference)
 8. [lsdtt3 output → plot function map](#8-lsdtt3-output--plot-function-map)
@@ -1090,6 +1095,129 @@ Main workflow helpers:
   from `<dataset>_summary.csv`, `<dataset>_lsdn_summary.csv`, and
   `<dataset>_riversand_summary.csv` style files.
 
+### 5.10 Transient cosmogenic and landslide charts
+
+Charts over the `lsdtt-cosmo-column-tool` `step_change_sweep` CSVs
+(`cosmo_transient_sweep_<label>.csv`) and the per-sample
+`<stem>_joined_samples.csv` from a routed step-change landscape. Every quantity
+drawn is a column lsdtt3 already wrote: nothing is normalised or inverted here.
+
+| Function | What it draws |
+|---|---|
+| `plot_cosmo_transient_concentration` | Normalised concentration vs time since the step change, one series per nuclide (column prefix `approach_frac_`, `norm_conc_` or `norm_full_`). |
+| `plot_cosmo_transient_erate_ratio` | Apparent erosion-rate ratios vs time since the step change. |
+| `plot_nuclide_removal_response` | Three panels explaining why stripping a surface moves the apparent ¹⁴C/¹⁰Be ratio. |
+| `plot_ratio_vs_steptime` | Per-sample apparent-rate ratio vs time since the knickpoint passed, coloured by true basin-mean erosion rate. |
+| `plot_ratio_vs_mean_erate` | The same ratio vs true basin-mean erosion rate, coloured by time since the step. |
+| `plot_ratio_overlay_1d` | `plot_ratio_vs_steptime` with the equivalent 1-D column sweep drawn over it. |
+| `plot_scenario_delta` | Paired change in the apparent-rate ratio, one series per scenario. |
+| `plot_landslide_area_volume_larsen` | Realised landslide area–volume pairs (`*_LS_INVENTORY.csv`) against a Larsen-style power law. |
+| `plot_sample_effect_apparent_vs_true` / `plot_sample_effect_ratio` | Landslide-vs-control apparent rates from `*_LS_SAMPLE_EFFECT.csv`. |
+
+Loaders: `load_cosmo_transient_table`, `load_joined_samples`,
+`load_landslide_inventory`. The sweep figures also have a CLI:
+
+```bash
+pixi run lsdviz3-cosmo-transient \
+  --sweep-csv cosmo_transient_sweep_fast.csv cosmo_transient_sweep_slow.csv \
+  --outdir demo_output/cosmo_transient \
+  --families concentration erate_ratio
+```
+
+### 5.11 Hillslope charts
+
+Process diagnostics for hillslopes. Each module docstring explains what the
+figure tests and how to read it; read it before quoting a result.
+
+| Function | Module | What it draws |
+|---|---|---|
+| `plot_slope_area` | `charts.slope_area` | The slope–area "boomerang" from slope + drainage-area rasters, with the binned median and the hillslope/channel rollover interval (`binned_median`, `rollover_area`). |
+| `plot_gradient_curvature` | `charts.gradient_curvature` | Convexity vs gradient with the linear and Roering nonlinear flux-law predictions overlaid (after Roering, 2008). |
+| `plot_estar_rstar` | `charts.estar_rstar` | Measured hilltop E*–R* against the Roering et al. (2007) steady relation, plus the R* residual panel; `summarise` gives per-group residual statistics. |
+| `plot_estar_rstar_model_scan` | `charts.estar_rstar` | Analytical, Newton and cellular strip results in E*–R* space. |
+| `plot_hillslope_profiles` / `plot_profile_residual_panels` | `charts.hillslope_profiles` | Elevation, gradient, curvature and residual panels for 1-D hillslope comparisons. |
+| `plot_residual_density` / `plot_residual_raster` | `charts.hillslope_residuals` | Residual histograms (optionally hillslope-masked) and residual maps centred on zero; `summarise_residuals` tabulates RMS/L∞/percentiles. |
+| `plot_transient_residuals` / `plot_strip_transient_metrics` | `charts.hillslope_transient_residuals` | RMS and max residuals through time; relief, max gradient and divide Laplacian changes per model. |
+
+Hilltop/channel coupling (`lsdtt-hillslope-channel-coupling` output, loaded with
+`io.hilltop_coupling.load_hilltop_outputs`) has its own chart set in
+`charts.hilltop_coupling`: `plot_traces_on_hillshade`, `plot_trace_outcomes`,
+`plot_ridgelines_and_sides`, `plot_length_distributions`,
+`plot_ridgeline_profiles`, `plot_looped_trace_profiles`.
+
+```bash
+# hilltop coupling figure set from one output directory or <write_path>/<write_fname> stem
+pixi run lsdviz3-hilltop-coupling --prefix ../data/run/run_stem --outdir demo_output/hilltop
+
+# E*-R* figure + per-group residual summary CSV
+pixi run lsdviz3-estar-rstar --metrics hilltop_metrics.csv --outdir demo_output/estar
+
+# paired Newton vs cellular hillslope solver animation
+pixi run lsdviz3-hillslope-comparison --newton runs/newton --cellular runs/cellular \
+  --out demo_output/hillslope_comparison.gif --layout 2d
+```
+
+The animation is built by
+`render.hillslope_comparison_animation.render_hillslope_comparison_animation`;
+`examples/hillslope_comparison.py` drives the whole comparison workflow.
+
+### 5.12 Fluvial-surface ladder and valley sections
+
+`lsdtt-fluvial-surfaces` bands a height reference (normally HAND) per
+along-channel window into a "ladder" of levels. These figures check whether the
+levels it found are real.
+
+| Function | CLI | Input | What it draws |
+|---|---|---|---|
+| `plot_ladder_windows` | `lsdviz3-ladder-windows` | `<stem>_ladder_windows.csv` | Break selection along each channel: breaks, level centres, and windows the DEM could not resolve. `summarise_ladder` gives one row per channel. |
+| `plot_ladder_density` | `lsdviz3-ladder-density` | `<stem>_ladder_histograms.csv` (`write_ladder_histograms_csv: true`) + windows CSV | Each window's HAND density with the breaks and their separation ratios. |
+| `plot_ladder_band_map` | `lsdviz3-ladder-bands` | `<stem>_band_index.tif` | The band index over a hillshade. Bands are per window, so read patches, not a continuous surface. |
+| `plot_valley_sections` | `lsdviz3-valley-sections` | `<stem>_valley_cross_section_samples.csv` | One panel per station: ground profile, picked valley floor, low point, and an optional HAND field coloured by band. `summarise_sections` gives width and centreline-to-low-point offset. |
+| `plot_valley_section_map` | `lsdviz3-valley-section-map` | `<stem>_valley_cross_sections.fgb` (+ centreline, channel, sides) | Section lines against the centreline and channel network, flagging sections that cross no channel cell. |
+
+```bash
+pixi run lsdviz3-ladder-windows --windows run_ladder_windows.csv --out demo_output/ladder_windows.png
+pixi run lsdviz3-ladder-density --histograms run_ladder_histograms.csv \
+  --windows run_ladder_windows.csv --out demo_output/ladder_density.png
+pixi run lsdviz3-ladder-bands --hillshade run_hs.tif --bands run_band_index.tif \
+  --channel run_channel_network_lines.fgb --out demo_output/ladder_bands.png
+pixi run lsdviz3-valley-sections --samples run_valley_cross_section_samples.csv \
+  --field run_hand.tif --bands run_band_index.tif --out demo_output/valley_sections.png
+pixi run lsdviz3-valley-section-map --hillshade run_hs.tif \
+  --sections run_valley_cross_sections.fgb --centreline run_valley_centreline.fgb \
+  --channel run_channel_network_lines.fgb --out demo_output/valley_section_map.png
+```
+
+These sit alongside the matplotlib cross-section charts in
+[§5.7](#57-valley-cross-sections), which work from the same samples table.
+
+### 5.13 Divide migration charts
+
+`lsdviz3-divide-migration` ([§7](#7-cli-reference)) renders the full figure set
+for an `lsdtt-divide-migration` run. The pieces are available individually:
+
+| Function | What it draws |
+|---|---|
+| `render.divide_migration.render_divide_migration` | PyGMT map: grey hillshade + divide polylines + channel heads coloured by one metric. |
+| `plot_pair_comparison` | Side A and side B means for one metric, with Δ = A − B and its uncertainty. Side A is always the lower-numbered unit. |
+| `plot_head_metric_vs_distance` | Per-head metric against distance to the nearest divide, split by unit. |
+| `aggressor_annotation` | Text describing which side Δ points at, and whether the uncertainty supports it. |
+
+Loaders live in `io.divide_migration` (`find_outputs`, `load_divides`,
+`load_channel_heads`, `load_pair_summary`).
+
+### 5.14 Network geometry, synthetic networks and valley spacing
+
+| Function | Module | What it draws |
+|---|---|---|
+| `plot_junction_angle_cdf`, `plot_delta_L_cdf`, `plot_edge_basin_cdf`, `plot_metric_panels`, `plot_metric_vs_temperature` | `charts.network_geometry` | Network-geometry metrics across a sweep (see the rows in [§8](#8-lsdtt3-output--plot-function-map)). |
+| `plot_hillshade`, `plot_network`, `plot_network_on_hillshade` | `charts.network_maps` | Matching map panels per synthetic-network case: relief, the network alone (line width ~ log area), and both together. |
+| `plot_metric_by_temperature`, `plot_branching_range`, `plot_flow_change_fraction` | `charts.snapping` | The OCN snapping experiment: does annealing temperature produce a range of branching, and does snapping reduce it? |
+| `plot_valley_spectrum`, `plot_spacing_vs_ci`, `plot_landscape_panel` | `charts.valley_spacing` | Valley spacing from `lsdtt-spectral-analysis` (`_valley_spacing.csv`, `_valley_spacing_spectrum.csv`): one landscape's spectrum with both spacing measures, spacing vs channelization index across a sweep, and a side-by-side hillshade panel. |
+
+`examples/synthetic_networks_demo.py` drives `lsdtt-synthetic-networks` and
+uses these charts end to end.
+
 ---
 
 ## 6. End-to-end workflows
@@ -1115,7 +1243,7 @@ paths (or a Figure/PNG path).
 | `render_cosmo_basin_erate_map(base, basins, cosmo_csv, out_png, ...)` | canonical hillshade + semi-transparent basin overlay colored by inferred erosion rate with scaling/muon/atmosphere metadata |
 | `summarize_basin_ksn(fit_nodes_csv, fit_segments_csv, ...)` | per-basin `k_sn` summary from chi nodes: median + 25th/75th percentiles + asymmetric IQR errors |
 | `render_chi_basin_ksn_map(base, basins, fit_nodes_csv, fit_segments_csv, out_png, ...)` | hillshade + basin polygons colored by median `k_sn` |
-| `render_chi_and_cosmo_basin_workflow(outputs, out_dir, *, basin_polygons=..., base_raster=..., cosmo_csv=...)` | writes one chi profile PNG per basin, basin `k_sn` summary CSV/map, and optional `k_sn` vs inferred erosion-rate errorbar plot |
+| `render_chi_and_cosmo_basin_workflow(outputs, out_dir, *, basin_polygons=..., base_raster=..., cosmo_csv=...)` | writes one chi profile PNG per basin, basin `k_sn` summary CSV/map, and optional `k_sn` vs inferred erosion-rate errorbar plot (`charts.plot_ksn_vs_erate`) |
 | `render_hand_profile(…)` / `render_hand_window_populations(…)` | the [§5.6](#56-valley-floor--hand-charts) HAND charts, straight from lsdtt3 output paths |
 | `hillshade_with_vectors(dem, layers, png)` | hillshade with any number of vector layers overlaid ([§4.9](#49-overlaying-several-vector-layers-on-a-hillshade)) |
 | `compare_stream_networks(…)` | stream-burning preset over `hillshade_with_vectors` |
@@ -1206,6 +1334,17 @@ pixi run python examples/single_channel_basins.py
 pixi run python examples/single_channel_basins.py --skip-compute  # replot only
 ```
 
+### Other example scripts
+
+| Script | What it does |
+|---|---|
+| `examples/island_demo.py` | Keyless DEM download + hillshade (`pixi run demo-eigg`, `demo-rum`, `demo-fiji`, `demo-solomon`). |
+| `examples/lsdtt3_workflow.py` | Download → lsdtt3 hillshade/channels/largest basin → composite map (`pixi run demo-lsdtt3`). |
+| `examples/cosmo_comparison_workflow.py` | Cosmogenic sweep comparison figures ([§5.9](#59-cosmo-comparison-workflows)). |
+| `examples/synthetic_networks_demo.py` | Synthetic OCN networks: generate, render and compare junction geometry ([§5.14](#514-network-geometry-synthetic-networks-and-valley-spacing)). |
+| `examples/hillslope_comparison.py` | Newton vs cellular hillslope solver comparison ([§5.11](#511-hillslope-charts)). |
+| `examples/perron_ren_p1_p2.py` … `perron_ren_p6.py` | Perron/Ren hillslope benchmark figures: P1–P2 outputs, P3 timestep independence, P4 transient convergence and runtimes, P5 stability envelope, P6 spatial convergence and anisotropy. |
+
 ---
 
 ## 7. CLI reference
@@ -1223,12 +1362,23 @@ pixi run python examples/single_channel_basins.py --skip-compute  # replot only
 | `lsdviz3-basemap` | global/aerial locator | `--in --out --mode --elevation-km --view-limit-deg --look-bearing --look-vertical-angle --grid-spacing-deg --no-north-arrow` + style |
 | `lsdviz3-animate` | animate a transient `lsdtt-lem` run as a GIF | `--in --out --glob --stats-csv --fps --loop --no-annotate --keep-frames` + style |
 | `lsdviz3-lem-pulse` | animate an `lsdtt-lem` incision-pulse run (hillshade + erosion drape + channels + history panel) | `--in --out --prefix --ext --stats-csv --erosion-cmap --erosion-vmin --erosion-vmax --erosion-percentile --erosion-transparency --channel-color --no-timeseries --no-annotate --fps --loop --keep-frames` + style |
+| `lsdviz3-lem-ci` | animate an `lsdtt-lem` channelization-index ladder run (CI history panel + map or oblique landscape) | `--in --out --view --prefix --ext --stats-csv --no-initial --map-width --azimuth --elevation --vertical-exaggeration --landscape-cmap --fps --frame-dpi --loop --keep-frames` + style |
+| `lsdviz3-hillslope-comparison` | animate paired Newton vs cellular hillslope rasters ([§5.11](#511-hillslope-charts)) | `--newton --cellular --out [--glob --stats-csv --fps --loop --keep-frames --layout]` |
+| `lsdviz3-hilltop-coupling` | hilltop/channel coupling figure set ([§5.11](#511-hillslope-charts)) | `--prefix --outdir [--dem --channels --max-traces --dpi]` |
+| `lsdviz3-estar-rstar` | measured E*–R* vs Roering et al. (2007) theory + residual summary CSV | `--metrics --outdir [--group-col --title --dpi]` |
+| `lsdviz3-ladder-windows` | fluvial-surface ladder break selection along each channel ([§5.12](#512-fluvial-surface-ladder-and-valley-sections)) | `--windows --out [--summary --title --dpi]` |
+| `lsdviz3-ladder-density` | per-window HAND density with ladder breaks | `--histograms --windows --out [--source-id --max-panels --title --dpi]` |
+| `lsdviz3-ladder-bands` | ladder band index over a hillshade | `--hillshade --bands --out [--channel --centreline --max-band --title --dpi]` |
+| `lsdviz3-valley-sections` | valley cross-section panels with picked floor and optional HAND field | `--samples --out [--source-id --field --bands --field-label --max-panels --n-cols --summary --title --dpi]` |
+| `lsdviz3-valley-section-map` | cross-section lines vs centreline and channel network | `--hillshade --sections --out [--centreline --channel --samples --sides --source-id --label-every --title --dpi]` |
 | `lsdviz3-cosmo-compare` | cosmogenic comparison figures from standard lsdtt3 CSVs | `--scan-csv --outdir [--sample-csv --reference --pressure --erate --stem --dpi]` |
 | `lsdviz3-cosmo-published` | residual figure(s) from lsdtt3 published summary tables | `--published-dir --datasets [--mode --outdir --stem --dpi]` |
+| `lsdviz3-cosmo-transient` | transient (step-change) cosmogenic figure families ([§5.10](#510-transient-cosmogenic-and-landslide-charts)) | `--sweep-csv --outdir [--value-prefix --families --concentration-xmax --erate-ratio-xmax --no-title --dpi]` |
 | `lsdviz3-grabdem` | download a DEM | `--bbox --source --dataset --out --dir --ot-api-key-file` |
 | `lsdviz3-lsdtt` | run an lsdtt3 tool | `tool --params --data-path --lsdtt-dir --set-lsdtt-dir --cwd --dir` |
 
-Shared **style flags** (all map CLIs): `--coordinates --cmap --projection
+Shared **style flags** (all PyGMT map/animation CLIs — the matplotlib chart
+CLIs take only the flags listed in their row): `--coordinates --cmap --projection
 --figure-size --line-width --line-color --font-annotation --font-label
 --font-title --dpi --high-res --opaque --clean`.
 
@@ -1273,6 +1423,13 @@ with the `<stem>` = lsdtt3 `write_fname` prefix stripped.
 | `lsdtt-valley-centreline` | `write_valley_cross_sections` | `_valley_cross_section_samples.csv` | per-sample offset, elevation, section id | `load_table` | [§5.7](#57-valley-cross-sections) |
 | `lsdtt-valley-centreline` | `write_cross_section_features` | `_valley_cross_section_hydraulic_breaks.csv` | break HAND per section and rank | `load_table` | [§5.8](#58-hydraulic-breaks) |
 | `lsdtt-lem` | `frequency_of_output_writing`, `write_erosion_rate_raster`, `write_channel_mask_raster` | `_model_iteration_<N>` rasters, `_model_elevation_stats.csv` | elevation, erosion rate, channel mask, model time | `find_pulse_frames` / `find_transient_frames` | `animate_lem_pulse`, `animate_transient_rasters` (`lsdviz3-lem-pulse`, `lsdviz3-animate`) |
+| `lsdtt-lem` | channelization-index ladder run | `_model_iteration_<N>` rasters, `_initial_topography`, `_model_elevation_stats.csv` | elevation, CI history | `find_ci_frames` | `animate_ci_run` (`lsdviz3-lem-ci`) |
+| `lsdtt-fluvial-surfaces` | default / `write_ladder_histograms_csv` | `_ladder_windows.csv`, `_ladder_histograms.csv`, `_band_index.tif` | per-window breaks, level centres, status; HAND densities; band index | (path) | `plot_ladder_windows`, `plot_ladder_density`, `plot_ladder_band_map` ([§5.12](#512-fluvial-surface-ladder-and-valley-sections)) |
+| `lsdtt-valley-centreline` | `write_valley_cross_sections` | `_valley_cross_sections.fgb`, `_valley_centreline.fgb`, `_valley_cross_section_sides.fgb` | section geometry, centreline, margins | (path) | `plot_valley_sections`, `plot_valley_section_map` ([§5.12](#512-fluvial-surface-ladder-and-valley-sections)) |
+| `lsdtt-hillslope-channel-coupling` | default | trace / ridgeline / hilltop outputs | trace outcome, hillslope length, relief, E*, R* | `load_hilltop_outputs` | `charts.hilltop_coupling`, `plot_estar_rstar` (`lsdviz3-hilltop-coupling`, `lsdviz3-estar-rstar`) |
+| `lsdtt-cosmo-column-tool` | `step_change_sweep` | `cosmo_transient_sweep_<label>.csv`, `_joined_samples.csv` | normalised concentrations, apparent-rate ratios | `load_cosmo_transient_table`, `load_joined_samples` | [§5.10](#510-transient-cosmogenic-and-landslide-charts) (`lsdviz3-cosmo-transient`) |
+| `lsdtt-spectral-analysis` | valley spacing | `_valley_spacing.csv`, `_valley_spacing_spectrum.csv` | spectrum, peaks, spacing measures | `load_valley_spacing`, `load_valley_spacing_sweep` | `plot_valley_spectrum`, `plot_spacing_vs_ci` ([§5.14](#514-network-geometry-synthetic-networks-and-valley-spacing)) |
+| `lsdtt-divide-migration` | default | divides, channel heads, pair summary | per-head metrics, Δ = A − B | `io.divide_migration` loaders | [§5.13](#513-divide-migration-charts) (`lsdviz3-divide-migration`) |
 
 Two rules follow from this table:
 
