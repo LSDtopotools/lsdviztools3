@@ -1,0 +1,573 @@
+"""Channel-bearing roses and junction-angle charts by group (matplotlib).
+
+Draws the grouped outputs of lsdtt-channel-network-analysis read by
+:mod:`lsdviztools3.io.channel_bearings` (groups: Strahler order, basin, region,
+lithology; optional stratum):
+
+* :func:`plot_binned_rose` — one rose from lsdtt3's **pre-binned** counts or
+  lengths (no re-binning), groups overlaid or stacked, with each group's
+  circular mean and R-bar from the summary drawn as a radial line.
+* :func:`plot_binned_rose_grid` — one small rose per group value.
+* :func:`plot_rose_comparison` — rows = runs (e.g. WV vs an isotropic null),
+  columns = groups, on a shared radial scale.
+* :func:`plot_junction_angle_summary` — per-group junction-angle boxes drawn
+  from the summary's quartiles (``bxp``), optionally several runs side by side,
+  with the median CI where lsdtt3 wrote one.
+* :func:`plot_junction_angle_distributions` — step histograms of the
+  per-junction angles lsdtt3 wrote, one per order group.
+* :func:`plot_comparison_table` — lsdtt3's pairwise comparison rows as a table.
+
+Statistics shown as numbers (n, n_blocks, means, R-bar, quartiles, CIs,
+p-values) are read from lsdtt3's files, never recomputed. p-values keep their
+``_iid_approx`` label and are always shown beside ``n_blocks``: the junctions
+and links are spatially clustered, so the i.i.d. p-value is an approximation.
+
+North-up, clockwise polar axes, as :func:`charts.rose.rose_diagram`. Axial
+roses (0-180) are mirrored to 360.
+"""
+
+from __future__ import annotations
+
+from typing import Mapping, Optional, Sequence
+
+import numpy as np
+import pandas as pd
+
+from ..io.channel_bearings import (
+    AXIAL, BEARING_COMPARISON_COLUMNS, BEARING_SUMMARY_COLUMNS, DIRECTIONAL,
+    GROUP_COLUMNS, JUNCTION_COLUMNS, JUNCTION_COMPARISON_COLUMNS,
+    JUNCTION_SUMMARY_COLUMNS, NO_STRATUM, ROSE_COLUMNS, order_group_mask,
+    select_groups,
+)
+
+_MPL_MSG = (
+    "Bearing charts need matplotlib. Install the optional 'charts' extra, e.g. "
+    "`pip install lsdviztools3[charts]` or `pip install matplotlib`."
+)
+
+#: Weight columns of the rose file, by short name.
+WEIGHTS = ("count", "length", "fraction_count", "fraction_length")
+
+
+def _import_mpl():
+    try:
+        import matplotlib.pyplot as plt  # noqa: F401
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(_MPL_MSG) from exc
+    return plt
+
+
+def _sort_values(values):
+    """Group values in numeric order ("4+" after 3), else as text."""
+    vals = list(dict.fromkeys(str(v) for v in values))
+
+    def key(v):
+        try:
+            return (0, float(v.rstrip("+")), v)
+        except ValueError:
+            return (1, 0.0, v)
+
+    return sorted(vals, key=key)
+
+
+def _num(row, col) -> Optional[float]:
+    if col not in row.index:
+        return None
+    v = pd.to_numeric(pd.Series([row[col]]), errors="coerce").iloc[0]
+    return float(v) if np.isfinite(v) else None
+
+
+def _fmt_p(p: Optional[float]) -> str:
+    if p is None:
+        return "nan"
+    return f"{p:.2g}" if p >= 1e-3 else f"{p:.1e}"
+
+
+def _petals(rows: pd.DataFrame, weight: str):
+    """(theta_rad, width_rad, height, axial) for one group's bins; axial mirrored."""
+    c = ROSE_COLUMNS
+    col = {"count": c["count"], "length": c["length"],
+           "fraction_count": c["fraction_count"],
+           "fraction_length": c["fraction_length"]}[weight]
+    types = rows[c["angular_type"]].astype(str).unique()
+    if len(types) != 1:
+        raise ValueError(f"Rows mix angular types {list(types)}; select one.")
+    axial = types[0] == AXIAL
+    period = 180.0 if axial else 360.0
+    centre = rows[c["bin_centre"]].to_numpy(float)
+    lo, hi = rows[c["bin_lower"]].to_numpy(float), rows[c["bin_upper"]].to_numpy(float)
+    # Bin 0 is centred on 0 (lower edge -w/2); widths are taken modulo period.
+    width = np.mod(hi - lo, period)
+    width = np.where(width == 0, period, width)
+    h = rows[col].to_numpy(float)
+    if axial:
+        centre = np.concatenate([centre, centre + 180.0])
+        width = np.concatenate([width, width])
+        h = np.concatenate([h, h])
+    return np.deg2rad(centre), np.deg2rad(width), h, axial
+
+
+def _setup_polar(ax):
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+
+
+def _mean_line(ax, srow, *, weight: str, rmax: float, colour, axial: bool):
+    """Radial line at the summary circular mean, length R-bar x rmax."""
+    s = BEARING_SUMMARY_COLUMNS
+    use_len = weight in ("length", "fraction_length")
+    mean = _num(srow, s["mean_length"] if use_len else s["mean_count"])
+    rbar = _num(srow, s["rbar_length"] if use_len else s["rbar_count"])
+    if mean is None or rbar is None:
+        return
+    for a in ([mean, mean + 180.0] if axial else [mean]):
+        ax.plot([np.deg2rad(a)] * 2, [0, rbar * rmax], color=colour, linewidth=2.2,
+                solid_capstyle="round", zorder=5)
+
+
+def bearing_stats_text(srow, weight: str = "fraction_length") -> str:
+    """``"n=1765 (106 blocks), R=0.05, Rayleigh p_iid_approx=0.01"`` from a summary row."""
+    s = BEARING_SUMMARY_COLUMNS
+    use_len = weight in ("length", "fraction_length")
+    n, nb = _num(srow, s["n"]), _num(srow, s["n_blocks"])
+    rbar = _num(srow, s["rbar_length"] if use_len else s["rbar_count"])
+    p = _num(srow, s["rayleigh_p"])
+    parts = []
+    if n is not None:
+        parts.append(f"n={int(n)}" + (f" ({int(nb)} blocks)" if nb is not None else ""))
+    if rbar is not None:
+        parts.append(f"R={rbar:.3f}")
+    if s["rayleigh_p"] in srow.index:
+        parts.append(f"Rayleigh p_iid_approx={_fmt_p(p)}")
+    if s["meets_min"] in srow.index and _num(srow, s["meets_min"]) == 0:
+        parts.append("below min group size")
+    return ", ".join(parts)
+
+
+def _group_rows(df, value):
+    return df[df[GROUP_COLUMNS["group_value"]].astype(str) == str(value)]
+
+
+def plot_binned_rose(
+    rose: pd.DataFrame,
+    summary: Optional[pd.DataFrame] = None,
+    *,
+    group_key: str = "strahler_order",
+    angular_type: str = DIRECTIONAL,
+    groups: Optional[Sequence] = None,
+    measurand: Optional[str] = None,
+    stratum_key: str = NO_STRATUM,
+    stratum_value=None,
+    weight: str = "fraction_length",
+    stacked: bool = False,
+    cmap: str = "viridis",
+    title: Optional[str] = None,
+    ax=None,
+):
+    """Rose of lsdtt3's pre-binned bearings, one colour per group value.
+
+    Args:
+        rose: ``<wf>_channel_bearing_rose.csv`` table.
+        summary: ``<wf>_channel_bearing_group_summary.csv`` table; if given,
+            each group's circular mean is drawn as a line of length R-bar
+            (fraction of the outer radius) and n / n_blocks go in the legend.
+        group_key: Grouping to draw (``strahler_order``, ``lithology``, ...).
+        angular_type: ``"directional"`` (0-360) or ``"axial"`` (0-180,
+            mirrored). Both are in the same file, so one must be chosen.
+        groups: Subset of group values (default all, in order).
+        measurand: Optional measurand filter (``link_bearing``).
+        stratum_key, stratum_value: Optional stratum (default unstratified).
+        weight: ``count``, ``length``, ``fraction_count`` or ``fraction_length``.
+        stacked: Stack petals instead of overlaying outlines.
+        cmap: Colour map sampled per group.
+        title: Axis title.
+        ax: Existing polar axes or ``None``.
+
+    Returns:
+        ``(fig, ax)``.
+    """
+    plt = _import_mpl()
+    if weight not in WEIGHTS:
+        raise ValueError(f"weight must be one of {WEIGHTS}, got {weight!r}.")
+    sel = select_groups(rose, group_key=group_key, measurand=measurand,
+                        stratum_key=stratum_key, stratum_value=stratum_value,
+                        angular_type=angular_type)
+    if sel.empty:
+        raise ValueError(f"No {angular_type} rose rows for group_key={group_key!r}.")
+    values = _sort_values(sel[GROUP_COLUMNS["group_value"]]) if groups is None \
+        else [str(g) for g in groups]
+    ssel = None
+    if summary is not None:
+        ssel = select_groups(summary, group_key=group_key, measurand=measurand,
+                             stratum_key=stratum_key, stratum_value=stratum_value,
+                             angular_type=angular_type)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6.2, 5.8), subplot_kw={"projection": "polar"})
+    else:
+        fig = ax.figure
+    _setup_polar(ax)
+    cm = plt.get_cmap(cmap)
+    bottom, rmax, drawn = None, 0.0, []
+    for i, v in enumerate(values):
+        rows = _group_rows(sel, v).sort_values(ROSE_COLUMNS["bin_centre"])
+        if rows.empty:
+            continue
+        theta, width, h, axial = _petals(rows, weight)
+        colour = cm(i / max(len(values) - 1, 1))
+        label = f"{group_key.replace('_', ' ')} {v}"
+        if ssel is not None and not _group_rows(ssel, v).empty:
+            label += f": {bearing_stats_text(_group_rows(ssel, v).iloc[0], weight)}"
+        if stacked:
+            base = np.zeros_like(h) if bottom is None else bottom
+            ax.bar(theta, h, width=width, bottom=base, color=colour, edgecolor="white",
+                   linewidth=0.3, align="center", label=label)
+            bottom = base + h
+            rmax = max(rmax, float(np.max(bottom)))
+        else:
+            ax.bar(theta, h, width=width, bottom=0.0, fill=False, edgecolor=colour,
+                   linewidth=1.5, align="center", label=label)
+            rmax = max(rmax, float(np.max(h)))
+        drawn.append((v, colour, axial))
+    if not drawn:
+        raise ValueError("None of the requested groups has rose rows.")
+    if ssel is not None:
+        for v, colour, axial in drawn:
+            srows = _group_rows(ssel, v)
+            if not srows.empty:
+                _mean_line(ax, srows.iloc[0], weight=weight, rmax=rmax, colour=colour,
+                           axial=axial)
+    ax.tick_params(labelsize=7)
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.06), fontsize=6.5)
+    note = f"{angular_type}, {weight.replace('_', ' ')}; azimuth from grid north"
+    if ssel is not None:
+        note += "; line = circular mean, length R (lsdtt3 summary)"
+    ax.set_title((title + "\n" if title else "") + note, fontsize=8)
+    fig.tight_layout()
+    return fig, ax
+
+
+def plot_binned_rose_grid(
+    rose: pd.DataFrame,
+    summary: Optional[pd.DataFrame] = None,
+    *,
+    group_key: str = "strahler_order",
+    angular_type: str = DIRECTIONAL,
+    weight: str = "fraction_length",
+    ncols: int = 4,
+    color: str = "steelblue",
+    title: Optional[str] = None,
+    **select_kwargs,
+):
+    """One small rose per group value, each with its summary mean line."""
+    fig, axes = plot_rose_comparison(
+        {"": (rose, summary)}, group_key=group_key, angular_type=angular_type,
+        weight=weight, color=color, title=title, ncols=ncols, **select_kwargs)
+    return fig, axes
+
+
+def plot_rose_comparison(
+    runs: Mapping[str, tuple],
+    *,
+    group_key: str = "strahler_order",
+    angular_type: str = DIRECTIONAL,
+    weight: str = "fraction_length",
+    color: str = "steelblue",
+    ncols: Optional[int] = None,
+    shared_radius: bool = True,
+    title: Optional[str] = None,
+    **select_kwargs,
+):
+    """Small roses: one row per run, one column per group value.
+
+    Args:
+        runs: ``{label: (rose_df, summary_df_or_None)}``, e.g. the WV run and
+            an isotropic null surface.
+        group_key, angular_type, weight: As :func:`plot_binned_rose`.
+        color: Petal colour.
+        ncols: With a single run, wrap the groups into this many columns.
+        shared_radius: Same radial limit on every rose (default), so petal
+            lengths compare across runs; only meaningful for fractions.
+        title: Figure title.
+        select_kwargs: ``measurand`` / ``stratum_key`` / ``stratum_value``.
+
+    Returns:
+        ``(fig, axes)`` with ``axes`` a flat list of the drawn polar axes.
+    """
+    plt = _import_mpl()
+    sels = {}
+    for label, (rose, summary) in runs.items():
+        r = select_groups(rose, group_key=group_key, angular_type=angular_type, **select_kwargs)
+        s = (select_groups(summary, group_key=group_key, angular_type=angular_type,
+                           **select_kwargs) if summary is not None else None)
+        sels[label] = (r, s)
+    values = _sort_values(pd.concat([r[GROUP_COLUMNS["group_value"]] for r, _ in sels.values()]))
+    if not values:
+        raise ValueError(f"No {angular_type} rose rows for group_key={group_key!r}.")
+    single = len(runs) == 1
+    if single and ncols:
+        nrows, ncol = int(np.ceil(len(values) / ncols)), ncols
+    else:
+        nrows, ncol = len(runs), len(values)
+    fig, grid = plt.subplots(nrows, ncol, figsize=(2.9 * ncol, 3.7 * nrows),
+                             subplot_kw={"projection": "polar"}, squeeze=False)
+    flat = list(grid.ravel())
+    rmax = 0.0
+    drawn = []
+    for ri, (label, (r, s)) in enumerate(sels.items()):
+        for vi, v in enumerate(values):
+            ax = flat[vi] if single else grid[ri][vi]
+            rows = _group_rows(r, v).sort_values(ROSE_COLUMNS["bin_centre"])
+            _setup_polar(ax)
+            ax.tick_params(labelsize=6)
+            if rows.empty:
+                ax.set_title(f"{label} {v}: no data".strip(), fontsize=7)
+                continue
+            theta, width, h, axial = _petals(rows, weight)
+            ax.bar(theta, h, width=width, color=color, edgecolor="white", linewidth=0.3)
+            rmax = max(rmax, float(np.max(h)))
+            srow = None
+            if s is not None and not _group_rows(s, v).empty:
+                srow = _group_rows(s, v).iloc[0]
+            head = f"{label}: " if label else ""
+            head += f"{group_key.replace('_', ' ')} {v}"
+            stats = bearing_stats_text(srow, weight) if srow is not None else ""
+            ax.set_title(head + ("\n" + stats.replace(", Rayleigh", ",\nRayleigh") if stats else ""),
+                         fontsize=6.5)
+            drawn.append((ax, srow, axial, float(np.max(h))))
+    for ax in flat[len(values):] if single else []:
+        ax.set_visible(False)
+    for ax, srow, axial, local in drawn:
+        lim = rmax if shared_radius else local
+        if srow is not None:
+            _mean_line(ax, srow, weight=weight, rmax=lim, colour="black", axial=axial)
+        # Set the radial limit last: plotting the mean line re-autoscales.
+        ax.set_rlim(0.0, lim * 1.05)
+        ax.set_autoscale_on(False)
+    note = (f"{angular_type}, {weight.replace('_', ' ')}; azimuth from grid north; "
+            "line = circular mean, length R (lsdtt3 summary)")
+    fig.suptitle((title + "\n" if title else "") + note, fontsize=8)
+    fig.tight_layout(h_pad=2.5)
+    return fig, [d[0] for d in drawn]
+
+
+def plot_junction_angle_summary(
+    summary,
+    *,
+    group_key: str = "strahler_order",
+    measurand: str = "alpha",
+    stratum_key: str = NO_STRATUM,
+    stratum_value=None,
+    title: Optional[str] = None,
+    ax=None,
+):
+    """Junction-angle boxes per group from the summary's quartiles.
+
+    Box = summary q25-q75, line = median, diamond = mean; no whiskers (the
+    summary carries none). Where the summary has ``median_ci_low/high_deg`` the
+    median CI is drawn as an error bar. ``n`` and ``n_blocks`` label each box;
+    groups below lsdtt3's minimum group size are hatched.
+
+    Args:
+        summary: One ``<wf>_junction_angle_group_summary.csv`` table, or a
+            mapping ``{run label: table}`` to draw runs side by side.
+    """
+    plt = _import_mpl()
+    c = JUNCTION_SUMMARY_COLUMNS
+    runs = summary if isinstance(summary, Mapping) else {"": summary}
+    sels = {lab: select_groups(df, group_key=group_key, measurand=measurand,
+                               stratum_key=stratum_key, stratum_value=stratum_value)
+            for lab, df in runs.items()}
+    values = _sort_values(pd.concat([s[c["group_value"]] for s in sels.values()]))
+    if not values:
+        raise ValueError(f"No junction summary rows for {group_key!r}/{measurand!r}.")
+    nrun = len(runs)
+    width = 0.7 / nrun
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(min(1.1 * len(values) * max(nrun, 1) + 3.0, 14.0), 4.8))
+    else:
+        fig = ax.figure
+    colours = plt.get_cmap("tab10")
+    handles = []
+    for ri, (lab, sel) in enumerate(sels.items()):
+        stats, pos, rows = [], [], []
+        for vi, v in enumerate(values):
+            g = _group_rows(sel, v)
+            if g.empty:
+                continue
+            r = g.iloc[0]
+            q1, med, q3 = _num(r, c["q25"]), _num(r, c["median"]), _num(r, c["q75"])
+            if None in (q1, med, q3):
+                continue
+            stats.append({"med": med, "q1": q1, "q3": q3, "whislo": q1, "whishi": q3,
+                          "fliers": [], "label": v})
+            pos.append(vi + 1 + (ri - (nrun - 1) / 2) * width)
+            rows.append(r)
+        if not stats:
+            continue
+        col = "lightsteelblue" if nrun == 1 else colours(ri)
+        art = ax.bxp(stats, positions=pos, widths=width * 0.85, patch_artist=True,
+                     boxprops={"facecolor": col, "alpha": 0.8},
+                     medianprops={"color": "black", "linewidth": 1.4})
+        for box, r in zip(art["boxes"], rows):
+            if _num(r, c["meets_min"]) == 0:
+                box.set_hatch("///")
+        handles.append((art["boxes"][0], lab))
+        means = [_num(r, c["mean"]) for r in rows]
+        ax.plot(pos, [m if m is not None else np.nan for m in means], "D",
+                color="black", markersize=3)
+        lo = [_num(r, c["median_ci_low"]) for r in rows]
+        hi = [_num(r, c["median_ci_high"]) for r in rows]
+        ok = [i for i in range(len(rows)) if lo[i] is not None and hi[i] is not None]
+        if ok:
+            meds = np.array([stats[i]["med"] for i in ok])
+            ax.errorbar([pos[i] + width * 0.3 for i in ok], meds,
+                        yerr=np.vstack([meds - np.array([lo[i] for i in ok]),
+                                        np.array([hi[i] for i in ok]) - meds]),
+                        fmt="none", ecolor="black", capsize=2, linewidth=1.0)
+        for p, r in zip(pos, rows):
+            n, nb = _num(r, c["n"]), _num(r, c["n_blocks"])
+            txt = f"n={int(n)}" if n is not None else ""
+            if nb is not None:
+                txt += f"\n{int(nb)} blocks"
+            ax.annotate(txt, xy=(p, 1.0), xycoords=("data", "axes fraction"),
+                        xytext=(0, 3), textcoords="offset points", ha="center",
+                        va="bottom", fontsize=6.5)
+    ax.set_xticks(np.arange(1, len(values) + 1), values)
+    ax.set_xlabel(group_key.replace("_", " "))
+    ax.set_ylabel(f"junction angle {measurand} (degrees)")
+    ax.grid(axis="y", alpha=0.3)
+    if nrun > 1:
+        ax.legend([h for h, _ in handles], [lab for _, lab in handles], fontsize=7,
+                  loc="lower right")
+    note = "box = q25-q75, line = median, diamond = mean (lsdtt3 summary); hatched = below min group size"
+    if any(c["median_ci_low"] in s.columns for s in sels.values()):
+        note += "; bar = median CI"
+    ax.set_title((title + "\n" if title else "") + note, fontsize=8, pad=26)
+    fig.tight_layout()
+    return fig, ax
+
+
+def plot_junction_angle_distributions(
+    junctions: pd.DataFrame,
+    summary: pd.DataFrame,
+    *,
+    group_key: str = "strahler_order",
+    measurand: str = "alpha",
+    bins=None,
+    density: bool = True,
+    title: Optional[str] = None,
+    ax=None,
+):
+    """Step histograms of per-junction angles, one per order group.
+
+    Groups (including pooled ``"4+"``) are taken from the summary; junctions
+    are assigned by ``junction_order``. Legend counts are the summary's n and
+    n_blocks. Uses :func:`charts.distributions.plot_distributions`.
+    """
+    from .distributions import plot_distributions
+
+    if group_key != "strahler_order":
+        raise ValueError("Per-junction distributions are grouped by Strahler order only.")
+    acol = JUNCTION_COLUMNS.get(measurand)
+    if acol is None or acol not in junctions.columns:
+        raise KeyError(f"No per-junction column for measurand {measurand!r}.")
+    c = JUNCTION_SUMMARY_COLUMNS
+    sel = select_groups(summary, group_key=group_key, measurand=measurand)
+    series, styles = {}, {}
+    for v in _sort_values(sel[c["group_value"]]):
+        r = _group_rows(sel, v).iloc[0]
+        mask = order_group_mask(junctions[JUNCTION_COLUMNS["order"]], v)
+        n, nb = _num(r, c["n"]), _num(r, c["n_blocks"])
+        label = f"order {v} (n={int(n) if n is not None else int(mask.sum())}"
+        label += f", {int(nb)} blocks)" if nb is not None else ")"
+        series[label] = pd.to_numeric(junctions.loc[mask, acol], errors="coerce").to_numpy()
+    if bins is None:
+        bins = np.arange(0.0, 181.0, 10.0)
+    fig, ax = plot_distributions(
+        series, bins=bins, density=density, xlabel=f"junction angle {measurand} (degrees)",
+        ylabel="density" if density else "junctions", title=None, ax=ax)
+    ax.set_title((title + "\n" if title else "")
+                 + f"per-junction {measurand} by junction order (lsdtt3 junction table)",
+                 fontsize=8)
+    fig.tight_layout()
+    return fig, ax
+
+
+def plot_comparison_table(
+    comparisons: pd.DataFrame,
+    *,
+    kind: str = "bearing",
+    measurand: Optional[str] = None,
+    angular_type: Optional[str] = None,
+    group_key: Optional[str] = None,
+    stratum_value=None,
+    title: Optional[str] = None,
+    ax=None,
+):
+    """lsdtt3's pairwise group comparisons as a table (values as written).
+
+    Columns: groups, n (n_blocks) per group, the distance (Wasserstein), the
+    test statistic (Kuiper V / KS D), ``p_iid_approx`` and its Holm-adjusted
+    value. ``n_blocks`` sits beside n because the p-values assume independent
+    samples.
+
+    ``group_key`` keeps rows whose ``note`` reads ``group_key=<key>`` (how
+    lsdtt3 tells e.g. ``lithology`` from ``lithology_interior`` apart in one
+    file); rows with no such note are kept for any key. ``stratum_value``
+    selects one stratum (e.g. ``"all"``).
+    """
+    plt = _import_mpl()
+    if kind == "bearing":
+        c = BEARING_COMPARISON_COLUMNS
+        stat, stat_lab = c["kuiper_V"], "Kuiper V"
+        p, p_lab, ph = c["kuiper_p"], "kuiper_p_iid_approx", c["kuiper_p_holm"]
+    elif kind == "junction":
+        c = JUNCTION_COMPARISON_COLUMNS
+        stat, stat_lab = c["ks_D"], "KS D"
+        p, p_lab, ph = c["ks_p"], "ks_p_iid_approx", c["ks_p_holm"]
+    else:
+        raise ValueError("kind must be 'bearing' or 'junction'.")
+    df = comparisons
+    if measurand is not None:
+        df = df[df[c["measurand"]].astype(str) == measurand]
+    if angular_type is not None and c.get("angular_type", "") in df.columns:
+        df = df[df[c["angular_type"]].astype(str) == angular_type]
+    if group_key is not None and c["note"] in df.columns:
+        note = df[c["note"]].fillna("").astype(str)
+        tagged = note.str.contains("group_key=", regex=False)
+        df = df[~tagged | note.str.contains(f"group_key={group_key}", regex=False)
+                & ~note.str.contains(f"group_key={group_key}_", regex=False)]
+    if stratum_value is not None and c["stratum_value"] in df.columns:
+        df = df[df[c["stratum_value"]].astype(str) == str(stratum_value)]
+    if df.empty:
+        raise ValueError("No comparison rows to tabulate.")
+
+    def _f(v, fmt):
+        v = pd.to_numeric(pd.Series([v]), errors="coerce").iloc[0]
+        return "nan" if not np.isfinite(v) else format(v, fmt)
+
+    header = ["group a", "group b", "n a (blocks)", "n b (blocks)", "Wasserstein (deg)",
+              stat_lab, p_lab, "Holm"]
+    cells = []
+    for _, r in df.iterrows():
+        cells.append([
+            str(r[c["group_a"]]), str(r[c["group_b"]]),
+            f"{_f(r[c['n_a']], '.0f')} ({_f(r[c['n_blocks_a']], '.0f')})",
+            f"{_f(r[c['n_b']], '.0f')} ({_f(r[c['n_blocks_b']], '.0f')})",
+            _f(r[c["wasserstein"]], ".3g"), _f(r[stat], ".3g"),
+            _fmt_p(_num(r, p)), _fmt_p(_num(r, ph)),
+        ])
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(9.0, 0.32 * len(cells) + 1.0))
+    else:
+        fig = ax.figure
+    ax.axis("off")
+    tab = ax.table(cellText=cells, colLabels=header, loc="center", cellLoc="center")
+    tab.auto_set_font_size(False)
+    tab.set_fontsize(7)
+    tab.scale(1.0, 1.25)
+    ax.set_title(title or f"{kind} pairwise comparisons (lsdtt3; p-values assume i.i.d. samples)",
+                 fontsize=8)
+    fig.tight_layout()
+    return fig, ax

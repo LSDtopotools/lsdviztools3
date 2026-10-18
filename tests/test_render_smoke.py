@@ -347,3 +347,130 @@ def test_render_hillshade_transparent_pixels_are_not_red(small_dem, tmp_path, cm
         & (transparent_rgb[:, 2] < 80)
     )
     assert not red_like.any()
+
+
+class _RecordingFig:
+    """Stand-in figure recording plot/text calls (no GMT needed)."""
+
+    def __init__(self):
+        self.plots, self.texts = [], []
+
+    def plot(self, **kwargs):
+        self.plots.append(kwargs)
+
+    def text(self, **kwargs):
+        self.texts.append(kwargs)
+
+
+
+def _utm():
+    from rasterio.crs import CRS
+
+    return CRS.from_epsg(32617)
+
+
+def test_bar_scalebar_label_above_by_default():
+    """Default layout is unchanged: label centred above the bar."""
+    from lsdviztools3.render.decorations import add_bar_scalebar
+
+    fig = _RecordingFig()
+    add_bar_scalebar(fig, [600.0, 626.0, 4300.0, 4322.0], _utm())
+    bar_top = max(fig.plots[0]["y"])
+    assert fig.texts[0]["y"] > bar_top
+    assert fig.texts[0]["justify"] == "CB"
+    assert fig.texts[0]["text"] == "2 km"
+    # Unchanged position: bottom-left inset of 4 % of the map.
+    assert min(fig.plots[0]["y"]) == pytest.approx(4300.0 + 0.04 * 22.0)
+
+
+def test_bar_scalebar_label_below():
+    from lsdviztools3.render.decorations import add_bar_scalebar
+
+    fig = _RecordingFig()
+    add_bar_scalebar(fig, [600.0, 626.0, 4300.0, 4322.0], _utm(), label_position="below")
+    bar_bottom = min(fig.plots[0]["y"])
+    assert fig.texts[0]["y"] < bar_bottom
+    assert fig.texts[0]["justify"] == "CT"
+    assert fig.texts[0]["y"] > 4300.0  # label stays inside the map
+
+
+def test_bar_scalebar_bad_label_position():
+    from lsdviztools3.render.decorations import add_bar_scalebar
+
+    with pytest.raises(ValueError, match="label_position"):
+        add_bar_scalebar(_RecordingFig(), [0, 10, 0, 10], _utm(), label_position="left")
+
+
+@pytest.mark.parametrize("anchor", ["TR", "TL", "BR", "BL"])
+def test_north_arrow_points_up(anchor):
+    """The arrowhead apex is directly above its base midpoint, N beneath it."""
+    from lsdviztools3.render.decorations import add_north_arrow
+
+    fig = _RecordingFig()
+    extent = [600.0, 626.0, 4300.0, 4322.0]
+    add_north_arrow(fig, extent, _utm(), anchor=anchor)
+    xs, ys = fig.plots[0]["x"], fig.plots[0]["y"]
+    apex = int(np.argmax(ys))
+    base = [i for i in range(3) if i != apex]
+    assert ys[base[0]] == ys[base[1]] < ys[apex]
+    assert xs[apex] == pytest.approx(0.5 * (xs[base[0]] + xs[base[1]]))
+    assert fig.plots[0]["fill"] == "black"
+    assert fig.texts[0]["text"] == "N"
+    assert fig.texts[0]["y"] < ys[base[0]]
+    assert all(extent[0] < x < extent[1] for x in xs)
+    assert all(extent[2] < y < extent[3] for y in ys + [fig.texts[0]["y"]])
+
+
+def test_north_arrow_geographic_ok():
+    from rasterio.crs import CRS
+
+    from lsdviztools3.render.decorations import add_north_arrow
+
+    fig = _RecordingFig()
+    add_north_arrow(fig, [-79.4, -79.1, 38.8, 39.0], CRS.from_epsg(4326))
+    assert fig.texts[0]["text"] == "N"
+
+
+@pytest.mark.parametrize("projection", ["G-79/39/12c", "X12c/-10c", "S0/90/12c"])
+def test_north_arrow_refuses_non_north_up_projection(projection):
+    from lsdviztools3.render.decorations import add_north_arrow
+
+    with pytest.raises(ValueError, match="north"):
+        add_north_arrow(_RecordingFig(), [0, 10, 0, 10], _utm(), projection=projection)
+
+
+def test_north_arrow_refuses_south_oriented_crs():
+    from rasterio.crs import CRS
+
+    from lsdviztools3.render.decorations import add_north_arrow
+
+    # EPSG:2053 (Hartebeesthoek94 / Lo29) has westing/southing axes.
+    with pytest.raises(ValueError, match="not east/north"):
+        add_north_arrow(_RecordingFig(), [0, 10, 0, 10], CRS.from_epsg(2053))
+
+
+def test_map_credit_corner_and_escape():
+    from lsdviztools3.render.decorations import add_map_credit
+
+    fig = _RecordingFig()
+    add_map_credit(fig, [0.0, 10.0, 0.0, 10.0], "Data @ source")
+    t = fig.texts[0]
+    assert t["text"] == "Data @@ source" and t["justify"] == "RB"
+    assert t["x"] < 10.0 and t["y"] > 0.0
+    fig2 = _RecordingFig()
+    add_map_credit(fig2, [0, 10, 0, 10], "")
+    assert fig2.texts == []
+
+
+def test_scalebar_and_arrow_label_halo():
+    """Optional halo: GMT '=~' outline behind the glyphs; default font unchanged."""
+    from lsdviztools3.render.decorations import add_bar_scalebar, add_north_arrow
+
+    plain, halo = _RecordingFig(), _RecordingFig()
+    add_bar_scalebar(plain, [0.0, 26.0, 0.0, 22.0], _utm())
+    add_bar_scalebar(halo, [0.0, 26.0, 0.0, 22.0], _utm(), label_halo="white")
+    assert plain.texts[0]["font"] == "9p,Helvetica,black"
+    assert halo.texts[0]["font"] == "9p,Helvetica,black=~2p,white"
+    arrow = _RecordingFig()
+    add_north_arrow(arrow, [0.0, 26.0, 0.0, 22.0], _utm(), label_halo="white")
+    assert arrow.texts[0]["font"].endswith("=~2p,white")

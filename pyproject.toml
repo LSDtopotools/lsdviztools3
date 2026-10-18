@@ -64,6 +64,9 @@ lsdviz3-ladder-density = "lsdviztools3.cli.plot_ladder_density:main"
 lsdviz3-valley-sections = "lsdviztools3.cli.plot_valley_sections:main"
 lsdviz3-valley-section-map = "lsdviztools3.cli.plot_valley_section_map:main"
 lsdviz3-ladder-bands = "lsdviztools3.cli.plot_ladder_band_map:main"
+lsdviz3-lithology-map = "lsdviztools3.cli.plot_lithology_map:main"
+lsdviz3-ksn-by-lithology = "lsdviztools3.cli.plot_ksn_by_lithology:main"
+lsdviz3-channel-bearings = "lsdviztools3.cli.plot_channel_bearings:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["lsdviztools3"]

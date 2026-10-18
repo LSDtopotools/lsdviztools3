@@ -1,9 +1,12 @@
-"""Map decorations: scalebar, colourbar, inset.
+"""Map decorations: scalebar, north arrow, credit line, colourbar, inset.
 
 ``add_colourbar`` wraps ``Figure.colorbar`` for the active CPT (e.g. the log10
 k_sn palette set by ``render_channels``). ``add_scalebar`` draws a scale bar that
 works on both the projected (km-linear) maps this package uses and geographic
 (Mercator) maps — see :func:`add_scalebar` for why the two cases differ.
+``add_bar_scalebar`` / ``add_north_arrow`` / ``add_map_credit`` are the minimal
+"clean" furniture: a solid bar, a plain arrowhead with an N, and a small data
+credit, all drawn with ``fig.plot``/``fig.text`` in display coordinates.
 """
 
 from __future__ import annotations
@@ -112,13 +115,15 @@ def add_bar_scalebar(
     font: str = "9p,Helvetica,black",
     height_frac: float = 0.018,
     pad_frac: float = 0.04,
+    label_position: str = "above",
+    label_halo: Optional[str] = None,
 ):
     """Draw a small solid-rectangle scale bar (the "clean" map scale bar).
 
     The bar length is the largest :data:`NICE_SCALEBAR_KM` value not exceeding
     ``max_fraction`` of the map width (default 1/10), so it stays compact and
     lands on a round number (e.g. 5 km, 25 km). A ``"<n> km"`` label sits above
-    the bar.
+    the bar (default) or below it (``label_position="below"``).
 
     Args:
         fig: The ``pygmt.Figure``.
@@ -131,10 +136,20 @@ def add_bar_scalebar(
         font: Label font.
         height_frac: Bar height as a fraction of map height.
         pad_frac: Inset from the chosen corner, as a fraction of map size.
+        label_position: ``"above"`` (default, the original layout) or
+            ``"below"`` the bar. With ``"below"`` on a bottom anchor the bar is
+            lifted so the label keeps the same inset from the map edge.
+        label_halo: Colour of a thin outline drawn *behind* the label glyphs
+            (GMT ``=~`` font outline), so linework under the label (e.g. a
+            channel overlay) cannot run through the text. ``None`` (default)
+            keeps the original plain label.
 
     Returns:
         The same ``pygmt.Figure``.
     """
+    if label_position not in ("above", "below"):
+        raise ValueError(
+            f"label_position must be 'above' or 'below', got {label_position!r}.")
     west, east, south, north = extent
     width = east - west
     height = north - south
@@ -154,8 +169,11 @@ def add_bar_scalebar(
 
     px, py = pad_frac * width, pad_frac * height
     bh = height_frac * height
+    gap = 0.012 * height
+    # Room for a below-bar label (~9 pt text) when anchored at the bottom.
+    label_room = 0.05 * height if (label_position == "below" and "B" in anchor) else 0.0
     x0 = west + px if "L" in anchor else east - px - bar_len
-    y0 = south + py if "B" in anchor else north - py - bh
+    y0 = south + py + label_room if "B" in anchor else north - py - bh
 
     fig.plot(
         x=[x0, x0 + bar_len, x0 + bar_len, x0, x0],
@@ -165,14 +183,189 @@ def add_bar_scalebar(
         no_clip=True,
     )
     label = f"{bar_km:g} km"
+    if label_position == "below":
+        label_y, justify = y0 - gap, "CT"
+    else:
+        label_y, justify = y0 + bh + gap, "CB"
     fig.text(
         x=x0 + bar_len / 2.0,
-        y=y0 + bh + 0.012 * height,
+        y=label_y,
         text=label,
-        justify="CB",
-        font=font,
+        justify=justify,
+        font=_halo_font(font, label_halo),
         no_clip=True,
     )
+    return fig
+
+
+def _halo_font(font: str, halo: Optional[str], width: str = "2p") -> str:
+    """GMT font string with an outline drawn beneath the fill (``=~pen``)."""
+    return f"{font}=~{width},{halo}" if halo else font
+
+
+#: GMT projection codes whose +y axis is grid north (when not flipped).
+_NORTH_UP_PROJECTIONS = ("X", "x", "M", "m")
+
+
+def _check_north_up(crs, projection: Optional[str]) -> None:
+    """Raise unless the map's +y direction is grid north.
+
+    Two things can break "up = north": the GMT projection (a rotated, polar or
+    y-flipped projection) and the CRS itself (some projected CRSs have southing
+    or westing axes). Both are checked; anything not provably north-up raises.
+    """
+    if projection is not None:
+        code = projection.strip()[:1]
+        if code not in _NORTH_UP_PROJECTIONS:
+            raise ValueError(
+                f"add_north_arrow: projection {projection!r} is not a north-up "
+                "linear (X) or Mercator (M) projection; grid north is not "
+                "straight up, so no arrow is drawn.")
+        # A negative y scale (e.g. "X12c/-8c") flips the y axis.
+        if code in ("X", "x") and "/" in projection:
+            if projection.split("/", 1)[1].strip().startswith("-"):
+                raise ValueError(
+                    f"add_north_arrow: projection {projection!r} flips the y "
+                    "axis; grid north points down.")
+    if crs is None or not is_projected(crs):
+        return  # geographic: +y is latitude, i.e. north
+    from pyproj import CRS as _PyprojCRS
+
+    pcrs = _PyprojCRS.from_user_input(crs.to_wkt() if hasattr(crs, "to_wkt") else crs)
+    dirs = [a.direction.lower() for a in pcrs.axis_info[:2]]
+    if sorted(dirs) != ["east", "north"]:
+        raise ValueError(
+            f"add_north_arrow: CRS axes are {dirs}, not east/north; the "
+            "map's +y direction is not grid north.")
+
+
+def north_arrow_geometry(extent, crs=None, *, anchor: str = "TR",
+                         size_frac: float = 0.07, pad_frac: float = 0.04):
+    """Vertices of the north arrowhead and the position of its ``N`` label.
+
+    Returned in display units: ``(xs, ys, (label_x, label_y))`` where
+    ``xs``/``ys`` close a triangle whose apex is the topmost vertex, directly
+    above the midpoint of its base (i.e. it points to +y, grid north). The
+    ``N`` sits centred under the base.
+    """
+    west, east, south, north = extent
+    width, height = east - west, north - south
+    h = size_frac * height
+    w = 0.6 * h
+    if not is_projected(crs) and crs is not None:
+        # Degrees of longitude are shorter on the ground; keep the head's shape.
+        lat = 0.5 * (south + north)
+        w = w / max(math.cos(math.radians(lat)), 1e-6)
+    label_h = 0.045 * height
+    px, py = pad_frac * width, pad_frac * height
+    cx = west + px + w / 2.0 if "L" in anchor else east - px - w / 2.0
+    if "T" in anchor:
+        apex_y = north - py
+        base_y = apex_y - h
+    else:
+        base_y = south + py + label_h
+        apex_y = base_y + h
+    xs = [cx - w / 2.0, cx, cx + w / 2.0, cx - w / 2.0]
+    ys = [base_y, apex_y, base_y, base_y]
+    return xs, ys, (cx, base_y - 0.01 * height)
+
+
+def add_north_arrow(
+    fig,
+    extent,
+    crs,
+    *,
+    projection: Optional[str] = None,
+    anchor: str = "TR",
+    color: str = "black",
+    font: str = "9p,Helvetica-Bold,black",
+    size_frac: float = 0.07,
+    pad_frac: float = 0.04,
+    label_halo: Optional[str] = None,
+):
+    """Draw an unornamented north arrow: a solid arrowhead with an ``N`` under it.
+
+    No compass rose, circle or other decoration. The arrow points to **grid
+    north**, which on the north-up maps this package draws (linear ``X``
+    projection of a projected CRS in km, or Mercator ``M`` for geographic) is
+    straight up. For UTM, grid north differs from true north by the meridian
+    convergence (under ~3 degrees within a zone); the arrow marks grid north.
+
+    If the map is not north-up — a rotated/polar/y-flipped GMT projection, or a
+    CRS whose axes are not east/north (e.g. a south-orientated CRS) — this
+    raises rather than drawing a wrong arrow.
+
+    Args:
+        fig: The ``pygmt.Figure``.
+        extent: ``[west, east, south, north]`` in the map's display units.
+        crs: The map CRS.
+        projection: The GMT projection the map was drawn with (``None`` = the
+            package's auto projection, which is north-up).
+        anchor: Corner: ``"TR"`` (default), ``"TL"``, ``"BR"``, ``"BL"``.
+        color: Arrowhead fill.
+        font: Font of the ``N``.
+        size_frac: Arrowhead height as a fraction of map height.
+        pad_frac: Inset from the chosen corner, as a fraction of map size
+            (same convention as :func:`add_bar_scalebar`).
+        label_halo: Optional outline colour behind the ``N`` (as for
+            :func:`add_bar_scalebar`).
+
+    Returns:
+        The same ``pygmt.Figure``.
+
+    Raises:
+        ValueError: if the map's +y direction is not grid north.
+    """
+    _check_north_up(crs, projection)
+    xs, ys, (lx, ly) = north_arrow_geometry(
+        extent, crs, anchor=anchor, size_frac=size_frac, pad_frac=pad_frac)
+    fig.plot(x=xs, y=ys, fill=color, pen=f"0.5p,{color}", no_clip=True)
+    fig.text(x=lx, y=ly, text="N", justify="CT", font=_halo_font(font, label_halo),
+             no_clip=True)
+    return fig
+
+
+def add_map_credit(
+    fig,
+    extent,
+    text: str,
+    *,
+    anchor: str = "BR",
+    font: str = "6p,Helvetica,gray20",
+    box_fill: Optional[str] = "white@35",
+    pad_frac: float = 0.01,
+):
+    """Write a small, unobtrusive data-credit line in a map corner.
+
+    Used for the geologic-map / DEM citation (see
+    :func:`lsdviztools3.io.lithology.lithology_map_credit`). The text is drawn
+    inside the map on a faint white box so it stays legible over any colour.
+
+    Args:
+        fig: The ``pygmt.Figure``.
+        extent: ``[west, east, south, north]`` in display units.
+        text: The credit line (empty/None draws nothing).
+        anchor: Corner: ``"BR"`` (default), ``"BL"``, ``"TR"``, ``"TL"``.
+        font: Font. 6 pt by default — deliberately below the 8 pt floor used
+            for map annotation, because a full credit line at 8 pt spans most
+            of a single-column map. Raise it if a journal requires.
+        box_fill: Fill behind the text (``None`` for none).
+        pad_frac: Inset from the corner as a fraction of map size.
+
+    Returns:
+        The same ``pygmt.Figure``.
+    """
+    if not text:
+        return fig
+    west, east, south, north = extent
+    px, py = pad_frac * (east - west), pad_frac * (north - south)
+    x = west + px if "L" in anchor else east - px
+    y = south + py if "B" in anchor else north - py
+    just = ("L" if "L" in anchor else "R") + ("B" if "B" in anchor else "T")
+    kwargs = {"fill": box_fill, "clearance": "0.05c/0.03c"} if box_fill else {}
+    # GMT text escapes: a literal "@" must be written "@@".
+    fig.text(x=x, y=y, text=text.replace("@", "@@"), justify=just,
+             font=font, no_clip=True, **kwargs)
     return fig
 
 

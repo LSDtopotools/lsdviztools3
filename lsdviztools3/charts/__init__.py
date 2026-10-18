@@ -35,6 +35,15 @@ from .cosmo_transient_spatial import (
     plot_ratio_vs_steptime,
 )
 from .distributions import plot_distributions
+from .lithology_ksn import (
+    plot_ksn_box_by_lithology, plot_ksn_by_lithology_and_basin,
+    plot_ksn_histogram_by_lithology, plot_reach_ksn_by_lithology,
+)
+from .channel_bearings import (
+    plot_binned_rose, plot_binned_rose_grid, plot_comparison_table,
+    plot_junction_angle_distributions, plot_junction_angle_summary,
+    plot_rose_comparison,
+)
 from .estar_rstar import plot_estar_rstar_model_scan
 from .divide_migration import (
     aggressor_annotation, plot_head_metric_vs_distance, plot_pair_comparison,
@@ -91,6 +100,10 @@ __all__ = [
     "plot_hydraulic_break_clusters",
     "plot_cross_section_informed_valley_mask",
     "plot_distributions", "rose_diagram",
+    "plot_ksn_histogram_by_lithology", "plot_ksn_box_by_lithology",
+    "plot_reach_ksn_by_lithology", "plot_ksn_by_lithology_and_basin",
+    "plot_binned_rose", "plot_binned_rose_grid", "plot_junction_angle_summary",
+    "plot_junction_angle_distributions", "plot_rose_comparison", "plot_comparison_table",
     "plot_estar_rstar_model_scan",
     "load_landslide_inventory",
     "plot_landslide_area_volume_larsen",

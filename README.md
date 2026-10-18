@@ -181,6 +181,9 @@ absolute path:
 | `lsdviz3-ladder-windows` | `lsdviztools3.cli.plot_ladder_windows` |
 | `lsdviz3-ladder-density` | `lsdviztools3.cli.plot_ladder_density` |
 | `lsdviz3-ladder-bands` | `lsdviztools3.cli.plot_ladder_band_map` |
+| `lsdviz3-lithology-map` | `lsdviztools3.cli.plot_lithology_map` |
+| `lsdviz3-ksn-by-lithology` | `lsdviztools3.cli.plot_ksn_by_lithology` |
+| `lsdviz3-channel-bearings` | `lsdviztools3.cli.plot_channel_bearings` |
 | `lsdviz3-valley-sections` | `lsdviztools3.cli.plot_valley_sections` |
 | `lsdviz3-valley-section-map` | `lsdviztools3.cli.plot_valley_section_map` |
 | `lsdviz3-grabdem`  | `lsdviztools3.cli.grab_dem`         |
@@ -277,7 +280,7 @@ geometry, synthetic-network and snapping sweeps, and valley spacing.
 Plus IO (`io.*`), DEM download (`download.*`), the lsdtt3 driver (`driver.*`),
 and chained `workflows`.
 Deferred (raise `NotImplementedError`): `charts.plot_profile`,
-`render.categorical.render_categorical_drape`, `io.grids.make_hillshade`,
+`io.grids.make_hillshade`,
 `render.decorations.add_inset`, `io.vector.to_xy`. The matplotlib chart
 plots need the optional `charts` extra (`pip install lsdviztools3[charts]`); it is
 already in the pixi env.

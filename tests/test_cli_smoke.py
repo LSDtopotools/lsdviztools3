@@ -18,7 +18,10 @@ from lsdviztools3.cli import (
     plot_cosmo_published,
     plot_divide_migration,
     plot_drape,
+    plot_channel_bearings,
     plot_hillshade,
+    plot_ksn_by_lithology,
+    plot_lithology_map,
     plot_sti,
     run_lsdtt,
 )
@@ -40,6 +43,9 @@ from lsdviztools3.cli import (
         plot_cosmo_published.build_parser,
         grab_dem.build_parser,
         run_lsdtt.build_parser,
+        plot_lithology_map.build_parser,
+        plot_ksn_by_lithology.build_parser,
+        plot_channel_bearings.build_parser,
     ],
 )
 def test_cli_help_exits_cleanly(build_parser):
