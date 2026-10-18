@@ -64,15 +64,32 @@ def categorical_legend_entries(
             falling back to the bare integer, which is meaningless to a reader.
 
     Returns:
-        ``[(code, label, colour), ...]`` in ascending code order, unmapped last.
+        ``[(code, label, colour), ...]``: codes >= 0 ascending, then mixed (-3),
+        arms disagree (-4), other negative codes, and unmapped (-1) last. Names
+        starting "mixed" / "arms disagree" / "unmapped" get the reserved greys of
+        :data:`render.lithology_colours.RESERVED_HEX` unless a colour is given.
 
     Raises:
         KeyError: a code has no label and ``require_labels`` is set.
     """
     categories = dict(categories or {})
     colors = dict(colors or {})
-    codes = sorted({int(c) for c in codes}, key=lambda c: (c == unmapped_code, c))
-    named = [c for c in codes if c != unmapped_code]
+    from ..io.lithology import ARMS_DISAGREE_CODE, MIXED_CODE, reserved_category
+    from .lithology_colours import RESERVED_HEX
+
+    # Real classes (code >= 0) first, then the reserved lsdtt3 categories in a
+    # fixed order: mixed (-3), arms disagree (-4), other negatives, unmapped.
+    reserved_rank = {MIXED_CODE: 0, ARMS_DISAGREE_CODE: 1, unmapped_code: 3}
+
+    def _key(c):
+        if c == unmapped_code:
+            return (2, reserved_rank[c], 0)
+        if c >= 0:
+            return (0, 0, c)
+        return (1, reserved_rank.get(c, 2), -c)
+
+    codes = sorted({int(c) for c in codes}, key=_key)
+    named = [c for c in codes if c >= 0 or c not in reserved_rank]
     palette = dict(zip(named, _qualitative_palette(len(named))))
 
     entries = []
@@ -93,7 +110,10 @@ def categorical_legend_entries(
         if label is None:
             missing.append(code)
             label = str(code)
-        colour = colors.get(code) or colour or palette[code]
+        cat = reserved_category(label)
+        if colour is None and cat is not None:
+            colour = RESERVED_HEX[cat]
+        colour = colors.get(code) or colour or palette.get(code, RESERVED_HEX["mixed"])
         entries.append((code, label, colour))
     if missing and require_labels:
         raise KeyError(

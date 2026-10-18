@@ -240,7 +240,13 @@ def test_plot_basins_main_smoke(monkeypatch):
     calls = {}
 
     class DummyFig:
-        pass
+        """Records the title text the CLI writes onto the figure."""
+
+        def __init__(self):
+            self.texts = []
+
+        def text(self, **kwargs):
+            self.texts.append(kwargs)
 
     def fake_hillshade(path, **kwargs):
         calls["hillshade"] = (path, kwargs)
@@ -270,6 +276,9 @@ def test_plot_basins_main_smoke(monkeypatch):
     assert code == 0
     assert calls["basins"][0] == "basins.fgb"
     assert calls["save"][1] == "basins.png"
+    # The CLI writes one title line carrying the cosmo-scheme metadata.
+    texts = calls["save"][0].texts
+    assert len(texts) == 1 and "scaling=" in texts[0]["text"]
 
 
 def test_plot_basemap_main_smoke(monkeypatch):

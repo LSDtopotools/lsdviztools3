@@ -664,3 +664,43 @@ def test_lithology_map_cli_ksn_and_unit_colours(run_dir):
     assert plot_lithology_map.main(args) == 0 and out.stat().st_size > 0
     r = plot_lithology_map.resolve_inputs(plot_lithology_map.build_parser().parse_args(args))
     assert r["ksn_m_over_n"] == pytest.approx(0.45) and r["unit_colours"] == {"limestone": "#00ff00"}
+
+
+def test_palette_reserved_mixed_and_order():
+    from lsdviztools3.render.lithology_colours import (
+        RESERVED_HEX, lithology_palette, order_unit_names,
+    )
+
+    names = ["unmapped", "mixed (<70% one unit)", "shale", "arms disagree", "Basalt", "all"]
+    assert order_unit_names(names) == ["Basalt", "shale", "mixed (<70% one unit)",
+                                       "arms disagree", "unmapped"]
+    pal = lithology_palette(names)
+    assert pal["mixed (<70% one unit)"] == RESERVED_HEX["mixed"]
+    assert len({RESERVED_HEX["mixed"], RESERVED_HEX["unmapped"], RESERVED_HEX["arms_disagree"],
+                pal["shale"], pal["Basalt"]}) == 5
+    # Adding a reserved category does not shift unit colours.
+    assert lithology_palette(["shale", "Basalt"])["shale"] == pal["shale"]
+
+
+def test_categorical_entries_reserved_codes_last():
+    from lsdviztools3.render.categorical import categorical_legend_entries
+    from lsdviztools3.render.lithology_colours import RESERVED_HEX
+
+    e = categorical_legend_entries([-1, -3, 30, 10, -4],
+                                   {10: "a", 30: "b", -3: "mixed (<80% one unit)",
+                                    -4: "arms disagree", -1: "unmapped"})
+    assert [c for c, _l, _col in e] == [10, 30, -3, -4, -1]
+    assert e[2][2] == RESERVED_HEX["mixed"] and e[3][2] == RESERVED_HEX["arms_disagree"]
+
+
+def test_ksn_charts_order_mixed_last():
+    from lsdviztools3.charts.lithology_ksn import chart_unit_colours, unit_rows
+    from lsdviztools3.render.lithology_colours import RESERVED_HEX
+
+    s = _summary()
+    extra = s.iloc[[1]].copy()
+    extra["lith_code"], extra["lith_name"], extra["k_sn_median"] = -3, "mixed (<80% one unit)", 1.0
+    s = pd.concat([s, extra], ignore_index=True)
+    rows = unit_rows(s, order="median")
+    assert rows["lith_name"].iloc[-1] == "mixed (<80% one unit)"  # lowest median, still last
+    assert chart_unit_colours(s)["mixed (<80% one unit)"] == RESERVED_HEX["mixed"]

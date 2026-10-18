@@ -117,7 +117,15 @@ def unit_rows(summary: pd.DataFrame, *, order: str = "median",
     if order not in key:
         raise ValueError(f"order must be one of {sorted(key)}, got {order!r}.")
     col, asc = key[order]
-    return s.sort_values(col, ascending=asc, kind="stable").reset_index(drop=True)
+    s = s.sort_values(col, ascending=asc, kind="stable")
+    # Reserved categories (mixed, arms disagree, unmapped) always after the units.
+    from ..io.lithology import reserved_category
+    from ..render.lithology_colours import RESERVED_ORDER
+
+    rank = [(-1 if reserved_category(n) is None else RESERVED_ORDER.index(reserved_category(n)))
+            for n in s[NAME_COLUMN]]
+    s = s.assign(_reserved_rank=rank).sort_values("_reserved_rank", kind="stable")
+    return s.drop(columns="_reserved_rank").reset_index(drop=True)
 
 
 def _is_low(row) -> bool:

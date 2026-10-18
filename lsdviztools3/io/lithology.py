@@ -47,10 +47,34 @@ LEGEND_NAME_COLUMN = "name"
 #: Optional colour column in a legend / units CSV (any GMT colour string).
 LEGEND_COLOUR_COLUMN = "color"
 
-#: Reserved codes written by lsdtt-chi-analysis.
+#: Reserved codes written by lsdtt3.
 UNMAPPED_CODE = -1
 UNMAPPED_NAME = "unmapped"
 ALL_UNITS_CODE = -2
+#: Links / junction arms whose majority unit is below the purity threshold.
+#: The name carries the run's threshold, e.g. "mixed (<80% one unit)", so it
+#: is matched by prefix.
+MIXED_CODE = -3
+MIXED_NAME_PREFIX = "mixed"
+#: Junctions whose arms disagree (if lsdtt3 writes it; may reuse "mixed").
+ARMS_DISAGREE_CODE = -4
+ARMS_DISAGREE_NAME_PREFIX = "arms disagree"
+
+
+def reserved_category(name) -> Optional[str]:
+    """``"mixed"`` / ``"arms_disagree"`` / ``"unmapped"`` for reserved names, else None.
+
+    Matched case-insensitively by prefix, since lsdtt3 writes the purity
+    threshold into the mixed name.
+    """
+    n = str(name).strip().lower()
+    if n.startswith(MIXED_NAME_PREFIX):
+        return "mixed"
+    if n.startswith(ARMS_DISAGREE_NAME_PREFIX):
+        return "arms_disagree"
+    if n == UNMAPPED_NAME:
+        return "unmapped"
+    return None
 
 #: Per-unit summary (``*_chi_ksn_by_lithology_mn_*.csv``).
 SUMMARY_COLUMNS = {

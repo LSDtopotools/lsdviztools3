@@ -22,7 +22,14 @@ and appended optional columns (e.g. the junction median CI) may be absent.
 Value conventions: ``measurand`` is ``link_bearing`` for bearings and
 ``alpha``/``beta_min``/``beta_max`` for junctions; high Strahler orders pool as
 ``"4+"``; ``nan`` is written as text; p-value columns end ``_iid_approx`` and
-must be shown with that label and with ``n_blocks`` beside them.
+must be shown with that label and with ``n_blocks`` beside them;
+``permutation_p`` (block permutation) is ``nan`` where not defined.
+
+Lithology groupings may contain reserved groups, matched by name prefix (see
+:func:`lsdviztools3.io.lithology.reserved_category`): ``mixed (<N% one
+unit)`` (code -3) for links/arms whose majority unit is below the purity
+threshold, and possibly ``arms disagree ...`` (code -4) for junctions. They
+appear in summaries and roses but not in comparison rows.
 
 Bearings are compass azimuths: 0 = grid north, clockwise, degrees. Nothing here
 computes a statistic; circular means and R-bar come from the summary file.
@@ -177,6 +184,21 @@ MEMBERSHIP_COLUMNS = {
     "region_purity": "region_purity",
 }
 
+#: Block-permutation columns appended to the bearing and junction summaries
+#: (optional: older files lack them).
+BLOCK_COLUMNS = {
+    "order": "block_order",
+    "mode": "block_order_mode",
+    "min_blocks": "min_blocks",
+}
+
+#: ``<wf>_channel_network_block_order_counts.csv`` (optional).
+BLOCK_COUNT_COLUMNS = {
+    "order": "strahler_order",
+    "n_basins": "n_basins_with_records",
+    "chosen": "chosen",
+}
+
 #: Angular types.
 DIRECTIONAL, AXIAL = "directional", "axial"
 
@@ -189,6 +211,7 @@ SUFFIXES = {
     "junction_comparisons": "_junction_angle_comparisons.csv",
     "junctions": "_junction_angles.csv",
     "link_vectors": "_channel_link_bearing_vectors.fgb",
+    "block_order_counts": "_channel_network_block_order_counts.csv",
     "strahler_channels": "_strahler_channels.csv",
 }
 
@@ -256,6 +279,13 @@ def load_junction_angles_table(path) -> pd.DataFrame:
     return df
 
 
+def load_block_order_counts(path) -> pd.DataFrame:
+    """Load ``<wf>_channel_network_block_order_counts.csv``."""
+    df = load_table(path)
+    _require(df, tuple(BLOCK_COUNT_COLUMNS.values()), Path(path).name)
+    return df
+
+
 def order_group_mask(orders: pd.Series, group_value) -> pd.Series:
     """Rows whose order belongs to an lsdtt3 order group (``"3"`` or pooled ``"4+"``)."""
     o = pd.to_numeric(orders, errors="coerce")
@@ -270,7 +300,7 @@ def load_channel_geometry_outputs(directory, prefix: str) -> dict:
 
     Returns ``{kind: DataFrame or None, ..., "paths": {...}}`` with kinds
     ``rose``, ``bearing_summary``, ``bearing_comparisons``, ``junction_summary``,
-    ``junction_comparisons``, ``junctions``.
+    ``junction_comparisons``, ``junctions``, ``block_order_counts``.
     """
     paths = channel_geometry_paths(directory, prefix)
     loaders = {
@@ -280,6 +310,7 @@ def load_channel_geometry_outputs(directory, prefix: str) -> dict:
         "junction_summary": load_junction_angle_group_summary,
         "junction_comparisons": load_junction_angle_comparisons,
         "junctions": load_junction_angles_table,
+        "block_order_counts": load_block_order_counts,
     }
     out = {k: (f(paths[k]) if paths[k].exists() else None) for k, f in loaders.items()}
     out["paths"] = paths

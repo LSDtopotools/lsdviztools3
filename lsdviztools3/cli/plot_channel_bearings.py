@@ -205,6 +205,13 @@ def main(argv=None) -> int:
                         continue
                     _save(fig, f"{stem}_junction_{m}_comparisons")
 
+    if data["block_order_counts"] is not None:
+        from ..charts.channel_bearings import plot_block_order_counts
+
+        fig, _ = plot_block_order_counts(data["block_order_counts"],
+                                         title=f"{label}: permutation blocks per Strahler order")
+        _save(fig, f"{args.prefix}_block_order_counts")
+
     if args.map_dem:
         from ..render.base import save_figure
         from ..render.lithology_map import render_channel_order_map

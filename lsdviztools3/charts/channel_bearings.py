@@ -37,7 +37,7 @@ from ..io.channel_bearings import (
     AXIAL, BEARING_COMPARISON_COLUMNS, BEARING_SUMMARY_COLUMNS, DIRECTIONAL,
     GROUP_COLUMNS, JUNCTION_COLUMNS, JUNCTION_COMPARISON_COLUMNS,
     JUNCTION_SUMMARY_COLUMNS, NO_STRATUM, ROSE_COLUMNS, order_group_mask,
-    select_groups,
+    select_groups, BLOCK_COLUMNS,
 )
 
 _MPL_MSG = (
@@ -58,16 +58,76 @@ def _import_mpl():
 
 
 def _sort_values(values):
-    """Group values in numeric order ("4+" after 3), else as text."""
+    """Group values in numeric order ("4+" after 3), else as text.
+
+    Reserved lithology categories (``mixed ...``, ``arms disagree ...``,
+    ``unmapped``) and the pooled ``all`` come last, in that order.
+    """
+    from ..io.lithology import reserved_category
+    from ..render.lithology_colours import RESERVED_ORDER
+
     vals = list(dict.fromkeys(str(v) for v in values))
 
     def key(v):
+        cat = reserved_category(v)
+        if cat is not None:
+            return (2, RESERVED_ORDER.index(cat), 0.0, v)
+        if v == "all":
+            return (3, 0, 0.0, v)
         try:
-            return (0, float(v.rstrip("+")), v)
+            return (0, 0, float(v.rstrip("+")), v)
         except ValueError:
-            return (1, 0.0, v)
+            return (1, 0, 0.0, v.casefold())
 
     return sorted(vals, key=key)
+
+
+def is_lithology_key(key: Optional[str]) -> bool:
+    """True for lithology groupings (``lithology``, ``lithology_interior``, ...)."""
+    return bool(key) and str(key).startswith("lithology")
+
+
+def group_colours(group_key: str, values: Sequence, *, cmap: str = "viridis",
+                  unit_colours: Optional[Mapping[str, str]] = None) -> dict:
+    """Colour per group value: the shared unit palette for lithology groupings
+    (same colours as the geologic map and k_sn charts; ``mixed`` grey), else
+    samples of ``cmap``."""
+    values = [str(v) for v in values]
+    if is_lithology_key(group_key):
+        from ..render.lithology_colours import lithology_palette
+
+        pal = lithology_palette(values, unit_colours)
+        return {v: pal.get(v, "#888889") for v in values}
+    plt = _import_mpl()
+    cm = plt.get_cmap(cmap)
+    return {v: cm(i / max(len(values) - 1, 1)) for i, v in enumerate(values)}
+
+
+def block_note(*tables) -> str:
+    """``"blocks: order 3 (auto), min 20 blocks"`` from lsdtt3's appended
+    ``block_order, block_order_mode, min_blocks`` columns (empty if absent)."""
+    c = BLOCK_COLUMNS
+    for t in tables:
+        if t is None or c["order"] not in t.columns:
+            continue
+        rows = t[pd.to_numeric(t[c["order"]], errors="coerce").notna()]
+        if rows.empty:
+            continue
+        r = rows.iloc[0]
+        txt = f"blocks: Strahler order {int(float(r[c['order']]))}"
+        mode = r.get(c["mode"]) if c["mode"] in t.columns else None
+        if mode is not None and not pd.isna(mode) and str(mode).strip():
+            txt += f" ({mode})"
+        mb = _num(r, c["min_blocks"]) if c["min_blocks"] in t.columns else None
+        if mb is not None:
+            txt += f", min {int(mb)} blocks"
+        return txt
+    return ""
+
+
+def _with_block_note(note: str, *tables) -> str:
+    b = block_note(*tables)
+    return f"{note}; {b}" if b else note
 
 
 def _num(row, col) -> Optional[float]:
@@ -141,7 +201,16 @@ def bearing_stats_text(srow, weight: str = "fraction_length") -> str:
         parts.append(f"Rayleigh p_iid_approx={_fmt_p(p)}")
     if s["meets_min"] in srow.index and _num(srow, s["meets_min"]) == 0:
         parts.append("below min group size")
+    if _descriptive_only(srow):
+        parts.append("descriptive only")
     return ", ".join(parts)
+
+
+def _descriptive_only(row) -> bool:
+    """True if lsdtt3's summary note marks the group as descriptive only
+    (e.g. ``mixed`` / ``arms disagree``: never in comparison rows)."""
+    note = row.get("note") if hasattr(row, "get") else None
+    return note is not None and not pd.isna(note) and "descriptive only" in str(note)
 
 
 def _group_rows(df, value):
@@ -161,6 +230,7 @@ def plot_binned_rose(
     weight: str = "fraction_length",
     stacked: bool = False,
     cmap: str = "viridis",
+    unit_colours: Optional[Mapping[str, str]] = None,
     title: Optional[str] = None,
     ax=None,
 ):
@@ -179,7 +249,9 @@ def plot_binned_rose(
         stratum_key, stratum_value: Optional stratum (default unstratified).
         weight: ``count``, ``length``, ``fraction_count`` or ``fraction_length``.
         stacked: Stack petals instead of overlaying outlines.
-        cmap: Colour map sampled per group.
+        cmap: Colour map sampled per group (non-lithology groupings).
+        unit_colours: ``{unit name: colour}`` overrides for lithology
+            groupings, which otherwise use the shared unit palette.
         title: Axis title.
         ax: Existing polar axes or ``None``.
 
@@ -207,14 +279,14 @@ def plot_binned_rose(
     else:
         fig = ax.figure
     _setup_polar(ax)
-    cm = plt.get_cmap(cmap)
+    colours = group_colours(group_key, values, cmap=cmap, unit_colours=unit_colours)
     bottom, rmax, drawn = None, 0.0, []
     for i, v in enumerate(values):
         rows = _group_rows(sel, v).sort_values(ROSE_COLUMNS["bin_centre"])
         if rows.empty:
             continue
         theta, width, h, axial = _petals(rows, weight)
-        colour = cm(i / max(len(values) - 1, 1))
+        colour = colours[str(v)]
         label = f"{group_key.replace('_', ' ')} {v}"
         if ssel is not None and not _group_rows(ssel, v).empty:
             label += f": {bearing_stats_text(_group_rows(ssel, v).iloc[0], weight)}"
@@ -242,6 +314,7 @@ def plot_binned_rose(
     note = f"{angular_type}, {weight.replace('_', ' ')}; azimuth from grid north"
     if ssel is not None:
         note += "; line = circular mean, length R (lsdtt3 summary)"
+    note = _with_block_note(note, summary)
     ax.set_title((title + "\n" if title else "") + note, fontsize=8)
     fig.tight_layout()
     return fig, ax
@@ -272,9 +345,10 @@ def plot_rose_comparison(
     group_key: str = "strahler_order",
     angular_type: str = DIRECTIONAL,
     weight: str = "fraction_length",
-    color: str = "steelblue",
+    color: Optional[str] = None,
     ncols: Optional[int] = None,
     shared_radius: bool = True,
+    unit_colours: Optional[Mapping[str, str]] = None,
     title: Optional[str] = None,
     **select_kwargs,
 ):
@@ -284,7 +358,8 @@ def plot_rose_comparison(
         runs: ``{label: (rose_df, summary_df_or_None)}``, e.g. the WV run and
             an isotropic null surface.
         group_key, angular_type, weight: As :func:`plot_binned_rose`.
-        color: Petal colour.
+        color: Petal colour. ``None`` (default): the shared unit palette for
+            lithology groupings (``mixed`` grey), else steel blue.
         ncols: With a single run, wrap the groups into this many columns.
         shared_radius: Same radial limit on every rose (default), so petal
             lengths compare across runs; only meaningful for fractions.
@@ -314,6 +389,10 @@ def plot_rose_comparison(
     flat = list(grid.ravel())
     rmax = 0.0
     drawn = []
+    if color is None and is_lithology_key(group_key):
+        petal = group_colours(group_key, values, unit_colours=unit_colours)
+    else:
+        petal = {v: color or "steelblue" for v in values}
     for ri, (label, (r, s)) in enumerate(sels.items()):
         for vi, v in enumerate(values):
             ax = flat[vi] if single else grid[ri][vi]
@@ -324,7 +403,7 @@ def plot_rose_comparison(
                 ax.set_title(f"{label} {v}: no data".strip(), fontsize=7)
                 continue
             theta, width, h, axial = _petals(rows, weight)
-            ax.bar(theta, h, width=width, color=color, edgecolor="white", linewidth=0.3)
+            ax.bar(theta, h, width=width, color=petal[str(v)], edgecolor="white", linewidth=0.3)
             rmax = max(rmax, float(np.max(h)))
             srow = None
             if s is not None and not _group_rows(s, v).empty:
@@ -346,6 +425,7 @@ def plot_rose_comparison(
         ax.set_autoscale_on(False)
     note = (f"{angular_type}, {weight.replace('_', ' ')}; azimuth from grid north; "
             "line = circular mean, length R (lsdtt3 summary)")
+    note = _with_block_note(note, *[s for _r, s in sels.values()])
     fig.suptitle((title + "\n" if title else "") + note, fontsize=8)
     fig.tight_layout(h_pad=2.5)
     return fig, [d[0] for d in drawn]
@@ -358,6 +438,7 @@ def plot_junction_angle_summary(
     measurand: str = "alpha",
     stratum_key: str = NO_STRATUM,
     stratum_value=None,
+    unit_colours: Optional[Mapping[str, str]] = None,
     title: Optional[str] = None,
     ax=None,
 ):
@@ -409,6 +490,10 @@ def plot_junction_angle_summary(
         art = ax.bxp(stats, positions=pos, widths=width * 0.85, patch_artist=True,
                      boxprops={"facecolor": col, "alpha": 0.8},
                      medianprops={"color": "black", "linewidth": 1.4})
+        if nrun == 1 and is_lithology_key(group_key):
+            ucol = group_colours(group_key, values, unit_colours=unit_colours)
+            for box, st in zip(art["boxes"], stats):
+                box.set_facecolor(ucol[str(st["label"])])
         for box, r in zip(art["boxes"], rows):
             if _num(r, c["meets_min"]) == 0:
                 box.set_hatch("///")
@@ -430,6 +515,8 @@ def plot_junction_angle_summary(
             txt = f"n={int(n)}" if n is not None else ""
             if nb is not None:
                 txt += f"\n{int(nb)} blocks"
+            if _descriptive_only(r):
+                txt += "\ndescriptive"
             ax.annotate(txt, xy=(p, 1.0), xycoords=("data", "axes fraction"),
                         xytext=(0, 3), textcoords="offset points", ha="center",
                         va="bottom", fontsize=6.5)
@@ -441,6 +528,7 @@ def plot_junction_angle_summary(
         ax.legend([h for h, _ in handles], [lab for _, lab in handles], fontsize=7,
                   loc="lower right")
     note = "box = q25-q75, line = median, diamond = mean (lsdtt3 summary); hatched = below min group size"
+    note = _with_block_note(note, *sels.values())
     if any(c["median_ci_low"] in s.columns for s in sels.values()):
         note += "; bar = median CI"
     ax.set_title((title + "\n" if title else "") + note, fontsize=8, pad=26)
@@ -548,7 +636,15 @@ def plot_comparison_table(
         return "nan" if not np.isfinite(v) else format(v, fmt)
 
     header = ["group a", "group b", "n a (blocks)", "n b (blocks)", "Wasserstein (deg)",
-              stat_lab, p_lab, "Holm"]
+              stat_lab, p_lab, "Holm", "permutation_p", "note (lsdtt3)"]
+
+    def _note(r):
+        n = r.get(c["note"]) if c["note"] in df.columns else None
+        if n is None or pd.isna(n):
+            return ""
+        # Drop the grouping tag (already in the title); keep lsdtt3's wording.
+        parts = [s.strip() for s in str(n).split(";") if not s.strip().startswith("group_key=")]
+        return "; ".join(parts)
     cells = []
     for _, r in df.iterrows():
         cells.append([
@@ -557,17 +653,54 @@ def plot_comparison_table(
             f"{_f(r[c['n_b']], '.0f')} ({_f(r[c['n_blocks_b']], '.0f')})",
             _f(r[c["wasserstein"]], ".3g"), _f(r[stat], ".3g"),
             _fmt_p(_num(r, p)), _fmt_p(_num(r, ph)),
+            _fmt_p(_num(r, c["permutation_p"])) if c["permutation_p"] in df.columns else "nan",
+            _note(r),
         ])
     if ax is None:
-        fig, ax = plt.subplots(figsize=(9.0, 0.32 * len(cells) + 1.0))
+        fig, ax = plt.subplots(figsize=(16.0, 0.3 * len(cells) + 1.2))
     else:
         fig = ax.figure
     ax.axis("off")
-    tab = ax.table(cellText=cells, colLabels=header, loc="center", cellLoc="center")
+    widths = [0.07, 0.05, 0.075, 0.075, 0.07, 0.055, 0.085, 0.05, 0.065, 0.405]
+    tab = ax.table(cellText=cells, colLabels=header, loc="center", cellLoc="center",
+                   colWidths=widths)
+    tab.auto_set_font_size(False)
+    tab.set_fontsize(6.5)
+    for (row, col), cell in tab.get_celld().items():
+        if col == len(header) - 1 and row > 0:
+            cell.set_text_props(ha="left")
+            cell._loc = "left"
+    tab.scale(1.0, 1.25)
+    base = title or f"{kind} pairwise comparisons (lsdtt3; p-values assume i.i.d. samples)"
+    ax.set_title(base + "\npermutation_p = block permutation (lsdtt3); nan = not defined",
+                 fontsize=8)
+    fig.tight_layout()
+    return fig, ax
+
+
+def plot_block_order_counts(counts: pd.DataFrame, *, title: Optional[str] = None, ax=None):
+    """lsdtt3's ``<wf>_channel_network_block_order_counts.csv`` as a small table.
+
+    One row per Strahler order: the number of basins with records and whether
+    lsdtt3 chose that order to define the permutation blocks.
+    """
+    from ..io.channel_bearings import BLOCK_COUNT_COLUMNS as c
+
+    plt = _import_mpl()
+    rows = []
+    for _, r in counts.iterrows():
+        chosen = str(r.get(c["chosen"], "")).strip().lower() in ("1", "1.0", "true", "yes")
+        rows.append([str(r[c["order"]]), f"{int(float(r[c['n_basins']]))}",
+                     "chosen" if chosen else ""])
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(4.2, 0.3 * len(rows) + 1.0))
+    else:
+        fig = ax.figure
+    ax.axis("off")
+    tab = ax.table(cellText=rows, colLabels=["Strahler order", "basins with records", "block order"],
+                   loc="center", cellLoc="center")
     tab.auto_set_font_size(False)
     tab.set_fontsize(7)
-    tab.scale(1.0, 1.25)
-    ax.set_title(title or f"{kind} pairwise comparisons (lsdtt3; p-values assume i.i.d. samples)",
-                 fontsize=8)
+    ax.set_title(title or "permutation blocks: basins per Strahler order (lsdtt3)", fontsize=8)
     fig.tight_layout()
     return fig, ax

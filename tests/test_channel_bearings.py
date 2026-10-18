@@ -245,3 +245,173 @@ def test_channel_bearings_cli(run_dir, tmp_path):
     assert {"wf_junction_alpha_summary.png", "wf_junction_alpha_distributions.png",
             "wf_bearing_comparisons_directional.png",
             "wf_vs_wf_junction_alpha_summary.png"} <= names
+
+
+# --------------------------------------------------------------------------
+# Round 3: mixed category, block permutation columns
+# --------------------------------------------------------------------------
+
+MIXED = "mixed (<80% one unit)"
+LITH = ("shale", "sandstone", MIXED, "limestone")
+
+
+def _lith_rose() -> pd.DataFrame:
+    rows = []
+    for g in LITH:
+        for k in range(12):
+            rows.append({"measurand": "link_bearing", "group_key": "lithology",
+                         "group_value": g, "stratum_key": "strahler_order",
+                         "stratum_value": "all", "angular_type": "axial",
+                         "bin_centre_deg": 15.0 * k, "bin_lower_deg": 15.0 * k - 7.5,
+                         "bin_upper_deg": 15.0 * k + 7.5, "count": 5, "fraction_count": 1 / 12,
+                         "length_m": 100.0, "fraction_length": 1 / 12})
+    return pd.DataFrame(rows)
+
+
+def _lith_bearing_summary(with_blocks=True) -> pd.DataFrame:
+    df = pd.DataFrame({
+        "measurand": "link_bearing", "group_key": "lithology", "group_value": list(LITH),
+        "stratum_key": "strahler_order", "stratum_value": "all", "angular_type": "axial",
+        "period_deg": 180, "n": [60, 50, 12, 40], "n_blocks": [9, 8, 3, 7],
+        "total_length_m": 1e4, "circular_mean_deg_count": 30.0,
+        "mean_resultant_length_count": 0.1, "circular_variance_count": 0.9,
+        "circular_sd_deg_count": 100, "circular_mean_deg_length": 40.0,
+        "mean_resultant_length_length": 0.2, "n_eff_length": 30, "rayleigh_z": 1.0,
+        "rayleigh_p_iid_approx": 0.3, "fraction_on_d8_multiples": 0.05,
+        "meets_min_group_size": 1,
+        "note": ["", "", "descriptive only: not compared", ""]})
+    if with_blocks:
+        df["block_order"] = 3
+        df["block_order_mode"] = "auto"
+        df["min_blocks"] = 20
+    return df
+
+
+def _lith_junction_summary() -> pd.DataFrame:
+    groups = ("shale", "sandstone", MIXED, "arms disagree (<80%)", "limestone")
+    df = pd.DataFrame({
+        "measurand": "alpha", "group_key": "lithology", "group_value": list(groups),
+        "stratum_key": "strahler_order", "stratum_value": "all",
+        "n": [50, 40, 10, 7, 30], "n_blocks": [8, 7, 2, 1, 6], "mean_deg": 61.0,
+        "median_deg": 60.0, "sd_deg": 10.0, "q25_deg": 50.0, "q75_deg": 70.0,
+        "iqr_deg": 20.0, "meets_min_group_size": 1,
+        "median_ci_low_deg": 55.0, "median_ci_high_deg": 66.0, "n_bootstrap": 1000,
+        "block_order": 3, "block_order_mode": "auto", "min_blocks": 20})
+    return df
+
+
+def test_reserved_groups_sort_after_units():
+    from lsdviztools3.charts.channel_bearings import _sort_values
+
+    vals = ["unmapped", "arms disagree (<80%)", MIXED, "shale", "Limestone", "all"]
+    assert _sort_values(vals) == ["Limestone", "shale", MIXED, "arms disagree (<80%)",
+                                  "unmapped", "all"]
+    assert _sort_values(["4+", "1", "3", "2"]) == ["1", "2", "3", "4+"]
+
+
+def test_mixed_rose_uses_reserved_grey_and_unit_palette():
+    from matplotlib.colors import to_hex
+
+    from lsdviztools3.charts.channel_bearings import plot_binned_rose, plot_rose_comparison
+    from lsdviztools3.render.lithology_colours import RESERVED_HEX, lithology_palette
+
+    pal = lithology_palette(LITH)
+    fig, ax = plot_binned_rose(_lith_rose(), _lith_bearing_summary(), group_key="lithology",
+                               angular_type="axial", stratum_key="strahler_order",
+                               stratum_value="all")
+    labels = ax.get_legend_handles_labels()[1]
+    assert [lbl.split(":")[0] for lbl in labels] == [
+        "lithology limestone", "lithology sandstone", "lithology shale", f"lithology {MIXED}"]
+    edge = {lbl.split(":")[0]: to_hex(h.patches[0].get_edgecolor())
+            for h, lbl in zip(*ax.get_legend_handles_labels())}
+    assert edge[f"lithology {MIXED}"] == RESERVED_HEX["mixed"]
+    assert edge["lithology shale"] == pal["shale"]
+    assert "blocks: Strahler order 3 (auto), min 20 blocks" in ax.get_title()
+    mpl.pyplot.close(fig)
+
+    fig, axes = plot_rose_comparison({"": (_lith_rose(), _lith_bearing_summary())},
+                                     group_key="lithology", angular_type="axial",
+                                     stratum_key="strahler_order", stratum_value="all")
+    face = to_hex(axes[-1].patches[0].get_facecolor())
+    assert axes[-1].get_title().startswith(f"lithology {MIXED}")
+    assert "descriptive only" in axes[-1].get_title()
+    assert "descriptive only" not in axes[0].get_title()
+    assert face == RESERVED_HEX["mixed"]
+    mpl.pyplot.close(fig)
+
+
+def test_block_note_absent_is_tolerated():
+    from lsdviztools3.charts.channel_bearings import block_note, plot_binned_rose
+
+    assert block_note(_lith_bearing_summary(with_blocks=False)) == ""
+    fig, ax = plot_binned_rose(_lith_rose(), _lith_bearing_summary(with_blocks=False),
+                               group_key="lithology", angular_type="axial",
+                               stratum_key="strahler_order", stratum_value="all")
+    assert "blocks:" not in ax.get_title()
+    mpl.pyplot.close(fig)
+
+
+def test_junction_summary_mixed_and_arms_disagree():
+    from matplotlib.colors import to_hex
+
+    from lsdviztools3.charts.channel_bearings import plot_junction_angle_summary
+    from lsdviztools3.render.lithology_colours import RESERVED_HEX
+
+    fig, ax = plot_junction_angle_summary(_lith_junction_summary(), group_key="lithology",
+                                          stratum_key="strahler_order", stratum_value="all")
+    ticks = [t.get_text() for t in ax.get_xticklabels()]
+    assert ticks == ["limestone", "sandstone", "shale", MIXED, "arms disagree (<80%)"]
+    faces = [to_hex(p.get_facecolor(), keep_alpha=False) for p in ax.patches[:5]]
+    assert faces[3] == RESERVED_HEX["mixed"] and faces[4] == RESERVED_HEX["arms_disagree"]
+    assert "blocks: Strahler order 3" in ax.get_title()
+    mpl.pyplot.close(fig)
+
+
+def test_comparison_table_shows_permutation_p():
+    from lsdviztools3.charts.channel_bearings import plot_comparison_table
+
+    df = _comparisons()
+    df["permutation_p"] = [0.012, np.nan]
+    df["note"] = ["group_key=lithology; permutation: labels permuted within blocks",
+                  "permutation: no blocked records in group_b"]
+    fig, ax = plot_comparison_table(df, kind="bearing")
+    cells = {k: c.get_text().get_text() for k, c in ax.tables[0].get_celld().items()}
+    assert cells[(0, 8)] == "permutation_p"
+    assert cells[(1, 8)] == "0.012" and cells[(2, 8)] == "nan"
+    assert cells[(0, 9)] == "note (lsdtt3)"
+    assert cells[(1, 9)] == "permutation: labels permuted within blocks"  # tag dropped
+    assert cells[(2, 9)] == "permutation: no blocked records in group_b"
+    assert cells[(0, 6)] == "kuiper_p_iid_approx" and cells[(1, 3)] == "103 (0)"
+    assert "nan = not defined" in ax.get_title()
+    for word in ("significant", "significance"):
+        assert word not in ax.get_title().lower()
+    mpl.pyplot.close(fig)
+
+
+def test_block_order_counts(tmp_path):
+    from lsdviztools3.charts.channel_bearings import plot_block_order_counts
+
+    p = tmp_path / "wf_channel_network_block_order_counts.csv"
+    pd.DataFrame({"strahler_order": [2, 3, 4], "n_basins_with_records": [120, 40, 9],
+                  "chosen": [0, 1, 0]}).to_csv(p, index=False)
+    out = CB.load_channel_geometry_outputs(tmp_path, "wf")
+    fig, ax = plot_block_order_counts(out["block_order_counts"])
+    cells = {k: c.get_text().get_text() for k, c in ax.tables[0].get_celld().items()}
+    assert cells[(2, 2)] == "chosen" and cells[(1, 2)] == ""
+    mpl.pyplot.close(fig)
+
+
+def test_cli_lithology_grouping_with_mixed(tmp_path):
+    from lsdviztools3.cli import plot_channel_bearings
+
+    _lith_rose().to_csv(tmp_path / "lw_channel_bearing_rose.csv", index=False)
+    _lith_bearing_summary().to_csv(tmp_path / "lw_channel_bearing_group_summary.csv", index=False)
+    _lith_junction_summary().to_csv(tmp_path / "lw_junction_angle_group_summary.csv", index=False)
+    out = tmp_path / "f"
+    assert plot_channel_bearings.main(["--data-dir", str(tmp_path), "--prefix", "lw",
+                                       "--group-key", "lithology",
+                                       "--stratum-key", "strahler_order",
+                                       "--out-dir", str(out), "--dpi", "40"]) == 0
+    names = {p.name for p in out.glob("*.png")}
+    assert "lw_lithology_rose_axial_count_strahler_order-all.png" in names
+    assert "lw_lithology_junction_alpha_by_strahler_order.png" in names
