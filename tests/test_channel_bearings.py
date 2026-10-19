@@ -415,3 +415,151 @@ def test_cli_lithology_grouping_with_mixed(tmp_path):
     names = {p.name for p in out.glob("*.png")}
     assert "lw_lithology_rose_axial_count_strahler_order-all.png" in names
     assert "lw_lithology_junction_alpha_by_strahler_order.png" in names
+
+
+# --------------------------------------------------------------------------
+# Round 4: bearing CDF / PDF
+# --------------------------------------------------------------------------
+
+def _membership() -> pd.DataFrame:
+    """Per-link records matching _bearing_summary's n (100, 101, 102, 103),
+    plus 3 excluded records (empty group_value)."""
+    rng = np.random.default_rng(4)
+    rows = []
+    for i, g in enumerate(GROUPS):
+        for k in range(100 + i):
+            b = float(rng.uniform(0, 360))
+            rows.append({"upstream_junction": k, "downstream_junction": k + 1,
+                         "stream_order": i + 1, "total_length_m": 100.0, "bearing_deg": b,
+                         "axial_bearing_deg": b % 180.0, "group_value": g,
+                         "stratum_value": "all", "basin_id": 0, "block_id": k % 5,
+                         "region_value": "", "region_purity": 1.0})
+    # lsdtt3 may write a due-north link as 360 / 180: kept exactly as written.
+    rows[0]["bearing_deg"], rows[0]["axial_bearing_deg"] = 360.0, 180.0
+    for k in range(3):
+        rows.append({**rows[1], "group_value": ""})
+    return pd.DataFrame(rows)
+
+
+def _order_run(tmp_path, prefix="wf"):
+    _rose().to_csv(tmp_path / f"{prefix}_channel_bearing_rose.csv", index=False)
+    _bearing_summary().to_csv(tmp_path / f"{prefix}_channel_bearing_group_summary.csv",
+                              index=False)
+    _comparisons().to_csv(tmp_path / f"{prefix}_channel_bearing_comparisons.csv", index=False)
+    _membership().to_csv(tmp_path / f"{prefix}_channel_bearing_group_membership.csv",
+                         index=False)
+    return CB.load_channel_geometry_outputs(tmp_path, prefix)
+
+
+def test_membership_groups_as_written_and_excluded(tmp_path):
+    from lsdviztools3.charts.channel_bearings import membership_groups
+
+    m = CB.load_bearing_membership(_membership_path(tmp_path))
+    groups, excl = membership_groups(m, angular_type="axial")
+    assert excl == 3
+    assert list(groups) == ["1", "2", "3", "4+"]
+    assert [len(v) for v in groups.values()] == [100, 101, 102, 103]
+    assert groups["1"].max() == 180.0  # not folded to 0
+    dgroups, _ = membership_groups(m, angular_type="directional")
+    assert dgroups["1"].max() == 360.0
+
+
+def _membership_path(tmp_path):
+    p = tmp_path / "m.csv"
+    _membership().to_csv(p, index=False)
+    return p
+
+
+def test_bearing_cdf_plot(tmp_path):
+    from lsdviztools3.charts.channel_bearings import ORIGIN_NOTE, plot_bearing_distributions
+
+    data = _order_run(tmp_path)
+    fig, axes = plot_bearing_distributions({"wv": data}, kind="cdf", angular_type="directional")
+    ax = axes[0]
+    assert [lbl for lbl in ax.get_legend_handles_labels()[1]] == [
+        "1 (n=100)", "2 (n=101)", "3 (n=102)", "4+ (n=103)"]
+    assert "3 excluded record(s)" in ax.get_title()
+    y = ax.lines[0].get_ydata()
+    assert y[0] == 0.0 and y[-1] == 1.0 and np.all(np.diff(y) >= 0)
+    assert ax.get_xlim() == (0.0, 360.0)
+    sup = fig._suptitle.get_text().replace("\n", " ")
+    assert "not a statistic" in sup and "Kuiper V does not" in sup
+    assert ORIGIN_NOTE.split(";")[0] in sup
+    # Table cells are lsdtt3's comparison values for the matching angular type.
+    cells = {k: c.get_text().get_text() for k, c in fig.axes[1].tables[0].get_celld().items()}
+    assert cells[(0, 6)] == "kuiper_p_iid_approx" and cells[(1, 4)] == "0.05"
+    assert cells[(1, 2)] == "100 (10)" and cells[(1, 7)] == "nan"
+    for word in ("significant", "significance"):
+        assert word not in sup.lower()
+    mpl.pyplot.close(fig)
+
+
+def test_bearing_cdf_refuses_mismatched_records(tmp_path):
+    from lsdviztools3.charts.channel_bearings import plot_bearing_distributions
+
+    data = _order_run(tmp_path)
+    data["membership"] = data["membership"].iloc[5:]  # drop records of group 1
+    with pytest.raises(ValueError, match="summary n=100"):
+        plot_bearing_distributions({"wv": data}, kind="cdf", angular_type="axial")
+
+
+def test_bearing_pdf_plot_uses_rose_fractions(tmp_path):
+    from lsdviztools3.charts.channel_bearings import plot_bearing_distributions
+
+    data = _order_run(tmp_path)
+    fig, axes = plot_bearing_distributions({"wv": data, "null": data}, kind="pdf",
+                                           angular_type="directional", weight="fraction_count")
+    assert len(axes) == 2
+    st = axes[0].patches[0]  # group 1 StepPatch
+    vals, edges = st.get_data().values, st.get_data().edges
+    # Bin 0 (centred on 0, lsdtt3 fraction 0.15) is drawn at both ends.
+    assert vals[0] == pytest.approx(0.15) and vals[-1] == pytest.approx(0.15)
+    assert edges[0] == 0.0 and edges[1] == 15.0 and edges[-2] == 345.0 and edges[-1] == 360.0
+    assert np.allclose(vals[1:-1], 0.10)
+    mpl.pyplot.close(fig)
+
+
+def test_lithology_cdf_colours_and_per_stratum(tmp_path):
+    from matplotlib.colors import to_hex
+
+    from lsdviztools3.charts.channel_bearings import plot_bearing_distributions
+    from lsdviztools3.render.lithology_colours import RESERVED_HEX
+
+    rose = _lith_rose()
+    summ = _lith_bearing_summary()
+    rng = np.random.default_rng(5)
+    mem = []
+    for g, n in zip(LITH, summ["n"]):
+        for k in range(int(n)):
+            b = float(rng.uniform(0, 360))
+            mem.append({"bearing_deg": b, "axial_bearing_deg": b % 180, "group_value": g,
+                        "stratum_value": "1" if k % 2 else "2"})
+    data = {"rose": rose, "bearing_summary": summ, "membership": pd.DataFrame(mem),
+            "bearing_comparisons": None}
+    fig, axes = plot_bearing_distributions({"": data}, kind="cdf", group_key="lithology",
+                                           angular_type="axial", stratum_key="strahler_order",
+                                           stratum_value="all")
+    handles, labels = axes[0].get_legend_handles_labels()
+    assert labels[-1].startswith("mixed (<80% one unit)")
+    assert to_hex(handles[-1].get_color()) == RESERVED_HEX["mixed"]
+    mpl.pyplot.close(fig)
+
+
+def test_cli_cdf_pdf(tmp_path):
+    from lsdviztools3.cli import plot_channel_bearings
+
+    _order_run(tmp_path)
+    out = tmp_path / "f"
+    assert plot_channel_bearings.main(["--data-dir", str(tmp_path), "--prefix", "wf",
+                                       "--compare-prefix", "wf", "--plots", "cdf,pdf",
+                                       "--pdf-weight", "length",
+                                       "--out-dir", str(out), "--dpi", "40"]) == 0
+    names = {p.name for p in out.glob("*.png")}
+    for a in ("axial", "directional"):
+        assert f"wf_bearing_cdf_{a}.png" in names
+        assert f"wf_vs_wf_bearing_cdf_{a}.png" in names
+        assert f"wf_bearing_pdf_length_{a}.png" in names
+    assert not any("rose" in n for n in names)  # only the requested kinds
+    with pytest.raises(SystemExit):
+        plot_channel_bearings.main(["--data-dir", str(tmp_path), "--prefix", "wf",
+                                    "--plots", "cdf,banana", "--out-dir", str(out)])

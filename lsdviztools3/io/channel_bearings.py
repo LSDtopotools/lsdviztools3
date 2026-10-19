@@ -279,6 +279,21 @@ def load_junction_angles_table(path) -> pd.DataFrame:
     return df
 
 
+def load_bearing_membership(path) -> pd.DataFrame:
+    """Load ``<wf>_channel_bearing_group_membership.csv`` (one row per link).
+
+    ``group_value`` / ``stratum_value`` are read as text (so ``"4+"`` and
+    ``"1"`` keep lsdtt3's labels); an empty ``group_value`` (excluded record)
+    becomes NaN. Bearings are kept exactly as written.
+    """
+    c = MEMBERSHIP_COLUMNS
+    df = pd.read_csv(path, dtype={c["group_value"]: str, c["stratum_value"]: str})
+    _require(df, (c["bearing"], c["axial_bearing"], c["group_value"]), Path(path).name)
+    gv = df[c["group_value"]]
+    df[c["group_value"]] = gv.where(gv.notna() & (gv.astype(str).str.strip() != ""))
+    return df
+
+
 def load_block_order_counts(path) -> pd.DataFrame:
     """Load ``<wf>_channel_network_block_order_counts.csv``."""
     df = load_table(path)
@@ -300,7 +315,8 @@ def load_channel_geometry_outputs(directory, prefix: str) -> dict:
 
     Returns ``{kind: DataFrame or None, ..., "paths": {...}}`` with kinds
     ``rose``, ``bearing_summary``, ``bearing_comparisons``, ``junction_summary``,
-    ``junction_comparisons``, ``junctions``, ``block_order_counts``.
+    ``junction_comparisons``, ``junctions``, ``block_order_counts``,
+    ``membership``.
     """
     paths = channel_geometry_paths(directory, prefix)
     loaders = {
@@ -311,6 +327,7 @@ def load_channel_geometry_outputs(directory, prefix: str) -> dict:
         "junction_comparisons": load_junction_angle_comparisons,
         "junctions": load_junction_angles_table,
         "block_order_counts": load_block_order_counts,
+        "membership": load_bearing_membership,
     }
     out = {k: (f(paths[k]) if paths[k].exists() else None) for k, f in loaders.items()}
     out["paths"] = paths

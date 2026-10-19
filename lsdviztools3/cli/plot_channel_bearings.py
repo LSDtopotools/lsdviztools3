@@ -24,6 +24,7 @@ strahler_order`` (default), ``lithology``, ``lithology_interior``, ``basin``,
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 
@@ -49,6 +50,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help="stratum_key to plot ('none' = unstratified).")
     parser.add_argument("--measurands", default="alpha",
                         help="Junction measurands, comma-separated (alpha,beta_min,beta_max).")
+    parser.add_argument(
+        "--plots", default="rose,junction,tables,blocks",
+        help="Comma-separated figure kinds: rose, junction, tables, blocks, cdf, pdf "
+        "(default: rose,junction,tables,blocks). cdf = empirical CDF of lsdtt3's "
+        "per-link bearings (membership file); pdf = lsdtt3's binned fractions.")
+    parser.add_argument("--pdf-weight", default="count", choices=["count", "length"],
+                        help="PDF weight: fraction of links (count, default) or of "
+                        "channel length.")
     parser.add_argument("--map-dem", default=None,
                         help="DEM for a channel map coloured by stream order "
                         "(uses <prefix>_channel_link_bearing_vectors.fgb).")
@@ -81,7 +90,7 @@ def main(argv=None) -> int:
     import matplotlib.pyplot as plt
 
     from ..charts.channel_bearings import (
-        plot_comparison_table, plot_junction_angle_distributions,
+        plot_bearing_distributions, plot_comparison_table, plot_junction_angle_distributions,
         plot_junction_angle_summary, plot_rose_comparison,
     )
     from ..io.channel_bearings import (
@@ -113,12 +122,16 @@ def main(argv=None) -> int:
         return ["all"] if "all" in vals else vals
 
     measurands = [m.strip() for m in args.measurands.split(",") if m.strip()]
+    plots = {p.strip() for p in args.plots.split(",") if p.strip()}
+    unknown = plots - {"rose", "junction", "tables", "blocks", "cdf", "pdf"}
+    if unknown:
+        raise SystemExit(f"Unknown --plots value(s): {sorted(unknown)}")
     for gk in [g.strip() for g in args.group_key.split(",") if g.strip()]:
         # Group key in file names except for the default order grouping, so
         # several groupings (lithology, lithology_interior) can share a prefix.
         gtag = "" if gk == "strahler_order" else f"_{gk}"
         stem = f"{args.prefix}{gtag}"
-        if data["rose"] is not None:
+        if "rose" in plots and data["rose"] is not None:
             for sv in _stratum_values(data["rose"], gk, sk):
                 sel = {} if sv is None else {"stratum_key": sk, "stratum_value": sv}
                 tag = "" if sv is None else f"_{sk}-{_safe(sv)}"
@@ -146,7 +159,7 @@ def main(argv=None) -> int:
             data["rose"], group_key=gk, stratum_key=sk).empty)
         # Bearing comparison rows carry no group key; only tabulate them for a
         # grouping that actually has bearing rows.
-        if data["bearing_comparisons"] is not None and has_rose:
+        if "tables" in plots and data["bearing_comparisons"] is not None and has_rose:
             for sv in _comparison_strata(data["bearing_comparisons"]):
                 for atype in (DIRECTIONAL, AXIAL):
                     try:
@@ -160,7 +173,33 @@ def main(argv=None) -> int:
                         continue
                     _save(fig, f"{stem}_bearing_comparisons_{atype}")
 
-        js = data["junction_summary"]
+        for kind in [k for k in ("cdf", "pdf") if k in plots]:
+            if not has_rose:
+                break
+            src = "membership" if kind == "cdf" else "rose"
+            if data[src] is None:
+                print(f"skip {kind}: no {src} file for {args.prefix}", file=sys.stderr)
+                continue
+            weight = f"fraction_{args.pdf_weight}"
+            wtag = "" if (kind == "cdf" or args.pdf_weight == "count") else "_length"
+            sets = [("", {label: data})]
+            if other is not None and other[src] is not None:
+                sets.append((f"_vs_{args.compare_prefix}", {label: data, olabel: other}))
+            for sv in _stratum_values(data["rose"], gk, sk):
+                tag = "" if sv is None else f"_{sk}-{_safe(sv)}"
+                for atype in (AXIAL, DIRECTIONAL):
+                    for vs, runs in sets:
+                        title = f"{args.title + ' ' if args.title else ''}" + " vs ".join(runs)
+                        try:
+                            fig, _ = plot_bearing_distributions(
+                                runs, kind=kind, group_key=gk, angular_type=atype,
+                                stratum_key=sk, stratum_value=sv, weight=weight, title=title)
+                        except ValueError as exc:
+                            print(f"skip {stem}{vs} {kind} {atype}{tag}: {exc}", file=sys.stderr)
+                            continue
+                        _save(fig, f"{stem}{vs}_bearing_{kind}{wtag}_{atype}{tag}")
+
+        js = data["junction_summary"] if "junction" in plots else None
         for m in measurands:
             if js is None:
                 break
@@ -205,7 +244,7 @@ def main(argv=None) -> int:
                         continue
                     _save(fig, f"{stem}_junction_{m}_comparisons")
 
-    if data["block_order_counts"] is not None:
+    if "blocks" in plots and data["block_order_counts"] is not None:
         from ..charts.channel_bearings import plot_block_order_counts
 
         fig, _ = plot_block_order_counts(data["block_order_counts"],

@@ -704,3 +704,285 @@ def plot_block_order_counts(counts: pd.DataFrame, *, title: Optional[str] = None
     ax.set_title(title or "permutation blocks: basins per Strahler order (lsdtt3)", fontsize=8)
     fig.tight_layout()
     return fig, ax
+
+
+# --------------------------------------------------------------------------
+# Bearing distributions: empirical CDF (from lsdtt3's per-link records) and
+# PDF (lsdtt3's own binned fractions), with lsdtt3's comparison statistics.
+# --------------------------------------------------------------------------
+
+#: Caption fragments (kept in one place so wording stays consistent).
+ORIGIN_NOTE = ("0° = grid north, clockwise; axial on [0, 180), directional on "
+               "[0, 360)")
+CDF_NOTE = ("ECDF of lsdtt3's per-link bearings (a display of the data, not a "
+            "statistic). A circular ECDF depends on the chosen origin (here north); "
+            "Kuiper V does not.")
+PDF_NOTE = ("lsdtt3's binned fractions (rose file), drawn as steps; no smoothing. "
+            "Bin 0 is centred on 0° and is drawn split at both ends of the axis.")
+NAN_NOTE = "nan = not defined (see lsdtt3 note)"
+
+
+def _period(angular_type: str) -> float:
+    return 180.0 if angular_type == AXIAL else 360.0
+
+
+def membership_groups(membership: pd.DataFrame, *, angular_type: str = DIRECTIONAL,
+                      stratum_value=None) -> tuple:
+    """Per-group bearing arrays from lsdtt3's membership rows, plus excluded count.
+
+    Uses ``axial_bearing_deg`` (axial) or ``bearing_deg`` (directional) exactly
+    as written. ``stratum_value`` (e.g. ``"3"``) keeps rows of that stratum;
+    ``None``/``"all"`` keeps all rows. Rows with an empty ``group_value`` are
+    excluded records and are left out.
+
+    Returns:
+        ``({group: np.ndarray}, n_excluded)``.
+    """
+    from ..io.channel_bearings import MEMBERSHIP_COLUMNS as M
+
+    col = M["axial_bearing"] if angular_type == AXIAL else M["bearing"]
+    df = membership
+    if stratum_value is not None and str(stratum_value) != "all":
+        df = df[df[M["stratum_value"]].astype(str) == str(stratum_value)]
+    excluded = int(df[M["group_value"]].isna().sum())
+    df = df[df[M["group_value"]].notna()]
+    out = {}
+    for g in _sort_values(df[M["group_value"]]):
+        v = pd.to_numeric(df.loc[df[M["group_value"]].astype(str) == g, col],
+                          errors="coerce").to_numpy(float)
+        out[g] = v[np.isfinite(v)]
+    return out, excluded
+
+
+def check_membership_against_summary(groups: Mapping[str, np.ndarray],
+                                     summary: Optional[pd.DataFrame], *, group_key: str,
+                                     angular_type: str, stratum_key: str = NO_STRATUM,
+                                     stratum_value=None) -> None:
+    """Raise if the record counts per group differ from lsdtt3's summary ``n``.
+
+    The ECDF is only shown beside lsdtt3's statistics if it is drawn from the
+    same records they were computed on.
+    """
+    if summary is None:
+        return
+    s = select_groups(summary, group_key=group_key, stratum_key=stratum_key,
+                      stratum_value=stratum_value, angular_type=angular_type)
+    for g, v in groups.items():
+        r = _group_rows(s, g)
+        if r.empty:
+            raise ValueError(f"group {g!r} is in the membership file but not in the "
+                             f"{group_key!r} summary; the membership is for another grouping.")
+        n = _num(r.iloc[0], BEARING_SUMMARY_COLUMNS["n"])
+        if n is not None and int(n) != len(v):
+            raise ValueError(f"group {g!r}: {len(v)} membership records but lsdtt3 summary "
+                             f"n={int(n)}; not drawing an ECDF that differs from the "
+                             "statistics' records.")
+
+
+def _comparison_cells(comparisons: Optional[pd.DataFrame], *, angular_type: str,
+                      group_key: Optional[str], stratum_value=None) -> list:
+    """Rows [a, b, n a (blocks), n b (blocks), V, W1, p_iid, perm_p, note] from lsdtt3."""
+    if comparisons is None:
+        return []
+    c = BEARING_COMPARISON_COLUMNS
+    df = comparisons[comparisons[c["angular_type"]].astype(str) == angular_type]
+    if c["stratum_value"] in df.columns:
+        sv = "all" if stratum_value is None else str(stratum_value)
+        df = df[df[c["stratum_value"]].astype(str) == sv]
+    if group_key is not None and c["note"] in df.columns:
+        note = df[c["note"]].fillna("").astype(str)
+        tagged = note.str.contains("group_key=", regex=False)
+        df = df[~tagged | note.str.contains(f"group_key={group_key}", regex=False)
+                & ~note.str.contains(f"group_key={group_key}_", regex=False)]
+
+    def _i(v):
+        v = pd.to_numeric(pd.Series([v]), errors="coerce").iloc[0]
+        return "nan" if not np.isfinite(v) else f"{v:.0f}"
+
+    def _g(v):
+        v = pd.to_numeric(pd.Series([v]), errors="coerce").iloc[0]
+        return "nan" if not np.isfinite(v) else f"{v:.3g}"
+
+    cells = []
+    for _, r in df.iterrows():
+        n = r.get(c["note"]) if c["note"] in df.columns else None
+        n = "" if n is None or pd.isna(n) else "; ".join(
+            s.strip() for s in str(n).split(";") if not s.strip().startswith("group_key="))
+        cells.append([str(r[c["group_a"]]), str(r[c["group_b"]]),
+                      f"{_i(r[c['n_a']])} ({_i(r[c['n_blocks_a']])})",
+                      f"{_i(r[c['n_b']])} ({_i(r[c['n_blocks_b']])})",
+                      _g(r[c["kuiper_V"]]), _g(r[c["wasserstein"]]),
+                      _fmt_p(_num(r, c["kuiper_p"])),
+                      _fmt_p(_num(r, c["permutation_p"])) if c["permutation_p"] in df.columns
+                      else "nan", n])
+    return cells
+
+
+_TABLE_HEADER = ["group a", "group b", "n a (blocks)", "n b (blocks)", "Kuiper V",
+                 "W1 (deg)", "kuiper_p_iid_approx", "permutation_p", "note"]
+
+
+def _draw_table(ax, cells):
+    """Comparison table; each row's lsdtt3 note is referenced as [k] and the
+    distinct notes are listed in full beneath the table."""
+    import textwrap
+
+    ax.axis("off")
+    if not cells:
+        ax.text(0.5, 0.9, "no lsdtt3 comparison rows for this selection",
+                ha="center", va="top", fontsize=7, transform=ax.transAxes)
+        return
+    notes = list(dict.fromkeys(r[-1] for r in cells if r[-1]))
+    rows = [r[:-1] + ([f"[{notes.index(r[-1]) + 1}]"] if r[-1] else [""]) for r in cells]
+    tab = ax.table(cellText=rows, colLabels=_TABLE_HEADER, loc="upper center",
+                   cellLoc="center",
+                   colWidths=[0.08, 0.08, 0.13, 0.13, 0.08, 0.08, 0.18, 0.13, 0.06])
+    tab.auto_set_font_size(False)
+    tab.set_fontsize(6)
+    tab.scale(1.0, 1.15)
+    if notes:
+        text = "\n".join(textwrap.fill(f"[{i + 1}] {n}", 120,
+                                        subsequent_indent="     ")
+                         for i, n in enumerate(notes))
+        ax.text(0.0, -0.02, "lsdtt3 notes:\n" + text, transform=ax.transAxes,
+                ha="left", va="top", fontsize=5.5)
+
+
+def plot_bearing_distributions(
+    runs: Mapping[str, Mapping],
+    *,
+    kind: str = "cdf",
+    group_key: str = "strahler_order",
+    angular_type: str = AXIAL,
+    stratum_key: str = NO_STRATUM,
+    stratum_value=None,
+    weight: str = "fraction_count",
+    cmap: str = "viridis",
+    unit_colours: Optional[Mapping[str, str]] = None,
+    title: Optional[str] = None,
+):
+    """Overlaid per-group bearing CDFs or PDFs, one panel per run, with lsdtt3's
+    comparison statistics tabulated under each panel.
+
+    Args:
+        runs: ``{label: {"membership": df, "rose": df, "bearing_summary": df,
+            "bearing_comparisons": df}}`` (as from
+            :func:`io.channel_bearings.load_channel_geometry_outputs`). Several
+            runs (e.g. WV and an isotropic null) are drawn side by side with
+            the same group colours.
+        kind: ``"cdf"`` — empirical CDF of the per-link bearings in lsdtt3's
+            membership file (``axial_bearing_deg`` / ``bearing_deg`` as
+            written; excluded records left out); ``"pdf"`` — lsdtt3's binned
+            ``weight`` fractions from the rose file as a step line.
+        group_key: Grouping (``strahler_order``, ``lithology``, ...).
+        angular_type: ``"axial"`` or ``"directional"``.
+        stratum_key, stratum_value: Stratum (``None`` / ``"all"`` = all records).
+        weight: PDF weight: ``fraction_count`` (default) or ``fraction_length``.
+        cmap: Colour map for non-lithology groups (lithology uses the shared
+            unit palette; mixed grey).
+        unit_colours: Unit colour overrides.
+        title: Figure title.
+
+    Returns:
+        ``(fig, axes)`` — the plot axes, one per run.
+
+    Raises:
+        ValueError: if a run's membership records do not match lsdtt3's
+            summary ``n`` for the selection (the ECDF would not be of the
+            records the statistics describe).
+    """
+    plt = _import_mpl()
+    if kind not in ("cdf", "pdf"):
+        raise ValueError("kind must be 'cdf' or 'pdf'.")
+    if weight not in ("fraction_count", "fraction_length"):
+        raise ValueError("weight must be 'fraction_count' or 'fraction_length'.")
+    period = _period(angular_type)
+    sv_sel = None if stratum_value in (None, "all") else stratum_value
+
+    # Gather per-run group data first so colours are shared across panels.
+    prepared = {}
+    all_groups = []
+    for label, d in runs.items():
+        if kind == "cdf":
+            if d.get("membership") is None:
+                raise ValueError(f"{label}: no membership file for an ECDF.")
+            groups, excl = membership_groups(d["membership"], angular_type=angular_type,
+                                             stratum_value=sv_sel)
+            sk = NO_STRATUM if sv_sel is None and stratum_key == NO_STRATUM else stratum_key
+            check_membership_against_summary(
+                groups, d.get("bearing_summary"), group_key=group_key,
+                angular_type=angular_type, stratum_key=sk,
+                stratum_value="all" if sk != NO_STRATUM and sv_sel is None else sv_sel)
+            prepared[label] = (groups, excl)
+        else:
+            sel = select_groups(d["rose"], group_key=group_key, angular_type=angular_type,
+                                stratum_key=stratum_key,
+                                stratum_value=("all" if stratum_key != NO_STRATUM
+                                               and sv_sel is None else sv_sel))
+            groups = {g: _group_rows(sel, g).sort_values(ROSE_COLUMNS["bin_centre"])
+                      for g in _sort_values(sel[GROUP_COLUMNS["group_value"]])}
+            prepared[label] = (groups, None)
+        all_groups += list(prepared[label][0])
+    order = _sort_values(all_groups)
+    colours = group_colours(group_key, order, cmap=cmap, unit_colours=unit_colours)
+
+    n = len(runs)
+    fig = plt.figure(figsize=(7.2 * n, 8.0))
+    gs = fig.add_gridspec(2, n, height_ratios=[3.0, 1.5], hspace=0.3,
+                          top=0.84, bottom=0.12)
+    axes = []
+    for i, (label, (groups, excl)) in enumerate(prepared.items()):
+        ax = fig.add_subplot(gs[0, i], sharey=axes[0] if axes else None)
+        for g in order:
+            if g not in groups:
+                continue
+            if kind == "cdf":
+                v = np.sort(groups[g])
+                if v.size == 0:
+                    continue
+                y = np.arange(1, v.size + 1) / v.size
+                ax.step(np.concatenate([[0.0], v, [period]]),
+                        np.concatenate([[0.0], y, [1.0]]), where="post",
+                        color=colours[g], linewidth=1.4, label=f"{g} (n={v.size})")
+            else:
+                rows = groups[g]
+                vals = rows[ROSE_COLUMNS[weight]].to_numpy(float)
+                centres = rows[ROSE_COLUMNS["bin_centre"]].to_numpy(float)
+                w = float(np.median(np.diff(centres))) if len(centres) > 1 else period
+                # Bin 0 straddles 0 deg: draw its half-bins at both ends.
+                edges = np.concatenate([[0.0], centres[1:] - w / 2, [period - w / 2, period]])
+                heights = np.concatenate([vals, [vals[0]]])
+                ax.stairs(heights, edges, color=colours[g], linewidth=1.4, label=g,
+                          baseline=None)
+        ax.set_xlim(0.0, period)
+        ax.set_xticks(np.arange(0.0, period + 1, 45.0 if period == 360 else 30.0))
+        ax.set_xlabel(f"{angular_type} bearing (degrees; 0 = grid north, clockwise, "
+                      f"[0, {period:g}))")
+        if kind == "cdf":
+            ax.set_ylabel("cumulative fraction of links")
+            ax.set_ylim(0.0, 1.0)
+        else:
+            what = "links" if weight == "fraction_count" else "channel length"
+            ax.set_ylabel(f"fraction of group's {what} per bin")
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=6.5, loc="upper left" if kind == "cdf" else "upper right",
+                  title=group_key.replace("_", " "), title_fontsize=6.5)
+        head = label or ""
+        if excl:
+            head += f" ({excl} excluded record(s) with no group left out)"
+        ax.set_title(head, fontsize=8)
+        axes.append(ax)
+        tax = fig.add_subplot(gs[1, i])
+        _draw_table(tax, _comparison_cells(runs[label].get("bearing_comparisons"),
+                                           angular_type=angular_type, group_key=group_key,
+                                           stratum_value=sv_sel))
+    strat = "" if sv_sel is None else f"; {stratum_key} {sv_sel}"
+    body = (CDF_NOTE if kind == "cdf" else PDF_NOTE) + f" {ORIGIN_NOTE}{strat}. "
+    body += f"Table: lsdtt3 comparisons; p-values beside n (n_blocks); {NAN_NOTE}."
+    blocks = block_note(*[d.get("bearing_summary") for d in runs.values()])
+    if blocks:
+        body += f" {blocks}."
+    import textwrap
+
+    fig.suptitle((title + "\n" if title else "") + textwrap.fill(body, 105 * n), fontsize=7.5)
+    return fig, axes
