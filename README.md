@@ -184,6 +184,7 @@ absolute path:
 | `lsdviz3-lithology-map` | `lsdviztools3.cli.plot_lithology_map` |
 | `lsdviz3-ksn-by-lithology` | `lsdviztools3.cli.plot_ksn_by_lithology` |
 | `lsdviz3-channel-bearings` | `lsdviztools3.cli.plot_channel_bearings` |
+| `lsdviz3-erodibility-calibration` | `lsdviztools3.cli.plot_erodibility_calibration` |
 | `lsdviz3-valley-sections` | `lsdviztools3.cli.plot_valley_sections` |
 | `lsdviz3-valley-section-map` | `lsdviztools3.cli.plot_valley_section_map` |
 | `lsdviz3-grabdem`  | `lsdviztools3.cli.grab_dem`         |

@@ -250,7 +250,8 @@ def north_arrow_geometry(extent, crs=None, *, anchor: str = "TR",
     """
     west, east, south, north = extent
     width, height = east - west, north - south
-    h = size_frac * height
+    # Size from the shorter map side, so tall maps do not get a giant arrow.
+    h = size_frac * min(width, height)
     w = 0.6 * h
     if not is_projected(crs) and crs is not None:
         # Degrees of longitude are shorter on the ground; keep the head's shape.
@@ -344,7 +345,8 @@ def add_map_credit(
     Args:
         fig: The ``pygmt.Figure``.
         extent: ``[west, east, south, north]`` in display units.
-        text: The credit line (empty/None draws nothing).
+        text: The credit line (empty/None draws nothing). ``"\n"`` separates
+            several lines, stacked away from the anchored map edge.
         anchor: Corner: ``"BR"`` (default), ``"BL"``, ``"TR"``, ``"TL"``.
         font: Font. 6 pt by default — deliberately below the 8 pt floor used
             for map annotation, because a full credit line at 8 pt spans most
@@ -363,9 +365,17 @@ def add_map_credit(
     y = south + py if "B" in anchor else north - py
     just = ("L" if "L" in anchor else "R") + ("B" if "B" in anchor else "T")
     kwargs = {"fill": box_fill, "clearance": "0.05c/0.03c"} if box_fill else {}
-    # GMT text escapes: a literal "@" must be written "@@".
-    fig.text(x=x, y=y, text=text.replace("@", "@@"), justify=just,
-             font=font, no_clip=True, **kwargs)
+    # Several lines ("\n"-separated) stack away from the anchored edge.
+    lines = [ln for ln in str(text).split("\n") if ln.strip()]
+    pt = float(font.split(",")[0].rstrip("p")) if font.split(",")[0].rstrip("p") else 6.0
+    step = 1.45 * pt * 0.0352778  # line spacing in cm
+    order = lines[::-1] if "B" in anchor else lines
+    for i, line in enumerate(order):
+        dy = i * step if "B" in anchor else -i * step
+        extra = {"offset": f"0c/{dy:.3f}c"} if i else {}
+        # GMT text escapes: a literal "@" must be written "@@".
+        fig.text(x=x, y=y, text=line.replace("@", "@@"), justify=just,
+                 font=font, no_clip=True, **kwargs, **extra)
     return fig
 
 

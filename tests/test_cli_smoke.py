@@ -19,6 +19,7 @@ from lsdviztools3.cli import (
     plot_divide_migration,
     plot_drape,
     plot_channel_bearings,
+    plot_erodibility_calibration,
     plot_hillshade,
     plot_ksn_by_lithology,
     plot_lithology_map,
@@ -46,6 +47,7 @@ from lsdviztools3.cli import (
         plot_lithology_map.build_parser,
         plot_ksn_by_lithology.build_parser,
         plot_channel_bearings.build_parser,
+        plot_erodibility_calibration.build_parser,
     ],
 )
 def test_cli_help_exits_cleanly(build_parser):
