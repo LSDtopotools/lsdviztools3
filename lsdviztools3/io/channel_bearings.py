@@ -213,7 +213,16 @@ SUFFIXES = {
     "link_vectors": "_channel_link_bearing_vectors.fgb",
     "block_order_counts": "_channel_network_block_order_counts.csv",
     "strahler_channels": "_strahler_channels.csv",
+    "network_lines": "_channel_network_lines.fgb",
+    "link_bearings": "_channel_link_bearings.csv",
 }
+
+#: Whole-network outputs of lsdtt-channel-network-analysis
+#: (write_channel_network_lines / write_junction_network_points).
+NETWORK_LINE_COLUMNS = {"upstream_junction": "junction_upstream", "order": "stream_order"}
+JUNCTION_POINT_COLUMNS = {"junction": "junction_number", "receiver": "receiver_junction",
+                          "order": "stream_order"}
+_VECTOR_EXTS = (".fgb", ".gpkg", ".csv")
 
 
 def channel_geometry_paths(directory, prefix: str) -> dict:
@@ -354,3 +363,80 @@ def select_groups(df: pd.DataFrame, *, group_key: str, measurand: Optional[str] 
     if angular_type is not None and "angular_type" in out.columns:
         out = out[out["angular_type"].astype(str) == angular_type]
     return out
+
+
+def _first_existing(directory: Path, stem: str) -> Optional[Path]:
+    for ext in _VECTOR_EXTS:
+        p = directory / f"{stem}{ext}"
+        if p.exists():
+            return p
+    return None
+
+
+def _points_from_table(path: Path):
+    """A point layer from a vector file, or from a CSV with latitude/longitude."""
+    import geopandas as gpd
+
+    if path.suffix.lower() != ".csv":
+        return gpd.read_file(path)
+    df = pd.read_csv(path)
+    _require(df, ("latitude", "longitude"), path.name)
+    return gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df["longitude"], df["latitude"]),
+                            crs="EPSG:4326")
+
+
+def load_network_status(directory, prefix: str) -> Optional[dict]:
+    """The whole channel network of a CNA run, with what was analysed.
+
+    Needs ``<prefix>_channel_network_lines.<ext>`` (``write_channel_network_lines``);
+    returns ``None`` without it. Junction points
+    (``<prefix>_junction_network_points.<ext>``, ``write_junction_network_points``)
+    are optional. A link is analysed when its ``junction_upstream`` is an
+    ``upstream_junction`` of ``_channel_link_bearings`` (or an ``up_junction`` of the
+    bearing vectors); a junction when it is in the ``junction`` column of
+    ``_junction_angles``. Only confluences (junctions with two or more donor
+    junctions) are returned as junctions: channel heads are not drawn.
+
+    Returns:
+        ``{"lines": GeoDataFrame with bool "analysed", "junctions": GeoDataFrame
+        with bool "analysed" or None, "paths": {...}}``.
+    """
+    import geopandas as gpd
+
+    directory = Path(directory)
+    lines_path = _first_existing(directory, f"{prefix}_channel_network_lines")
+    if lines_path is None:
+        return None
+    lines = gpd.read_file(lines_path)
+    c = NETWORK_LINE_COLUMNS
+    _require(lines, (c["upstream_junction"], c["order"]), lines_path.name)
+
+    analysed_links: set = set()
+    paths = channel_geometry_paths(directory, prefix)
+    bearings = _first_existing(directory, f"{prefix}_channel_link_bearings")
+    if bearings is not None and bearings.suffix == ".csv":
+        analysed_links = set(pd.read_csv(bearings)["upstream_junction"].astype(int))
+    elif bearings is not None:
+        analysed_links = set(gpd.read_file(bearings)["upstream_junction"].astype(int))
+    elif paths["link_vectors"].exists():
+        analysed_links = set(gpd.read_file(paths["link_vectors"])["up_junction"].astype(int))
+    lines["analysed"] = lines[c["upstream_junction"]].astype(int).isin(analysed_links)
+
+    junctions = None
+    jpath = _first_existing(directory, f"{prefix}_junction_network_points")
+    if jpath is not None:
+        j = _points_from_table(jpath)
+        jc = JUNCTION_POINT_COLUMNS
+        _require(j, (jc["junction"], jc["receiver"]), jpath.name)
+        n_donors = j[jc["receiver"]].value_counts()
+        ids = j[jc["junction"]].astype(int)
+        j = j[ids.map(n_donors).fillna(0).to_numpy() >= 2].copy()
+        analysed_j: set = set()
+        apath = _first_existing(directory, f"{prefix}_junction_angles")
+        if apath is not None:
+            a = pd.read_csv(apath) if apath.suffix == ".csv" else gpd.read_file(apath)
+            analysed_j = set(a["junction"].astype(int))
+        j["analysed"] = j[jc["junction"]].astype(int).isin(analysed_j)
+        junctions = j
+    return {"lines": lines, "junctions": junctions,
+            "paths": {"lines": lines_path, "junctions": jpath}}

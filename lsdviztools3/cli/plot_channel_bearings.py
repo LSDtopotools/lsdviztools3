@@ -14,7 +14,14 @@ Reads the grouped outputs of lsdtt-channel-network-analysis for one run
 * ``<prefix>_junction_<measurand>_comparisons.png``;
 * with ``--compare-prefix``: ``<prefix>_vs_<other>_rose_*.png`` and
   ``<prefix>_vs_<other>_junction_<measurand>_summary.png``;
-* with ``--map-dem``: ``<prefix>_channel_order_map.png``.
+* with ``--map-dem``: ``<prefix>_channel_order_map.png``. With
+  ``<prefix>_channel_network_lines.fgb`` (CNA ``write_channel_network_lines``) the
+  whole network is drawn, analysed links thick and the rest thin, with
+  confluences as circles (filled = analysed; needs
+  ``write_junction_network_points``); otherwise the analysed links' bearing
+  vectors;
+* with ``--map-dem`` and ``--regions``: ``<prefix>_channel_region_map.png``, the
+  same network over region polygons (e.g. physiographic provinces).
 
 The same call serves every grouping lsdtt3 writes: ``--group-key
 strahler_order`` (default), ``lithology``, ``lithology_interior``, ``basin``,
@@ -59,8 +66,17 @@ def build_parser() -> argparse.ArgumentParser:
                         help="PDF weight: fraction of links (count, default) or of "
                         "channel length.")
     parser.add_argument("--map-dem", default=None,
-                        help="DEM for a channel map coloured by stream order "
-                        "(uses <prefix>_channel_link_bearing_vectors.fgb).")
+                        help="DEM for a channel map coloured by stream order (the whole "
+                        "network from <prefix>_channel_network_lines.fgb if present, "
+                        "else <prefix>_channel_link_bearing_vectors.fgb).")
+    parser.add_argument("--regions", default=None,
+                        help="Region polygons (e.g. the USGS physiographic divisions "
+                        "physio.shp) for <prefix>_channel_region_map.png; needs --map-dem.")
+    parser.add_argument("--region-field", default="PROVINCE",
+                        help="Region name field in --regions (default PROVINCE).")
+    parser.add_argument("--region-title", default="Physiographic province",
+                        help="Legend header for the regions (default "
+                        "'Physiographic province').")
     parser.add_argument("--title", default=None, help="Title prefix.")
     parser.add_argument("--dpi", type=int, default=200, help="Output DPI (default 200).")
     return parser
@@ -252,19 +268,27 @@ def main(argv=None) -> int:
         _save(fig, f"{args.prefix}_block_order_counts")
 
     if args.map_dem:
+        from ..io.channel_bearings import load_network_status
         from ..render.base import save_figure
         from ..render.lithology_map import render_channel_order_map
         from ..render.style import MapStyle
 
+        status = load_network_status(args.data_dir, args.prefix)
         vec = data["paths"]["link_vectors"]
-        if vec.exists():
+        if status is not None or vec.exists():
             style = MapStyle(clean=True, transparent=False, figure_size="14c")
-            fig = render_channel_order_map(args.map_dem, vec, legend_title="Strahler order",
-                                           channel_width="0.9p",
-                                           style=style)
-            path = out_dir / f"{args.prefix}_channel_order_map.png"
-            save_figure(fig, path, style=style)
-            written.append(path)
+            maps = [("channel_order_map", None)]
+            if args.regions:
+                maps.append(("channel_region_map", args.regions))
+            for name, regions in maps:
+                fig = render_channel_order_map(
+                    args.map_dem, None if status is not None else vec,
+                    network_status=status, regions=regions,
+                    region_field=args.region_field, region_header=args.region_title,
+                    legend_title="Strahler order", channel_width="0.9p", style=style)
+                path = out_dir / f"{args.prefix}_{name}.png"
+                save_figure(fig, path, style=style)
+                written.append(path)
 
     for p in written:
         print(p)

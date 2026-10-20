@@ -538,6 +538,60 @@ def test_channel_order_map(run_dir):
     assert out.stat().st_size > 0
 
 
+def test_channel_map_network_status_and_regions(run_dir):
+    """Whole network (analysed thick / rest thin), junction circles, region fills."""
+    import geopandas as gpd
+    import pandas as pd
+    from shapely.geometry import LineString, box
+
+    from lsdviztools3.io.channel_bearings import load_network_status
+    from lsdviztools3.render.lithology_map import render_channel_order_map
+    from lsdviztools3.render.style import MapStyle
+
+    _code_raster(run_dir)
+    crs = "EPSG:32617"
+    gpd.GeoDataFrame(
+        {"junction_upstream": [0, 1, 2], "junction_downstream": [2, 2, -1],
+         "stream_order": [1, 1, 2], "link_length": [1.0, 1.0, 1.0],
+         "drainage_area": [1.0, 1.0, 2.0]},
+        geometry=[LineString([(600100, 4299500), (600500, 4299300)]),
+                  LineString([(600100, 4299100), (600500, 4299300)]),
+                  LineString([(600500, 4299300), (601200, 4299000)])], crs=crs,
+    ).to_file(run_dir / "net_channel_network_lines.fgb", driver="FlatGeobuf")
+    pts = gpd.GeoDataFrame(
+        {"junction_number": [0, 1, 2], "receiver_junction": [2, 2, -2], "stream_order": [1, 1, 2]},
+        geometry=gpd.points_from_xy([600100, 600100, 600500], [4299500, 4299100, 4299300]),
+        crs=crs).to_crs(4326)
+    pd.DataFrame({"latitude": pts.geometry.y, "longitude": pts.geometry.x,
+                  "junction_number": pts["junction_number"],
+                  "receiver_junction": pts["receiver_junction"],
+                  "stream_order": pts["stream_order"]}).to_csv(
+        run_dir / "net_junction_network_points.csv", index=False)
+    pd.DataFrame({"upstream_junction": [0, 2]}).to_csv(
+        run_dir / "net_channel_link_bearings.csv", index=False)
+    pd.DataFrame({"junction": [2]}).to_csv(run_dir / "net_junction_angles.csv", index=False)
+
+    status = load_network_status(run_dir, "net")
+    lines = status["lines"].sort_values("junction_upstream")  # fgb may reorder
+    assert lines["analysed"].tolist() == [True, False, True]
+    # Only the confluence (two donors) is a junction; it was analysed.
+    assert status["junctions"]["junction_number"].tolist() == [2]
+    assert status["junctions"]["analysed"].tolist() == [True]
+    assert load_network_status(run_dir, "absent") is None
+
+    regions = gpd.GeoDataFrame(
+        {"PROVINCE": ["WEST", "EAST"]},
+        geometry=[box(599000, 4298000, 600600, 4301000), box(600600, 4298000, 603000, 4301000)],
+        crs=crs).to_crs("EPSG:4269")
+    fig = render_channel_order_map(run_dir / "fetch_DEM.tif", network_status=status,
+                                   regions=regions, region_field="PROVINCE",
+                                   legend_title="Strahler order",
+                                   style=MapStyle(clean=True, transparent=False))
+    out = run_dir / "status_map.png"
+    fig.savefig(out, dpi=50)
+    assert out.stat().st_size > 0
+
+
 # --------------------------------------------------------------------------
 # Shared name-keyed unit colours (maps and charts)
 # --------------------------------------------------------------------------

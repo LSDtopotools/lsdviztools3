@@ -216,6 +216,130 @@ def render_channel_overlay(
     return rows
 
 
+def render_network_status_overlay(
+    fig,
+    status: Mapping,
+    crs,
+    *,
+    width: str = "0.9p",
+    unanalysed_width_factor: float = 0.35,
+    junction_size: str = "0.075c",
+    header: Optional[str] = "Strahler order",
+) -> list:
+    """The whole channel network, analysed links and junctions told apart.
+
+    ``status`` is :func:`lsdviztools3.io.channel_bearings.load_network_status`.
+    Every link is drawn in its stream-order gray: analysed links at the order
+    width, the rest thinner (``unanalysed_width_factor``). Confluences are
+    circles: analysed ones filled black, the rest open.
+
+    Returns:
+        Extra GMT legend rows describing the overlay (under ``header``).
+    """
+    from ..io.channel_bearings import NETWORK_LINE_COLUMNS
+    from .base import gdf_to_display
+
+    lines = gdf_to_display(status["lines"].to_crs(crs), crs)
+    order_col = NETWORK_LINE_COLUMNS["order"]
+    styles = _order_styles(lines[order_col].dropna().astype(int).unique(), width)
+
+    def _thin(w: str) -> str:
+        return f"{float(w.rstrip('p')) * unanalysed_width_factor:.2f}p"
+
+    # One GMT call per (analysed, order) group: thousands of links stay fast.
+    geom_only = lines[["analysed", order_col, lines.geometry.name]]
+    for analysed in (False, True):
+        for o, (colour, w) in sorted(styles.items()):
+            sel = geom_only[(geom_only["analysed"] == analysed) &
+                            (geom_only[order_col].astype(int) == o)]
+            if len(sel):
+                fig.plot(data=sel[[sel.geometry.name]],
+                         pen=f"{w if analysed else _thin(w)},{colour}")
+
+    rows = ([f"H 8p,Helvetica-Bold {header}"] if header else []) + [f"S 0.15c - 0.28c - {w},{colour} 0.4c Order {o}"
+            for o, (colour, w) in sorted(styles.items())]
+    top_colour, top_w = styles[max(styles)]
+    rows.append(f"S 0.15c - 0.28c - {_thin(top_w)},{top_colour} 0.4c "
+                "Not analysed (thin)")
+
+    junctions = status.get("junctions")
+    if junctions is not None and len(junctions):
+        j = gdf_to_display(junctions.to_crs(crs), crs)
+        rest, done = j[~j["analysed"]], j[j["analysed"]]
+        if len(rest):
+            fig.plot(x=rest.geometry.x.to_numpy(), y=rest.geometry.y.to_numpy(),
+                     style=f"c{junction_size}", pen="0.4p,60/60/60", fill="white")
+        if len(done):
+            fig.plot(x=done.geometry.x.to_numpy(), y=done.geometry.y.to_numpy(),
+                     style=f"c{junction_size}", pen="0.25p,white", fill="black")
+        rows.append(f"S 0.15c c {junction_size} black 0.25p,white 0.4c Analysed junction")
+        rows.append(f"S 0.15c c {junction_size} white 0.4p,60/60/60 0.4c "
+                    "Junction not analysed")
+    return rows
+
+
+#: Region fills / outlines (Okabe-Ito, colour-blind safe).
+REGION_COLOURS = ("#E69F00", "#56B4E9", "#009E73", "#CC79A7", "#0072B2",
+                  "#D55E00", "#F0E442")
+
+
+def render_region_overlay(
+    fig,
+    regions,
+    crs,
+    extent,
+    *,
+    field: str,
+    fill: bool = True,
+    transparency: float = 72.0,
+    outline_width: str = "1.4p",
+    colors: Optional[Mapping[str, str]] = None,
+    header: Optional[str] = None,
+) -> list:
+    """Region polygons (e.g. physiographic provinces) clipped to the map.
+
+    ``regions`` is a polygon vector (path or GeoDataFrame) with a ``field`` of
+    region names. With ``fill`` each region is a semi-transparent colour with a
+    dark outline (for a plain hillshade); without, a coloured outline only (for
+    a map that already carries unit colours).
+
+    Returns:
+        Legend rows, one per region present in the map.
+    """
+    import geopandas as gpd
+    from shapely.geometry import box
+
+    from ..io.vector import load_vector
+    from .base import KM, gdf_to_display, is_projected
+
+    gdf = regions if isinstance(regions, gpd.GeoDataFrame) else load_vector(regions)
+    if field not in gdf.columns:
+        raise KeyError(f"region field {field!r} not in {list(gdf.columns)}")
+    gdf = gdf.to_crs(crs)
+    scale = KM if is_projected(crs) else 1.0
+    xmin, xmax, ymin, ymax = (float(v) * scale for v in extent[:4])
+    gdf = gpd.clip(gdf[[field, gdf.geometry.name]], box(xmin, ymin, xmax, ymax))
+    gdf = gdf[~gdf.geometry.is_empty]
+    gdf = gdf_to_display(gdf.dissolve(by=field, as_index=False), crs)
+
+    values = sorted(gdf[field].astype(str).unique())
+    palette = {v: REGION_COLOURS[i % len(REGION_COLOURS)] for i, v in enumerate(values)}
+    palette.update(dict(colors or {}))
+    rows = [f"H 8p,Helvetica-Bold {header}"] if header else []
+    for v in values:
+        part = gdf[gdf[field].astype(str) == v]
+        colour = palette[v]
+        label = v.title() if v.isupper() else v
+        if fill:
+            fig.plot(data=part, fill=colour, transparency=transparency)
+            fig.plot(data=part, pen="0.8p,40/40/40")
+            rows.append(f"S 0.15c s 0.28c {colour}@{int(transparency)} 0.5p,40/40/40 0.4c {label}")
+        else:
+            fig.plot(data=part, pen=f"{outline_width},{colour}")
+            rows.append(f"S 0.15c - 0.28c - {outline_width},{colour} 0.4c {label}")
+    return rows
+
+
 def _draw_by_value(fig, kind, data, column, *, cmap, width, point_size,
                    clip_percentiles, log_scale, m_over_n, a0, colorbar_position):
     """Draw channels coloured by a numeric column through a continuous CPT."""
@@ -272,6 +396,10 @@ def render_lithology_map(
     ksn_m_over_n: Optional[float] = None,
     ksn_a0: Optional[float] = None,
     geology_mute_transparency: float = 65.0,
+    network_status: Optional[Mapping] = None,
+    regions=None,
+    region_field: Optional[str] = None,
+    region_header: Optional[str] = None,
     unit_colours: Optional[Mapping[str, str]] = None,
     credit: Optional[str] = None,
     legend_title: Optional[str] = None,
@@ -297,6 +425,12 @@ def render_lithology_map(
             in the raster must be named; bare codes are never shown.
         colors: Optional ``code -> colour`` overrides (take precedence over
             ``unit_colours``).
+        network_status: :func:`lsdviztools3.io.channel_bearings.load_network_status`
+            of a CNA run: the whole network by order, analysed links thick and
+            the rest thin, junctions as circles (filled = analysed). Drawn
+            instead of ``channels``.
+        regions, region_field: Optional region polygons (e.g. physiographic
+            provinces) drawn as coloured outlines over the units, with legend rows.
         unit_colours: Optional ``{unit name: colour}``. Unit colours otherwise
             come from :func:`render.lithology_colours.lithology_palette` on the
             names in ``names`` — the same rule the k_sn charts use, so a unit
@@ -386,8 +520,17 @@ def render_lithology_map(
     entries = categorical_legend_entries(codes, names, colors=colors)
     legend_below = len(entries) > 16
 
+    region_rows = []
+    if regions is not None:
+        if not region_field:
+            raise ValueError("region_field is required with regions")
+        region_rows = render_region_overlay(fig, regions, crs, extent, field=region_field,
+                                            fill=False, header=region_header or region_field)
     extra_rows = []
-    if channels is not None:
+    if network_status is not None:
+        extra_rows = render_network_status_overlay(fig, network_status, crs,
+                                                   width=channel_width)
+    elif channels is not None:
         extra_rows = render_channel_overlay(
             fig, channels, crs, coordinates=coordinates, color=channel_color,
             width=channel_width, order_column=channel_order_column,
@@ -397,6 +540,7 @@ def render_lithology_map(
         if channel_color_by is not None:
             extra_rows = [f"S 0.15c - 0.28c - 1.2p,black 0.4c Channels: colour = "
                           f"{channel_color_by} (see colour bar)"]
+    extra_rows = region_rows + extra_rows
 
     if muted:
         # Legend swatches at the same transparency as the muted drape.
@@ -423,8 +567,13 @@ def render_lithology_map(
 
 def render_channel_order_map(
     dem,
-    channels,
+    channels=None,
     *,
+    network_status: Optional[Mapping] = None,
+    regions=None,
+    region_field: Optional[str] = None,
+    region_transparency: float = 72.0,
+    region_header: Optional[str] = None,
     order_column: Optional[str] = "auto",
     channel_color: str = "black",
     channel_width: str = "0.6p",
@@ -444,6 +593,13 @@ def render_channel_order_map(
         dem: Elevation raster for the hillshade.
         channels: As :func:`render_channel_overlay` (e.g.
             ``*_channel_link_bearing_vectors.fgb`` with ``stream_order``).
+        network_status: :func:`lsdviztools3.io.channel_bearings.load_network_status`
+            of a CNA run, drawn instead of ``channels``: the whole network by
+            order, analysed links thick and the rest thin, junctions as
+            circles (filled = analysed).
+        regions, region_field: Optional region polygons (e.g. physiographic
+            provinces), filled semi-transparently under the channels.
+        region_transparency: Region fill transparency, percent.
         order_column: Order column (``"auto"`` detects one; ``None`` = one colour).
         channel_color, channel_width: Single-colour styling / line width.
         credit: Optional credit line.
@@ -478,15 +634,29 @@ def render_channel_order_map(
     grid = to_gmt_grid(to_coordinates(da, coordinates))
     crs = get_crs(grid)
     _, extent = grid_to_display(grid, crs)
-    rows = render_channel_overlay(fig, channels, crs, coordinates=coordinates,
-                                  color=channel_color, width=channel_width,
-                                  order_column=order_column)
+    rows = []
+    if regions is not None:
+        if not region_field:
+            raise ValueError("region_field is required with regions")
+        rows += render_region_overlay(fig, regions, crs, extent, field=region_field,
+                                      fill=True, transparency=region_transparency,
+                                      header=region_header or region_field)
+    if network_status is not None:
+        # The legend title heads the channel rows.
+        rows += render_network_status_overlay(fig, network_status, crs, width=channel_width,
+                                              header=legend_title)
+    elif channels is not None:
+        rows += render_channel_overlay(fig, channels, crs, coordinates=coordinates,
+                                       color=channel_color, width=channel_width,
+                                       order_column=order_column)
     # Legend of overlay rows only (no unit entries).
     import io as _io
 
     import pygmt
 
-    spec = ([f"H 8p,Helvetica-Bold {legend_title}"] if legend_title else []) + rows
+    title_rows = ([f"H 8p,Helvetica-Bold {legend_title}"]
+                  if legend_title and network_status is None else [])
+    spec = title_rows + rows
     with pygmt.config(FONT_ANNOT_PRIMARY="7p"):
         fig.legend(spec=_io.StringIO("\n".join(spec) + "\n"),
                    position="JMR+jML+o0.3c/0c", box="+gwhite+p0.5p,black")

@@ -81,6 +81,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--channels", default=None,
         help="Channel overlay: a line/point vector (.fgb/.gpkg/...) or a CSV with "
         "x,y in the map CRS (e.g. *_chi_ksn_lithology_nodes_mn_*.csv).")
+    parser.add_argument(
+        "--network-status", action="store_true",
+        help="Draw the whole channel network of the CNA run <prefix> "
+        "(<prefix>_channel_network_lines.fgb): analysed links thick, the rest thin, "
+        "confluences as circles (filled = analysed). Replaces --channels.")
+    parser.add_argument("--regions", default=None,
+                        help="Region polygons (e.g. USGS physiographic divisions "
+                        "physio.shp) drawn as coloured outlines.")
+    parser.add_argument("--region-field", default="PROVINCE",
+                        help="Region name field in --regions (default PROVINCE).")
+    parser.add_argument("--region-title", default="Physiographic province",
+                        help="Legend header for the regions (default "
+                        "'Physiographic province').")
     parser.add_argument("--channel-color", default="black",
                         help="Channel colour (default black).")
     parser.add_argument("--channel-width", default="0.6p",
@@ -158,7 +171,16 @@ def resolve_inputs(args) -> dict:
                 s = L.load_ksn_lithology_summary(summ)
                 ksn_mn = L._first_value(s, L.SUMMARY_COLUMNS["m_over_n"])
                 ksn_a0 = L._first_value(s, L.SUMMARY_COLUMNS["A_0"])
+    network_status = None
+    if getattr(args, "network_status", False):
+        from ..io.channel_bearings import load_network_status
+
+        network_status = load_network_status(directory, prefix)
+        if network_status is None:
+            raise SystemExit(f"--network-status: no {prefix}_channel_network_lines.* in "
+                             f"{directory} (run CNA with write_channel_network_lines: true).")
     return {"prefix": prefix, "names": names, "credit": credit,
+            "network_status": network_status,
             "directory": directory, "unit_colours": unit_colours,
             "ksn_m_over_n": ksn_mn, "ksn_a0": ksn_a0}
 
@@ -192,6 +214,10 @@ def main(argv=None) -> int:
         ksn_m_over_n=resolved["ksn_m_over_n"],
         ksn_a0=resolved["ksn_a0"],
         geology_mute_transparency=args.geology_mute,
+        network_status=resolved["network_status"],
+        regions=args.regions,
+        region_field=args.region_field,
+        region_header=args.region_title,
         unit_colours=resolved["unit_colours"],
         credit=resolved["credit"],
         legend_title=args.legend_title,
