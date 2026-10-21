@@ -1214,6 +1214,7 @@ Loaders live in `io.divide_migration` (`find_outputs`, `load_divides`,
 | `plot_hillshade`, `plot_network`, `plot_network_on_hillshade` | `charts.network_maps` | Matching map panels per synthetic-network case: relief, the network alone (line width ~ log area), and both together. |
 | `plot_metric_by_temperature`, `plot_branching_range`, `plot_flow_change_fraction` | `charts.snapping` | The OCN snapping experiment: does annealing temperature produce a range of branching, and does snapping reduce it? |
 | `plot_valley_spectrum`, `plot_spacing_vs_ci`, `plot_landscape_panel` | `charts.valley_spacing` | Valley spacing from `lsdtt-spectral-analysis` (`_valley_spacing.csv`, `_valley_spacing_spectrum.csv`): one landscape's spectrum with both spacing measures, spacing vs channelization index across a sweep, and a side-by-side hillshade panel. |
+| `plot_significant_frequencies_polar` | `charts.spectral` | Significant 2D spectrum cells from `lsdtt-spectral-analysis` (`_significant_frequencies_2d.csv`, or the legacy `_significant_freq.csv`) on a North-up polar axis: bearing (wave vector, or crest with `orientation="crest"`) against frequency, rings labelled in wavelength, coloured by normalised PSD. A run with nothing significant draws empty axes with a note. |
 
 `examples/synthetic_networks_demo.py` drives `lsdtt-synthetic-networks` and
 uses these charts end to end.
@@ -1429,6 +1430,7 @@ with the `<stem>` = lsdtt3 `write_fname` prefix stripped.
 | `lsdtt-hillslope-channel-coupling` | default | trace / ridgeline / hilltop outputs | trace outcome, hillslope length, relief, E*, R* | `load_hilltop_outputs` | `charts.hilltop_coupling`, `plot_estar_rstar` (`lsdviz3-hilltop-coupling`, `lsdviz3-estar-rstar`) |
 | `lsdtt-cosmo-column-tool` | `step_change_sweep` | `cosmo_transient_sweep_<label>.csv`, `_joined_samples.csv` | normalised concentrations, apparent-rate ratios | `load_cosmo_transient_table`, `load_joined_samples` | [§5.10](#510-transient-cosmogenic-and-landslide-charts) (`lsdviz3-cosmo-transient`) |
 | `lsdtt-spectral-analysis` | valley spacing | `_valley_spacing.csv`, `_valley_spacing_spectrum.csv` | spectrum, peaks, spacing measures | `load_valley_spacing`, `load_valley_spacing_sweep` | `plot_valley_spectrum`, `plot_spacing_vs_ci` ([§5.14](#514-network-geometry-synthetic-networks-and-valley-spacing)) |
+| `lsdtt-spectral-analysis` | `write_significant_frequencies_2d` (default on) | `_significant_frequencies_2d.csv` (legacy: `_significant_freq.csv`) | bearing, frequency, wavelength, normalised PSD per significant 2D cell | `load_significant_frequencies_2d`, `load_significant_frequencies_2d_sweep`, `summarise_significant_frequencies_2d` (`io.spectral`) | `plot_significant_frequencies_polar` ([§5.14](#514-network-geometry-synthetic-networks-and-valley-spacing)) |
 | `lsdtt-divide-migration` | default | divides, channel heads, pair summary | per-head metrics, Δ = A − B | `io.divide_migration` loaders | [§5.13](#513-divide-migration-charts) (`lsdviz3-divide-migration`) |
 
 Two rules follow from this table:

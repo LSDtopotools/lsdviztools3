@@ -129,6 +129,7 @@ __all__ = [
     "plot_hillslope_transient_residuals", "plot_strip_transient_metrics",
     "plot_profile", "plot_slope_area", "plot_gradient_curvature",
     "plot_valley_spectrum", "plot_spacing_vs_ci", "plot_landscape_panel",
+    "plot_significant_frequencies_polar",
 ]
 
 _DEFERRED_MSG = (
@@ -169,6 +170,14 @@ def plot_landscape_panel(*args, **kwargs):
     See :mod:`lsdviztools3.charts.valley_spacing`.
     """
     from .valley_spacing import plot_landscape_panel as _impl
+    return _impl(*args, **kwargs)
+
+def plot_significant_frequencies_polar(*args, **kwargs):
+    """Significant 2D spectrum cells on a North-up polar axis (bearing x frequency).
+
+    See :mod:`lsdviztools3.charts.spectral`.
+    """
+    from .spectral import plot_significant_frequencies_polar as _impl
     return _impl(*args, **kwargs)
 
 def plot_gradient_curvature(*args, **kwargs):

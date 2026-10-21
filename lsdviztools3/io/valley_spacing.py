@@ -1,6 +1,6 @@
 """IO for ``lsdtt-spectral-analysis`` valley-spacing output.
 
-Two files per run, both written by ``compute_valley_spacing: true``:
+Two files per run, both written by ``run_valley_spacing: true``:
 
 * ``<stem>_valley_spacing.csv``          -- the scalar measures, name/value/units
 * ``<stem>_valley_spacing_spectrum.csv`` -- frequency, wavelength, power
