@@ -8,9 +8,46 @@ No PyGMT imports here — this is part of the backend-agnostic core.
 
 from __future__ import annotations
 
+import atexit
+
 import rioxarray  # noqa: F401  (registers the .rio accessor on xarray objects)
 import xarray as xr
 from rasterio.crs import CRS
+
+_EXIT_HANDLER_REGISTERED = False
+
+
+def _close_cached_files() -> None:
+    """Close every file xarray still holds open in its global file cache."""
+    try:
+        from xarray.backends.file_manager import FILE_CACHE
+    except ImportError:  # pragma: no cover - private API moved in a future xarray
+        return
+    try:
+        FILE_CACHE.clear()  # evicting a file closes it
+    except Exception:  # pragma: no cover - never let cleanup break an exit
+        pass
+
+
+def register_exit_cleanup() -> None:
+    """Close rasters opened through rioxarray before the interpreter shuts down.
+
+    ``rioxarray.open_rasterio`` is lazy: the rasterio dataset stays open in
+    xarray's global file cache until something closes it. Left open, it is
+    closed during interpreter finalisation, after Python has torn down what it
+    needs to report errors, and every script that loaded a raster ends by
+    printing ``Error in sys.excepthook: / Original exception was:`` with no
+    traceback. Closing the cache from an ``atexit`` handler runs while the
+    interpreter is still intact. Seen with rioxarray 0.22, xarray 2026.4,
+    rasterio 1.5, Python 3.12. Safe to call more than once.
+    """
+    global _EXIT_HANDLER_REGISTERED
+    if not _EXIT_HANDLER_REGISTERED:
+        atexit.register(_close_cached_files)
+        _EXIT_HANDLER_REGISTERED = True
+
+
+register_exit_cleanup()
 
 #: Accepted aliases for the two coordinate modes.
 _GEOGRAPHIC_ALIASES = {"geographic", "geo", "4326", "epsg:4326", "wgs84"}

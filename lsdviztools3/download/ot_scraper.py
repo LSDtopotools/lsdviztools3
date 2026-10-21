@@ -15,6 +15,7 @@ import logging
 from pathlib import Path
 from typing import Optional, Sequence, Union
 
+from ..io.raster import register_exit_cleanup
 from .apikey import mask_key_in_url, resolve_ot_api_key
 
 logger = logging.getLogger(__name__)
@@ -124,6 +125,7 @@ def _download_planetary_computer(
         item = planetary_computer.sign(raw_item)
         href = item.assets["data"].href
         logger.info("Reading PC tile %s", item.id)
+        register_exit_cleanup()  # see io.raster: avoids an error at interpreter exit
         da = rioxarray.open_rasterio(href, masked=True)
         da = da.rio.clip_box(minx=west, miny=south, maxx=east, maxy=north)
         clipped.append(da)

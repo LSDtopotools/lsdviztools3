@@ -68,3 +68,47 @@ def test_resolve_target_crs_local_utm_unavailable_raises(monkeypatch):
 
     with pytest.raises(ValueError, match="Could not estimate a local/projected CRS"):
         raster.resolve_target_crs(DummyDa(), "local")
+
+
+def _write_small_tif(path):
+    import rasterio
+    from rasterio.transform import from_origin
+
+    with rasterio.open(path, "w", driver="GTiff", height=8, width=8, count=1,
+                       dtype="float32", crs="EPSG:32630",
+                       transform=from_origin(500000, 6000080, 10, 10)) as dst:
+        dst.write(np.arange(64, dtype="float32").reshape(8, 8), 1)
+
+
+def _run_python(code):
+    import subprocess
+    import sys
+
+    return subprocess.run([sys.executable, "-c", code], capture_output=True,
+                          text=True, timeout=120)
+
+
+def test_lazy_raster_left_open_exits_cleanly(tmp_path):
+    """A script that loads a raster and exits must not print a shutdown error.
+
+    rioxarray keeps the file open in xarray's global cache; closed during
+    interpreter finalisation it printed "Error in sys.excepthook" at the end of
+    every such script. Only a fresh interpreter's exit shows this, hence the
+    subprocess.
+    """
+    tif = tmp_path / "small.tif"
+    _write_small_tif(tif)
+    proc = _run_python(
+        "from lsdviztools3.io.raster import load_raster\n"
+        f"da = load_raster({str(tif)!r})\n"
+        "print(float(da.max()))\n")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.strip() == "63.0"
+    assert "Error in sys.excepthook" not in proc.stderr
+    assert "Original exception was" not in proc.stderr
+
+
+def test_exit_cleanup_is_registered_once():
+    raster.register_exit_cleanup()
+    raster.register_exit_cleanup()
+    assert raster._EXIT_HANDLER_REGISTERED

@@ -129,7 +129,8 @@ __all__ = [
     "plot_hillslope_transient_residuals", "plot_strip_transient_metrics",
     "plot_profile", "plot_slope_area", "plot_gradient_curvature",
     "plot_valley_spectrum", "plot_spacing_vs_ci", "plot_landscape_panel",
-    "plot_significant_frequencies_polar",
+    "plot_significant_frequencies_polar", "plot_spectral_tile_summary",
+    "plot_normalised_spectrum_2d", "plot_radial_spectrum",
 ]
 
 _DEFERRED_MSG = (
@@ -178,6 +179,30 @@ def plot_significant_frequencies_polar(*args, **kwargs):
     See :mod:`lsdviztools3.charts.spectral`.
     """
     from .spectral import plot_significant_frequencies_polar as _impl
+    return _impl(*args, **kwargs)
+
+def plot_spectral_tile_summary(*args, **kwargs):
+    """One lsdtt-spectral-analysis run on a 2 x 2 figure (input, 2D, radial, polar).
+
+    See :mod:`lsdviztools3.charts.spectral`.
+    """
+    from .spectral import plot_spectral_tile_summary as _impl
+    return _impl(*args, **kwargs)
+
+def plot_normalised_spectrum_2d(*args, **kwargs):
+    """Normalised 2D spectrum, north up, significant cells outlined.
+
+    See :mod:`lsdviztools3.charts.spectral`.
+    """
+    from .spectral import plot_normalised_spectrum_2d as _impl
+    return _impl(*args, **kwargs)
+
+def plot_radial_spectrum(*args, **kwargs):
+    """Binned radial spectrum with background, normalised PSD and rollover.
+
+    See :mod:`lsdviztools3.charts.spectral`.
+    """
+    from .spectral import plot_radial_spectrum as _impl
     return _impl(*args, **kwargs)
 
 def plot_gradient_curvature(*args, **kwargs):

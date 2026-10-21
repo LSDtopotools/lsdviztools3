@@ -18,6 +18,11 @@ segment at one radius, and a preferred orientation as a pair of opposed
 clusters. The spectrum of a real surface is point-symmetric, so every cell has
 a twin at bearing + 180; ``half=True`` keeps one of each pair.
 
+:func:`plot_spectral_tile_summary` puts one run on a 2 x 2 figure: the input
+raster, the normalised 2D spectrum (:func:`plot_normalised_spectrum_2d`), the
+radial spectrum (:func:`plot_radial_spectrum`) and the polar plot above. Load
+the run with :func:`~lsdviztools3.io.spectral.load_spectral_analysis`.
+
 Significance is decided by lsdtt3; nothing is recomputed here.
 """
 
@@ -25,7 +30,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..io.spectral import SignificantFrequencies2D
+from ..io.spectral import BINNED_THRESHOLD, SignificantFrequencies2D
 
 _MPL_MSG = (
     "Spectral charts need matplotlib. Install the optional 'charts' extra, e.g. "
@@ -194,3 +199,217 @@ def plot_significant_frequencies_polar(
     if title:
         ax.set_title(title, fontsize=9, pad=14)
     return fig, ax
+
+
+def _threshold_2d(run) -> float:
+    sig = run.significant_2d
+    if sig is not None and np.isfinite(sig.threshold):
+        return sig.threshold
+    return -np.log(1.0 - 0.9999)
+
+
+def plot_normalised_spectrum_2d(run, *, ax=None, threshold=None, vmin=0.1,
+                                vmax=None, cmap="magma", colorbar=True):
+    """Normalised 2D spectrum (observed / background), north up, in cycles/m.
+
+    Cells above the significance threshold are outlined in cyan. The rasters
+    are placed by their own georeferencing, which lsdtt3 writes north-up with
+    the zero-frequency cell centred on (0, 0).
+
+    Args:
+        run: a :class:`~lsdviztools3.io.spectral.SpectralAnalysisRun` with both
+            2D rasters.
+        ax: existing axes, or None to create a figure.
+        threshold: outline level; defaults to the run's 2D threshold (9.21 at
+            the CLI default).
+        vmin, vmax: log colour limits; vmax defaults to max(data, 10).
+        cmap: colormap.
+        colorbar: draw a colorbar.
+
+    Returns:
+        ``(fig, ax)``.
+
+    Raises:
+        ValueError: if the run lacks either 2D raster
+            (``write_2d_spectrum_rasters: false``).
+    """
+    plt, LogNorm = _import_mpl()
+    from ..io.raster import get_extent
+
+    norm = run.normalised_psd_2d
+    if norm is None:
+        raise ValueError("this run has no 2D PSD rasters "
+                         "(was write_2d_spectrum_rasters switched off?)")
+    if threshold is None:
+        threshold = _threshold_2d(run)
+    z = np.asarray(norm.values, dtype=float).copy()
+    ny, nx = z.shape
+    z[ny // 2, nx // 2] = np.nan  # zero frequency: detrended away, not data
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(5.5, 4.8))
+    else:
+        fig = ax.figure
+    top = max(np.nanmax(z), 10.0) if vmax is None else vmax
+    im = ax.imshow(z, extent=get_extent(norm), origin="upper", cmap=cmap,
+                   norm=LogNorm(vmin=vmin, vmax=top), interpolation="nearest")
+    ax.contour(np.asarray(norm.x), np.asarray(norm.y), np.nan_to_num(z) > threshold,
+               levels=[0.5], colors="cyan", linewidths=0.6)
+    ax.set_xlabel("east frequency (cycles/m)")
+    ax.set_ylabel("north frequency (cycles/m)")
+    ax.set_aspect("equal")
+    ax.set_title(f"normalised 2D spectrum (cyan: > {threshold:.3g})", fontsize=9)
+    if colorbar:
+        fig.colorbar(im, ax=ax, shrink=0.8, label="observed / background")
+    return fig, ax
+
+
+def plot_radial_spectrum(run, *, ax=None, show_normalised=True):
+    """Log-binned radial spectrum: observed and background PSD, and their ratio.
+
+    Observed and background PSD go on log axes; the normalised PSD (green, right
+    axis) is drawn with the 2.9955 line the CLI uses for
+    ``_significant_frequencies.csv``. The rollover frequency is marked.
+
+    Args:
+        run: a :class:`~lsdviztools3.io.spectral.SpectralAnalysisRun` with
+            ``radial`` (``write_radial_spectrum: true``).
+        ax: existing axes, or None to create a figure.
+        show_normalised: draw the normalised PSD on a twin axis.
+
+    Returns:
+        ``(fig, ax)``; ``ax`` is the PSD axis.
+
+    Raises:
+        ValueError: if the run has no radial spectrum.
+    """
+    plt, _ = _import_mpl()
+    rad = run.radial
+    if rad is None or not len(rad):
+        raise ValueError("this run has no radial spectrum "
+                         "(set write_radial_spectrum: true)")
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(5.5, 4.5))
+    else:
+        fig = ax.figure
+
+    f = rad["frequency_cycles_per_m"]
+    ax.loglog(f, rad["psd"], "o-", ms=3, color="tab:blue", label="observed")
+    ax.loglog(f, rad["background_psd"], "-", color="0.4", label="background")
+    rollover = run.rollover.get("rollover_frequency_cycles_per_m", float("nan"))
+    if isinstance(rollover, float) and np.isfinite(rollover) and rollover > 0:
+        ax.axvline(rollover, ls=":", color="tab:red",
+                   label=f"rollover {1.0 / rollover:.3g} m")
+    ax.set_xlabel("frequency (cycles/m)")
+    ax.set_ylabel("PSD (m$^2$ / (cycles/m))")
+    ax.legend(fontsize=7, loc="lower left")
+
+    n_sig = int((rad["normalised_psd"] > BINNED_THRESHOLD).sum())
+    title = f"radial spectrum: {n_sig} bins > {BINNED_THRESHOLD}"
+    beta = run.rollover.get("rollover_beta")
+    if isinstance(beta, float) and np.isfinite(beta):
+        title += f", beta {beta:.2f}"
+    ax.set_title(title, fontsize=9)
+
+    if show_normalised:
+        ax2 = ax.twinx()
+        ax2.semilogx(f, rad["normalised_psd"], color="tab:green", lw=1)
+        ax2.axhline(BINNED_THRESHOLD, color="tab:green", ls="--", lw=0.8)
+        ax2.set_ylabel("normalised PSD (binned)", color="tab:green")
+    return fig, ax
+
+
+def _plot_input(run, ax, cmap, label):
+    plt, _ = _import_mpl()
+    from ..io.raster import get_extent
+
+    da = run.input_raster
+    if da is None:
+        ax.text(0.5, 0.5, "input raster not found", transform=ax.transAxes,
+                ha="center", va="center", color="0.4")
+        ax.set_axis_off()
+        return
+    w, e, s, n = get_extent(da)
+    im = ax.imshow(np.asarray(da.values, dtype=float), cmap=cmap,
+                   extent=[0.0, e - w, 0.0, n - s], origin="upper",
+                   interpolation="nearest")
+    ax.set_xlabel("m from west edge")
+    ax.set_ylabel("m from south edge")
+    ax.set_title(label, fontsize=9)
+    ax.figure.colorbar(im, ax=ax, shrink=0.8)
+
+
+def plot_spectral_tile_summary(run, *, input_cmap="YlGn", input_label="input",
+                               polar_r_max=None, polar_vmin=None, polar_vmax=None,
+                               orientation="wave", title=None, figsize=(12, 10)):
+    """One run on a 2 x 2 figure.
+
+    Panels: the input raster; the normalised 2D spectrum with significant cells
+    outlined; the radial spectrum with rollover; and the significant 2D cells
+    on a polar plot. Panels whose outputs are missing show a note instead.
+
+    Args:
+        run: a :class:`~lsdviztools3.io.spectral.SpectralAnalysisRun`, or an
+            output stem to load with
+            :func:`~lsdviztools3.io.spectral.load_spectral_analysis`.
+        input_cmap: colormap for the input raster (default suits a
+            soil-to-vegetation density).
+        input_label: title of the input panel.
+        polar_r_max: outer radius of the polar plot in cycles/m. Defaults to
+            the corner of the 2D spectrum (sqrt(2) x Nyquist) when the rasters
+            are present.
+        polar_vmin, polar_vmax: colour limits of the polar plot; fix them to
+            compare several tiles on one scale.
+        orientation: ``"wave"`` or ``"crest"``, passed to
+            :func:`plot_significant_frequencies_polar`.
+        title: figure title; defaults to the stem.
+        figsize: figure size in inches.
+
+    Returns:
+        The matplotlib Figure.
+    """
+    plt, _ = _import_mpl()
+    from ..io.spectral import load_spectral_analysis
+
+    if not hasattr(run, "radial"):
+        run = load_spectral_analysis(run)
+
+    fig = plt.figure(figsize=figsize, layout="constrained")
+    _plot_input(run, fig.add_subplot(2, 2, 1), input_cmap, input_label)
+
+    ax = fig.add_subplot(2, 2, 2)
+    if run.normalised_psd_2d is not None:
+        plot_normalised_spectrum_2d(run, ax=ax)
+    else:
+        ax.text(0.5, 0.5, "no 2D spectrum rasters", transform=ax.transAxes,
+                ha="center", va="center", color="0.4")
+        ax.set_axis_off()
+
+    ax = fig.add_subplot(2, 2, 3)
+    if run.radial is not None and len(run.radial):
+        plot_radial_spectrum(run, ax=ax)
+    else:
+        ax.text(0.5, 0.5, "no radial spectrum\n(write_radial_spectrum: true)",
+                transform=ax.transAxes, ha="center", va="center", color="0.4")
+        ax.set_axis_off()
+
+    ax = fig.add_subplot(2, 2, 4, projection="polar")
+    if run.significant_2d is not None:
+        r_max = polar_r_max
+        if r_max is None and run.psd_2d is not None:
+            from ..io.raster import get_extent
+            r_max = np.sqrt(2.0) * max(abs(v) for v in get_extent(run.psd_2d))
+        threshold = run.significant_2d.threshold
+        plot_significant_frequencies_polar(
+            run.significant_2d, ax=ax, r_max=r_max, orientation=orientation,
+            vmin=polar_vmin if polar_vmin is not None else (
+                threshold if np.isfinite(threshold) else None),
+            vmax=polar_vmax,
+            title=f"significant 2D cells: {run.significant_2d.n_cells}")
+    else:
+        ax.set_axis_off()
+        ax.text(0.5, 0.5, "no _significant_frequencies_2d.csv",
+                transform=ax.transAxes, ha="center", va="center", color="0.4")
+
+    fig.suptitle(title if title is not None else run.stem, fontsize=11)
+    return fig
