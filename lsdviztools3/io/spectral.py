@@ -17,8 +17,11 @@ The legacy LSDTopoTools ``<stem>_significant_freq.csv`` (columns
 threshold, no metadata) is read too, and renamed to the lsdtt3 columns, so old
 and new runs plot with the same code.
 
-The spectrum of a real surface is point-symmetric, so every significant
-frequency appears twice, at bearings theta and theta + 180. A file holding only
+The spectrum of a real surface is point-symmetric, so a significant frequency
+normally appears twice, at bearings theta and theta + 180. Cells on the Nyquist
+edges of the padded grid (wavelengths near two cells) are the exception: their
+twin is at 360 - theta (north Nyquist row) or 180 - theta (east Nyquist
+column), and three corner cells appear once. A file holding only
 the header is a valid result -- nothing passed the threshold -- and loads as an
 empty table rather than raising.
 

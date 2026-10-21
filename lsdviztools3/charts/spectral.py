@@ -15,8 +15,11 @@ on a North-up, clockwise polar axis:
 
 This is the spectrum seen from above: a characteristic spacing shows as a ring
 segment at one radius, and a preferred orientation as a pair of opposed
-clusters. The spectrum of a real surface is point-symmetric, so every cell has
-a twin at bearing + 180; ``half=True`` keeps one of each pair.
+clusters. The spectrum of a real surface is point-symmetric, so a cell normally
+has a twin at bearing + 180; ``half=True`` keeps one of each pair. Cells on the
+Nyquist edges of the padded grid (wavelengths near two cells) pair differently
+(at 360 - theta or 180 - theta), so ``half=True`` can keep both or neither of
+such a pair.
 
 :func:`plot_spectral_tile_summary` puts one run on a 2 x 2 figure: the input
 raster, the normalised 2D spectrum (:func:`plot_normalised_spectrum_2d`), the
@@ -105,7 +108,8 @@ def plot_significant_frequencies_polar(
         radius: ``"frequency"`` (cycles/m; short wavelengths at the rim, as in
             the 2D PSD raster) or ``"wavelength"`` (m; long wavelengths at the
             rim). Rings are labelled in wavelength either way.
-        half: keep only bearings in [0, 180), one cell of each symmetric pair.
+        half: keep only bearings in [0, 180), one cell of each symmetric pair
+            (except Nyquist-edge cells; see the module docstring).
         r_max: outer radius in the units of ``radius``. Defaults to 5% beyond
             the largest plotted value. For ``radius="frequency"`` passing the
             Nyquist frequency, 1 / (2 * cell size), shows how close the cells
