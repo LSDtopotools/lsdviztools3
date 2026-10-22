@@ -5,7 +5,7 @@ thin PyGMT render layer (``lsdviztools3.render``). Statistics (x-y) plotting is
 deferred (see ``lsdviztools3.charts``).
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # TODO: curate top-level re-exports once the render API stabilises, e.g.
 #   from .render.hillshade import render_hillshade

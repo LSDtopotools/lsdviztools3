@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lsdviztools3"
-version = "0.1.0"
+version = "0.2.0"
 description = "PyGMT-based visualisation tools for LSDTopoTools v3 (lsdtt3) output."
 readme = "README.md"
 requires-python = ">=3.11"
