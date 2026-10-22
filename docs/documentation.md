@@ -154,6 +154,27 @@ download_dem(REGIONS["guadalcanal"].bbox, source="planetary_computer",
              out_file="guadalcanal.tif")
 ```
 
+To choose your own box with Google Maps, right-click the lower left
+(south-west) corner of the area and click the numbers at the top of the menu
+to copy them. Do the same for the upper right (north-east) corner, and paste
+both:
+
+```python
+from lsdviztools3.regions import box_from_corners, parse_lat_lon
+
+box = box_from_corners("55.90, -3.25", "55.99, -3.10")   # prints the box and its size
+west, east, south, north = box                           # or box.west, box.north, ...
+download_dem(box.bbox, source="planetary_computer", out_file="edinburgh.tif")
+
+latitude, longitude = parse_lat_lon("55.9476273103734, -3.158220317286066")
+```
+
+Either pair of opposite corners gives the same box. `box.bbox` is the
+`(west, south, east, north)` order that `download_dem` and `Region.bbox` use.
+Each corner must be decimal degrees with the latitude first, which is what
+Google Maps copies. Degrees-minutes-seconds text is rejected with a message
+saying how to copy the decimal form.
+
 ---
 
 ## 3. Running lsdtt3
