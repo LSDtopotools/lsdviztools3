@@ -8,7 +8,7 @@ import numpy as np
 
 from ..io.vector import load_vector, to_coordinates
 from .base import (
-    add_crs_label,
+    add_crs_annotations,
     auto_projection,
     display_frame,
     gdf_to_display,
@@ -66,7 +66,7 @@ def _ensure_overlay_figure(gdf_display, crs, style, fig):
     region = [west, east, south, north]
     projection = style.projection or auto_projection(region, crs, style.figure_size)
     fig.basemap(region=region, projection=projection, frame=display_frame(crs, style))
-    add_crs_label(fig, region, crs)
+    add_crs_annotations(fig, region, crs, style)
     return fig
 
 

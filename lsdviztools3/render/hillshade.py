@@ -7,7 +7,7 @@ from typing import Optional
 
 from ..io.raster import get_crs, load_raster, to_coordinates, to_gmt_grid
 from .base import (
-    add_crs_label,
+    add_crs_annotations,
     auto_projection,
     display_frame,
     grid_to_display,
@@ -110,5 +110,5 @@ def render_hillshade(
 
             add_bar_scalebar(fig, extent, crs)
     else:
-        add_crs_label(fig, extent, crs)
+        add_crs_annotations(fig, extent, crs, style)
     return fig

@@ -309,7 +309,7 @@ def render_categorical_drape(
 
     from ..io.raster import get_crs, load_raster, to_coordinates, to_gmt_grid
     from .base import (
-        add_crs_label, auto_projection, display_frame, grid_to_display,
+        add_crs_annotations, auto_projection, display_frame, grid_to_display,
         new_figure, set_grid_gtype,
     )
     from .hillshade import render_hillshade
@@ -377,7 +377,7 @@ def render_categorical_drape(
         # Frame separately so it is not faded with a muted class layer.
         fig.basemap(region=extent, projection=projection, frame=frame)
     if not hillshade and not style.clean:
-        add_crs_label(fig, extent, crs)
+        add_crs_annotations(fig, extent, crs, style)
 
     if legend:
         add_categorical_legend(

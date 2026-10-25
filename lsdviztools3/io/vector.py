@@ -51,8 +51,10 @@ def to_coordinates(gdf: gpd.GeoDataFrame, coordinates="local") -> gpd.GeoDataFra
     """Reproject a ``GeoDataFrame`` to the chosen coordinate system if needed.
 
     Mirrors ``io.raster.to_coordinates`` so vector overlays land in the same CRS
-    as the base raster: ``"local"`` -> native UTM (estimated), ``"geographic"``
-    -> EPSG:4326, or an explicit CRS. A no-op when already in the target CRS.
+    as the base raster: ``"local"`` -> native UTM (estimated; a vector in an
+    lsdtt3 oblique frame stays in it), ``"geographic"`` -> EPSG:4326, or an
+    explicit CRS. Over a frame raster, pass the raster's CRS so vectors in any
+    CRS land on it. A no-op when already in the target CRS.
     """
     if gdf.crs is None:
         raise ValueError(
@@ -65,7 +67,10 @@ def to_coordinates(gdf: gpd.GeoDataFrame, coordinates="local") -> gpd.GeoDataFra
         if key in _GEOGRAPHIC_ALIASES:
             target = "EPSG:4326"
         elif key in _LOCAL_ALIASES:
-            target = gdf.estimate_utm_crs()
+            from ..frames import is_oblique_frame
+
+            # Vectors made in an lsdtt3 oblique frame stay in it.
+            target = gdf.crs if is_oblique_frame(gdf.crs) else gdf.estimate_utm_crs()
         else:
             target = coordinates
     else:

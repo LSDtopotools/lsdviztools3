@@ -2,13 +2,17 @@
 
 Figure construction (with publication fonts), automatic projection inference,
 display-unit handling (km for projected CRS, with a ``CRS is EPSG:XXXXX`` title),
-and DPI/transparency-aware saving.
+and DPI/transparency-aware saving. A raster in an lsdtt3 oblique frame is a
+projected raster too: it is drawn in frame km with along-/across-feature axis
+labels, an ``Oblique Mercator, azimuth ...`` title and, unless switched off in
+``MapStyle``, the reference easting/northing grid (``graticule``).
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
+from ..frames import frame_azimuth, is_oblique_frame
 from .style import MapStyle
 
 #: Metres per kilometre — projected axes are shown in km to avoid 6-7 digit labels.
@@ -103,14 +107,22 @@ def gdf_to_display(gdf, crs):
 def display_frame(crs, style: MapStyle):
     """Build a publication frame: labelled axes, and a CRS title if projected.
 
-    Projected: axes in km with ``Easting (km)`` / ``Northing (km)`` labels.
-    Geographic: degree axes labelled Longitude / Latitude.
+    Projected: axes in km with ``Easting (km)`` / ``Northing (km)`` labels;
+    an oblique frame: ``Along-feature (km)`` / ``Across-feature (km)`` (the
+    feature runs along +x). Geographic: degree axes labelled Longitude /
+    Latitude.
     """
     if style.frame is not None:
         return style.frame
     if getattr(style, "clean", False):
         # Plain border only: no annotations, ticks, or axis labels.
         return ["wsen"]
+    if is_oblique_frame(crs):
+        return [
+            "WSne",
+            "xaf+lAlong-feature (km)",
+            "yaf+lAcross-feature (km)",
+        ]
     if is_projected(crs):
         return [
             "WSne",
@@ -120,12 +132,21 @@ def display_frame(crs, style: MapStyle):
     return ["WSne", "xaf+lLongitude", "yaf+lLatitude"]
 
 
+def crs_label_text(crs) -> str:
+    """The CRS label: ``Oblique Mercator, azimuth 30.0@.`` for a frame (``@.``
+    is GMT's degree sign), ``CRS is EPSG:XXXXX``, or ``CRS is (projected)``."""
+    azimuth = frame_azimuth(crs)
+    if azimuth is not None:
+        return f"Oblique Mercator, azimuth {azimuth:.1f}@."
+    epsg = crs.to_epsg()
+    return f"CRS is EPSG:{epsg}" if epsg else "CRS is (projected)"
+
+
 def add_crs_label(fig, extent, crs):
     """Add a right-aligned CRS label just above the map frame."""
     if not is_projected(crs):
         return fig
-    epsg = crs.to_epsg()
-    text = f"CRS is EPSG:{epsg}" if epsg else "CRS is (projected)"
+    text = crs_label_text(crs)
     fig.text(
         x=extent[1],
         y=extent[3],
@@ -136,6 +157,14 @@ def add_crs_label(fig, extent, crs):
         font="9p,Helvetica,black",
     )
     return fig
+
+
+def add_crs_annotations(fig, extent, crs, style: Optional[MapStyle] = None):
+    """The CRS label and, over an oblique frame, the reference graticule."""
+    from .graticule import add_reference_graticule
+
+    add_reference_graticule(fig, extent, crs, style)
+    return add_crs_label(fig, extent, crs)
 
 
 def set_grid_gtype(grid, crs):

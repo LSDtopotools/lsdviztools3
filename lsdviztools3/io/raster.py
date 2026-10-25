@@ -120,7 +120,8 @@ def resolve_target_crs(da: xr.DataArray, coordinates="local") -> CRS:
     Args:
         da: Raster (used to estimate the local UTM zone when needed).
         coordinates: ``"local"``/``"utm"`` for the native projected CRS (UTM
-            estimated from the raster's extent), ``"geographic"`` for EPSG:4326,
+            estimated from the raster's extent; a raster in an lsdtt3 oblique
+            frame keeps its frame), ``"geographic"`` for EPSG:4326,
             or any explicit CRS (EPSG code, proj string, or CRS object).
 
     Returns:
@@ -131,6 +132,13 @@ def resolve_target_crs(da: xr.DataArray, coordinates="local") -> CRS:
         if key in _GEOGRAPHIC_ALIASES:
             return CRS.from_epsg(4326)
         if key in _LOCAL_ALIASES:
+            # An lsdtt3 oblique frame is the local projected CRS of its own
+            # raster: keep it rather than warping back to UTM.
+            from ..frames import is_oblique_frame
+
+            native = getattr(da.rio, "crs", None)
+            if native is not None and is_oblique_frame(native):
+                return CRS.from_user_input(native)
             utm = da.rio.estimate_utm_crs()
             if utm is None:
                 raise ValueError(

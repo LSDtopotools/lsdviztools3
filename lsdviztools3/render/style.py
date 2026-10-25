@@ -38,6 +38,14 @@ class MapStyle:
         clean: strip all map furniture — frame ticks, tick labels, axis labels,
             the CRS title, and the colourbar — leaving just the map with a small
             solid-rectangle scale bar.
+        graticule: draw the reference-CRS easting/northing grid over a map in
+            an lsdtt3 oblique frame (no effect on other maps).
+        graticule_pen / graticule_font: pen of the grid lines and font of their
+            labels (>= 8 pt).
+        graticule_interval_km: grid spacing in km; ``None`` picks a 1-2-5 step.
+        reference_crs: CRS of that grid (anything pyproj reads); ``None`` uses
+            the UTM (or polar stereographic beyond 75 deg) CRS of the frame
+            centre.
     """
 
     SINGLE_COLUMN: ClassVar[str] = "8.5c"
@@ -59,3 +67,8 @@ class MapStyle:
     high_res_dpi: int = 600
     transparent: bool = True
     clean: bool = False
+    graticule: bool = True
+    graticule_pen: str = "0.8p,black,6_3:0p"
+    graticule_font: str = "8p,Helvetica,gray15"
+    graticule_interval_km: Optional[float] = None
+    reference_crs: Optional[Any] = None

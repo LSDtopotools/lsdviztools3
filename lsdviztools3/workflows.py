@@ -28,6 +28,17 @@ from .render.style import MapStyle
 PathLike = Union[str, Path]
 
 
+def _overlay_crs(raster: PathLike, coordinates):
+    """The CRS a base raster is drawn in, for reprojecting its vector overlays.
+
+    Resolving ``coordinates`` once from the raster (not per vector) keeps every
+    overlay on the base map, including over an lsdtt3 oblique frame.
+    """
+    from .io.raster import resolve_target_crs
+
+    return resolve_target_crs(load_raster(raster), coordinates)
+
+
 def _valid_data_union(raster: PathLike, coordinates: str):
     """Return a polygon union covering finite cells of a raster."""
     grid = to_gmt_grid(to_coordinates(load_raster(raster), coordinates))
@@ -463,7 +474,7 @@ def render_chi_ksn_map(
         dem_path: Projected (UTM) DEM for the hillshade base.
         segment_lines: Fitted chi segment-lines fgb carrying ``k_sn``.
         png_path: Output PNG path.
-        coordinates: Coordinate mode (``"local"`` UTM-km / ``"geographic"``).
+        coordinates: Coordinate mode (``"local"``: projected km, UTM or an lsdtt3 oblique frame / ``"geographic"``).
         width: Figure width (defaults to the 17 cm max).
         cmap: CPT for the log10 k_sn colour scale.
         high_res: Save at high-res DPI.
@@ -522,7 +533,7 @@ def render_chi_ksn_relief3d(
         dem_path: Projected (UTM) DEM for the relief surface.
         segment_lines: ``*_chi_fit_segment_lines_mn_*.fgb`` carrying ``k_sn``.
         png_path: Output PNG path.
-        coordinates: Coordinate mode (``"local"`` UTM-km recommended).
+        coordinates: Coordinate mode (``"local"``: projected km, UTM or an lsdtt3 oblique frame recommended).
         azimuth: Viewing azimuth in degrees.
         elevation: Viewing elevation angle in degrees.
         vertical_exaggeration: True vertical:horizontal scale ratio.
@@ -567,8 +578,7 @@ def render_chi_ksn_relief3d(
     )
 
     # Chi network in display (km) coords, with k_sn -> log10 colour scale.
-    gdf = gdf_to_display(to_vector_coordinates(load_vector(segment_lines), coordinates),
-                         crs)
+    gdf = gdf_to_display(to_vector_coordinates(load_vector(segment_lines), crs), crs)
     ksn = gdf["k_sn"].to_numpy(dtype=float)
     z = np.full_like(ksn, np.nan)
     z[ksn > 0] = np.log10(ksn[ksn > 0])
@@ -813,12 +823,13 @@ def render_hillshade_channels_basin(
     """
     valid_union = _valid_data_union(outputs["hillshade"], coordinates)
 
+    overlay_crs = _overlay_crs(outputs["hillshade"], coordinates)
     channels = _clip_to_valid(
-        to_vector_coordinates(load_vector(outputs["channels"]), coordinates),
+        to_vector_coordinates(load_vector(outputs["channels"]), overlay_crs),
         valid_union,
     )
     basins = _clip_to_valid(
-        to_vector_coordinates(load_vector(outputs["basin"]), coordinates),
+        to_vector_coordinates(load_vector(outputs["basin"]), overlay_crs),
         valid_union,
     )
     if not basins.empty:
@@ -874,12 +885,13 @@ def render_hillshade_stream_order_basins(
     order = outputs.get("basin_order", "selected")
     valid_union = _valid_data_union(outputs["hillshade"], coordinates)
 
+    overlay_crs = _overlay_crs(outputs["hillshade"], coordinates)
     channels = _clip_to_valid(
-        to_vector_coordinates(load_vector(outputs["channels"]), coordinates),
+        to_vector_coordinates(load_vector(outputs["channels"]), overlay_crs),
         valid_union,
     )
     basins = _clip_to_valid(
-        to_vector_coordinates(load_vector(outputs["basin"]), coordinates),
+        to_vector_coordinates(load_vector(outputs["basin"]), overlay_crs),
         valid_union,
     )
     if not basins.empty:
@@ -1027,11 +1039,12 @@ def hillshade_with_vectors(
     )
 
     legend_rows = []
+    overlay_crs = _overlay_crs(base_raster, coordinates)
     for layer in layers:
         src = layer["path"]
         gdf = load_vector(str(src), layer.get("layer")) if not hasattr(
             src, "geometry") else src
-        gdf = to_vector_coordinates(gdf, coordinates)
+        gdf = to_vector_coordinates(gdf, overlay_crs)
         if valid_union is not None:
             gdf = _clip_to_valid(gdf, valid_union)
         if gdf.empty:
@@ -1271,7 +1284,7 @@ def plot_algoviz(
     # Annotate each trace's start point with its iteration number.
     if label_iterations and "iteration" in traces.columns and not traces.empty:
         coords = kwargs.get("coordinates", "local")
-        tr = to_vector_coordinates(traces, coords)
+        tr = to_vector_coordinates(traces, _overlay_crs(base_raster, coords))
         for _, row in tr.iterrows():
             geom = row.geometry
             if geom is None or geom.is_empty:

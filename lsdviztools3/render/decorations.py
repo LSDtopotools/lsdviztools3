@@ -233,20 +233,25 @@ def _check_north_up(crs, projection: Optional[str]) -> None:
 
     pcrs = _PyprojCRS.from_user_input(crs.to_wkt() if hasattr(crs, "to_wkt") else crs)
     dirs = [a.direction.lower() for a in pcrs.axis_info[:2]]
-    if sorted(dirs) != ["east", "north"]:
+    # Polar stereographic axes are named for the meridian they run along
+    # ("south" / "south" for EPSG:3413); the arrow's angle comes from the
+    # convergence there, so only a reversed (westing/southing) CRS is refused.
+    polar = dirs[0] == dirs[1] and dirs[0] in ("north", "south")
+    if sorted(dirs) != ["east", "north"] and not polar:
         raise ValueError(
             f"add_north_arrow: CRS axes are {dirs}, not east/north; the "
             "map's +y direction is not grid north.")
 
 
 def north_arrow_geometry(extent, crs=None, *, anchor: str = "TR",
-                         size_frac: float = 0.07, pad_frac: float = 0.04):
+                         size_frac: float = 0.07, pad_frac: float = 0.04,
+                         angle_degrees: float = 0.0):
     """Vertices of the north arrowhead and the position of its ``N`` label.
 
     Returned in display units: ``(xs, ys, (label_x, label_y))`` where
-    ``xs``/``ys`` close a triangle whose apex is the topmost vertex, directly
-    above the midpoint of its base (i.e. it points to +y, grid north). The
-    ``N`` sits centred under the base.
+    ``xs``/``ys`` close a triangle whose apex points ``angle_degrees``
+    clockwise from +y (0: straight up, grid north), turned about its centre.
+    The ``N`` sits centred beyond the base, on the arrow's axis.
     """
     west, east, south, north = extent
     width, height = east - west, north - south
@@ -268,7 +273,22 @@ def north_arrow_geometry(extent, crs=None, *, anchor: str = "TR",
         apex_y = base_y + h
     xs = [cx - w / 2.0, cx, cx + w / 2.0, cx - w / 2.0]
     ys = [base_y, apex_y, base_y, base_y]
-    return xs, ys, (cx, base_y - 0.01 * height)
+    label = (cx, base_y - 0.01 * height)
+    if angle_degrees:
+        # Turn clockwise by angle about the arrow's centre (equal x/y scale:
+        # projected maps are drawn in km on both axes).
+        cy = 0.5 * (apex_y + base_y)
+        a = math.radians(angle_degrees)
+        ca, sa = math.cos(a), math.sin(a)
+
+        def turn(x, y):
+            dx, dy = x - cx, y - cy
+            return cx + dx * ca + dy * sa, cy - dx * sa + dy * ca
+
+        pts = [turn(x, y) for x, y in zip(xs, ys)]
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        label = turn(cx, cy - 0.5 * h - 0.01 * height)
+    return xs, ys, label
 
 
 def add_north_arrow(
@@ -283,14 +303,18 @@ def add_north_arrow(
     size_frac: float = 0.07,
     pad_frac: float = 0.04,
     label_halo: Optional[str] = None,
+    true_north: bool = True,
 ):
     """Draw an unornamented north arrow: a solid arrowhead with an ``N`` under it.
 
-    No compass rose, circle or other decoration. The arrow points to **grid
-    north**, which on the north-up maps this package draws (linear ``X``
-    projection of a projected CRS in km, or Mercator ``M`` for geographic) is
-    straight up. For UTM, grid north differs from true north by the meridian
-    convergence (under ~3 degrees within a zone); the arrow marks grid north.
+    No compass rose, circle or other decoration. On a projected map the arrow
+    points to **true north at the arrow's own position**: it is turned from
+    grid up by the grid convergence there (``lsdviztools3.frames
+    .grid_convergence_degrees``). That is under ~3 degrees within a UTM zone,
+    up to 180 degrees in polar stereographic, and 90 minus the azimuth (60
+    degrees for azimuth 30) in an lsdtt3 oblique frame, whose grid north is
+    not north at all. GMT's own map rose points straight up on these Cartesian
+    maps, so it is not used. Geographic (Mercator) maps are north-up.
 
     If the map is not north-up — a rotated/polar/y-flipped GMT projection, or a
     CRS whose axes are not east/north (e.g. a south-orientated CRS) — this
@@ -310,6 +334,8 @@ def add_north_arrow(
             (same convention as :func:`add_bar_scalebar`).
         label_halo: Optional outline colour behind the ``N`` (as for
             :func:`add_bar_scalebar`).
+        true_north: Point to true north (default). False points straight up,
+            to grid north.
 
     Returns:
         The same ``pygmt.Figure``.
@@ -318,11 +344,21 @@ def add_north_arrow(
         ValueError: if the map's +y direction is not grid north.
     """
     _check_north_up(crs, projection)
+    angle = 0.0
+    if true_north and crs is not None and is_projected(crs):
+        from ..frames import grid_convergence_degrees
+
+        xs0, ys0, _ = north_arrow_geometry(
+            extent, crs, anchor=anchor, size_frac=size_frac, pad_frac=pad_frac)
+        # Display units are km on projected maps.
+        angle = grid_convergence_degrees(crs, 1000.0 * sum(xs0[:3]) / 3.0,
+                                         1000.0 * sum(ys0[:3]) / 3.0)
     xs, ys, (lx, ly) = north_arrow_geometry(
-        extent, crs, anchor=anchor, size_frac=size_frac, pad_frac=pad_frac)
+        extent, crs, anchor=anchor, size_frac=size_frac, pad_frac=pad_frac,
+        angle_degrees=angle)
     fig.plot(x=xs, y=ys, fill=color, pen=f"0.5p,{color}", no_clip=True)
-    fig.text(x=lx, y=ly, text="N", justify="CT", font=_halo_font(font, label_halo),
-             no_clip=True)
+    fig.text(x=lx, y=ly, text="N", justify="CT" if abs(angle) < 10.0 else "CM",
+             font=_halo_font(font, label_halo), no_clip=True)
     return fig
 
 

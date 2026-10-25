@@ -310,12 +310,14 @@ def test_resolve_cmap_gray_nudge_can_be_disabled():
 def test_render_hillshade_adds_crs_label_for_projected(monkeypatch, small_dem):
     calls = {"count": 0}
 
-    def _spy(fig, extent, crs):
+    def _spy(fig, extent, crs, style=None):
         calls["count"] += 1
         assert crs is not None and crs.is_projected
         return fig
 
-    monkeypatch.setattr(hillshade, "add_crs_label", _spy)
+    # add_crs_annotations = the CRS label plus, over an oblique frame, the
+    # reference graticule.
+    monkeypatch.setattr(hillshade, "add_crs_annotations", _spy)
     hillshade.render_hillshade(load_raster(small_dem), coordinates="local", style=MapStyle())
     assert calls["count"] == 1
 
@@ -408,7 +410,9 @@ def test_north_arrow_points_up(anchor):
 
     fig = _RecordingFig()
     extent = [600.0, 626.0, 4300.0, 4322.0]
-    add_north_arrow(fig, extent, _utm(), anchor=anchor)
+    # Grid north: straight up. (By default the arrow points to true north,
+    # turned by the convergence at its position; see tests/test_frames.py.)
+    add_north_arrow(fig, extent, _utm(), anchor=anchor, true_north=False)
     xs, ys = fig.plots[0]["x"], fig.plots[0]["y"]
     apex = int(np.argmax(ys))
     base = [i for i in range(3) if i != apex]

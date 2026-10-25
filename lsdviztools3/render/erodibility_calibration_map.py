@@ -85,7 +85,7 @@ def render_calibration_basin_map(
     from ..io.erodibility_calibration import BASIN_COLUMNS, SAMPLE_COLUMNS
     from ..io.raster import get_crs, load_raster, to_gmt_grid
     from ..io.vector import load_vector
-    from .base import (add_crs_label, auto_projection, display_frame, gdf_to_display,
+    from .base import (add_crs_annotations, auto_projection, display_frame, gdf_to_display,
                        grid_to_display, new_figure)
     from .categorical import neutral_shading
     from .decorations import add_bar_scalebar, add_map_credit, add_north_arrow
@@ -132,7 +132,7 @@ def render_calibration_basin_map(
         fig = fig or new_figure(style)
         fig.basemap(region=extent, projection=projection, frame=display_frame(crs, style))
         if not style.clean:
-            add_crs_label(fig, extent, crs)
+            add_crs_annotations(fig, extent, crs, style)
 
     gd = gdf_to_display(g.to_crs(crs), crs)
 
