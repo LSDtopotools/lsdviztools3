@@ -68,6 +68,10 @@ lsdviz3-lithology-map = "lsdviztools3.cli.plot_lithology_map:main"
 lsdviz3-ksn-by-lithology = "lsdviztools3.cli.plot_ksn_by_lithology:main"
 lsdviz3-channel-bearings = "lsdviztools3.cli.plot_channel_bearings:main"
 lsdviz3-erodibility-calibration = "lsdviztools3.cli.plot_erodibility_calibration:main"
+lsdviz3-ridgeline-curvature = "lsdviztools3.cli.plot_ridgeline_curvature:main"
+lsdviz3-ridgeline-summary = "lsdviztools3.cli.plot_ridgeline_summary:main"
+lsdviz3-ridgeline-spacing = "lsdviztools3.cli.plot_ridgeline_spacing:main"
+lsdviz3-mdd-ridgeline = "lsdviztools3.cli.plot_mdd_ridgeline:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["lsdviztools3"]
