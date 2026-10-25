@@ -28,6 +28,7 @@ from lsdviztools3.render.graticule import (
     graticule_label,
     graticule_lines,
     nice_interval,
+    placed_labels,
 )
 from lsdviztools3.render.style import MapStyle
 
@@ -129,6 +130,16 @@ def test_graticule_only_over_frames_and_toggle():
     fixed = _RecordingFig()
     add_reference_graticule(fixed, extent_km, _frame(), MapStyle(graticule_interval_km=2.0))
     assert len(fixed.plots) > len(fig.plots)
+
+
+def test_labels_on_one_edge_do_not_overlap():
+    extent = [-62_000.0, 62_000.0, -20_000.0, 20_000.0]
+    lines = [{"axis": "E", "value": 600e3, "label": (-21_000.0, -20_000.0, "bottom")},
+             {"axis": "N", "value": 4750e3, "label": (-20_500.0, -20_000.0, "bottom")},
+             {"axis": "N", "value": 4800e3, "label": (40_000.0, -20_000.0, "bottom")},
+             {"axis": "N", "value": 4700e3, "label": (-62_000.0, 10_000.0, "left")}]
+    kept = [line["value"] for line, _ in placed_labels(lines, extent)]
+    assert kept == [600e3, 4800e3, 4700e3]
 
 
 # --- labels ---------------------------------------------------------------------

@@ -154,12 +154,34 @@ def add_reference_graticule(fig, extent, crs, style: Optional[MapStyle] = None,
     lines = graticule_lines(extent_m, crs, reference_crs or style.reference_crs, interval)
     for line in lines:
         fig.plot(x=line["x"] / KM, y=line["y"] / KM, pen=style.graticule_pen)
-    for line in lines:
-        if line["label"] is None:
-            continue
-        x, y, edge = line["label"]
+    for line, (x, y, edge) in placed_labels(lines, extent_m):
         justify, offset = _LABEL_PLACEMENT[edge]
         fig.text(x=x / KM, y=y / KM, text=graticule_label(line["axis"], line["value"]),
                  justify=justify, offset=offset, font=f"{style.graticule_font}=~1.5p,white",
                  no_clip=True)
     return fig
+
+
+#: Labels on one edge closer than this fraction of the map's longer side
+#: would overlap; the later one is dropped.
+LABEL_MIN_SEPARATION = 0.12
+
+
+def placed_labels(lines, extent_m, min_separation: float = LABEL_MIN_SEPARATION):
+    """The labels to draw: ``(line, (x, y, edge))`` pairs, dropping any label
+    that would sit within ``min_separation`` of the map's longer side of one
+    already placed on the same edge (an easting and a northing line often meet
+    an edge almost together)."""
+    west, east, south, north = extent_m
+    gap = min_separation * max(east - west, north - south)
+    kept, out = {}, []
+    for line in lines:
+        if line["label"] is None:
+            continue
+        x, y, edge = line["label"]
+        along = x if edge in ("bottom", "top") else y
+        if any(abs(along - other) < gap for other in kept.get(edge, [])):
+            continue
+        kept.setdefault(edge, []).append(along)
+        out.append((line, (x, y, edge)))
+    return out
