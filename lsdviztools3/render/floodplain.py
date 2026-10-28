@@ -129,3 +129,47 @@ def render_floodplain_polygons(
             fig.legend(spec=_io.StringIO("\n".join(rows) + "\n"),
                        position="JTR+jTR+o0.2c", box="+gwhite@20+p0.5p,black")
     return fig
+
+
+# Qualitative, ordered so neighbouring levels differ strongly (Okabe-Ito first).
+LEVEL_COLOURS = ("#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7",
+                 "#56B4E9", "#F0E442", "#000000", "#999999", "#882255",
+                 "#44AA99", "#117733")
+
+
+def render_level_polygons(
+    base_raster,
+    patches,
+    *,
+    band_col: str = "band",
+    colours: Optional[Sequence[str]] = None,
+    **kwargs,
+):
+    """Ladder-level patches as outlines, one colour per level.
+
+    ``patches`` is lsdtt3 ``<stem>_surface_patch_polygons.fgb``
+    (``write_surface_patch_polygons``) or a ``GeoDataFrame`` with a
+    ``band_col`` column: 0 is the lowest level. Levels are per ladder window,
+    so "level 2" is the third level of whichever reach a patch sits in. All
+    other keywords go to ``render_floodplain_polygons`` (drape, transparency,
+    widths, style).
+    """
+    from .channels import _as_gdf
+
+    gdf = _as_gdf(patches)
+    if band_col not in gdf.columns:
+        raise KeyError(f"No {band_col!r} column in the patch polygons.")
+    bands = sorted(int(b) for b in gdf[band_col].unique() if int(b) >= 0)
+    if not bands:
+        raise ValueError("No patch with a level (band >= 0).")
+    if colours is not None:
+        colours = list(colours)
+        if len(colours) < len(bands):
+            raise ValueError(f"{len(colours)} colours for {len(bands)} levels.")
+    else:
+        # More levels than the palette: it repeats, in level order.
+        colours = [LEVEL_COLOURS[i % len(LEVEL_COLOURS)] for i in range(len(bands))]
+    sets = [gdf[gdf[band_col] == b] for b in bands]
+    labels = [f"level {b}" for b in bands]
+    return render_floodplain_polygons(base_raster, sets, labels=labels,
+                                      colours=colours[:len(bands)], **kwargs)

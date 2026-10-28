@@ -88,3 +88,29 @@ def test_render_floodplain_polygons_writes_png(tmp_path):
 
     with pytest.raises(ValueError, match="labels"):
         render_floodplain_polygons(hs, [big, small], labels=["only one"])
+
+
+def test_training_polygon_boxes(tmp_path):
+    from lsdviztools3.charts.training_polygons import plot_training_polygon_hand
+    pd.DataFrame({
+        "polygon_id": [0, 1, 2], "label": ["fp", "t1", "t2"],
+        "class": ["floodplain", "terrace", "terrace"],
+        "terrace_number": [0, 1, 2], "n_cells": [10, 10, 10],
+        "n_with_field": [10, 10, 10], "median_m": [2.0, 12.0, 30.0],
+        "p10_m": [0.5, 9.0, 10.0], "p25_m": [1.5, 11.0, 20.0],
+        "p75_m": [2.5, 13.0, 40.0], "p90_m": [3.5, 15.0, 50.0],
+        "iqr_m": [1.0, 2.0, 20.0], "flagged": [0, 0, 1],
+    }).to_csv(tmp_path / "x_training_polygons.csv", index=False)
+    pd.DataFrame({
+        "scope": ["global", "global"], "source_id": [-1, -1],
+        "window_centre_m": [0, 0], "used": ["fallback", "fallback"],
+        "threshold": ["floodplain_bound", "break_1"], "threshold_m": [6.75, 6.75],
+        "youden_j": [1, 1], "n_lower": [5, 5], "n_upper": [5, 5],
+        "n_lower_below": [5, 5], "n_upper_above": [5, 5], "note": ["", ""],
+    }).to_csv(tmp_path / "x_training_fit.csv", index=False)
+    out = tmp_path / "boxes.png"
+    fig = plot_training_polygon_hand(tmp_path / "x_training_polygons.csv", str(out))
+    assert out.exists()
+    ax = fig.axes[0]
+    assert [t.get_text() for t in ax.get_xticklabels()] == ["0: fp", "1: t1", "2: t2"]
+    assert len(ax.patches) == 3          # one box per polygon

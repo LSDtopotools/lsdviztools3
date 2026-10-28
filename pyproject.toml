@@ -73,6 +73,7 @@ lsdviz3-ridgeline-summary = "lsdviztools3.cli.plot_ridgeline_summary:main"
 lsdviz3-ridgeline-spacing = "lsdviztools3.cli.plot_ridgeline_spacing:main"
 lsdviz3-mdd-ridgeline = "lsdviztools3.cli.plot_mdd_ridgeline:main"
 lsdviz3-floodplain = "lsdviztools3.cli.plot_floodplain:main"
+lsdviz3-surface-methods = "lsdviztools3.cli.plot_surface_methods:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["lsdviztools3"]

@@ -7,8 +7,11 @@ Reads the outputs of one lsdtt3 ``lsdtt-fluvial-surfaces`` run by its stem
   <stem>_floodplain_polygons.<fgb|gpkg>
   <stem>_floodplain_thresholds.csv and the QQ tables it names
 
-and writes ``--out-map`` (polygons over ``--base``) and ``--out-qq`` (one QQ
-panel per HAND pass). Either output may be omitted.
+and writes ``--out-map`` (polygons over ``--base``), ``--out-qq`` (one QQ
+panel per HAND pass) and ``--out-training`` (HAND box per training polygon,
+from <stem>_training_polygons.csv). Any output may be omitted. With ``--levels`` the map
+is ``<stem>_surface_patch_polygons`` (``write_surface_patch_polygons``) by
+ladder level instead.
 """
 
 from __future__ import annotations
@@ -40,7 +43,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-is-dem", action="store_true",
                         help="Illuminate --base instead of drawing it flat.")
     parser.add_argument("--out-map", help="Output PNG for the polygon map.")
+    parser.add_argument("--levels", action="store_true",
+                        help="Map <stem>_surface_patch_polygons by ladder level "
+                             "instead of the floodplain passes.")
     parser.add_argument("--out-qq", help="Output PNG for the HAND QQ plots.")
+    parser.add_argument("--out-training",
+                        help="Output PNG: HAND box-and-whisker per training "
+                             "polygon (<stem>_training_polygons.csv).")
+    parser.add_argument("--training-log-y", action="store_true",
+                        help="Log HAND axis (from 0.1 m) on --out-training.")
     parser.add_argument("--fill-transparency", type=float, default=85.0,
                         help="Percent transparency of the polygon fills (default 85).")
     parser.add_argument("--outline-width", default="0.35p",
@@ -56,8 +67,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--drape-vmax", type=float, default=None)
     parser.add_argument("--drape-cmap", default="viridis")
     parser.add_argument("--colours", default=None,
-                        help="Comma-separated GMT colours, first pass then second "
-                             "(default blue, orange).")
+                        help="Comma-separated GMT colours: first pass then second "
+                             "(default blue, orange), or one per level with --levels.")
     parser.add_argument("--figure-size", default="24c", help="Map width (GMT size).")
     parser.add_argument("--dpi", type=int, default=200)
     return parser
@@ -65,12 +76,38 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    if not args.out_map and not args.out_qq:
-        raise SystemExit("Nothing to do: give --out-map and/or --out-qq.")
+    if not args.out_map and not args.out_qq and not args.out_training:
+        raise SystemExit("Nothing to do: give --out-map, --out-qq and/or "
+                         "--out-training.")
 
     if args.out_map:
         if not args.base:
             raise SystemExit("--out-map needs --base.")
+        common = dict(
+            base_is_hillshade=not args.base_is_dem,
+            fill_transparency=args.fill_transparency,
+            outline_width=args.outline_width,
+            outline_transparency=args.outline_transparency,
+            drape_raster=args.drape,
+            drape_cmap=args.drape_cmap,
+            drape_vmin=args.drape_vmin, drape_vmax=args.drape_vmax,
+            drape_label=args.drape_label if args.drape else None,
+            style=MapStyle(figure_size=args.figure_size),
+        )
+        if args.levels:
+            patches = _find(args.stem, "_surface_patch_polygons")
+            if patches is None:
+                raise SystemExit(f"No {args.stem}_surface_patch_polygons.fgb/.gpkg "
+                                 "(run with write_surface_patch_polygons: true).")
+            from ..render.floodplain import render_level_polygons
+            fig = render_level_polygons(
+                args.base, patches,
+                colours=args.colours.split(",") if args.colours else None,
+                **common)
+            fig.savefig(args.out_map, dpi=args.dpi)
+            print("wrote", args.out_map)
+            args.out_map = None
+    if args.out_map:
         first = _find(args.stem, "_floodplain_first_pass_polygons")
         final = _find(args.stem, "_floodplain_polygons")
         if final is None:
@@ -82,18 +119,15 @@ def main(argv=None) -> int:
         fig = render_floodplain_polygons(
             args.base, sets, labels=labels,
             colours=args.colours.split(",") if args.colours else None,
-            base_is_hillshade=not args.base_is_dem,
-            fill_transparency=args.fill_transparency,
-            outline_width=args.outline_width,
-            outline_transparency=args.outline_transparency,
-            drape_raster=args.drape,
-            drape_cmap=args.drape_cmap,
-            drape_vmin=args.drape_vmin, drape_vmax=args.drape_vmax,
-            drape_label=args.drape_label if args.drape else None,
-            style=MapStyle(figure_size=args.figure_size),
-        )
+            **common)
         fig.savefig(args.out_map, dpi=args.dpi)
         print("wrote", args.out_map)
+
+    if args.out_training:
+        from ..charts.training_polygons import plot_training_polygon_hand
+        plot_training_polygon_hand(args.stem + "_training_polygons.csv",
+                                   args.out_training, log_y=args.training_log_y)
+        print("wrote", args.out_training)
 
     if args.out_qq:
         from ..charts.floodplain_qq import plot_floodplain_hand_qq
