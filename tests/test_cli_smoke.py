@@ -24,6 +24,7 @@ from lsdviztools3.cli import (
     plot_ksn_by_lithology,
     plot_lithology_map,
     plot_sti,
+    plot_valley_widths,
     run_lsdtt,
 )
 
@@ -48,6 +49,7 @@ from lsdviztools3.cli import (
         plot_ksn_by_lithology.build_parser,
         plot_channel_bearings.build_parser,
         plot_erodibility_calibration.build_parser,
+        plot_valley_widths.build_parser,
     ],
 )
 def test_cli_help_exits_cleanly(build_parser):
