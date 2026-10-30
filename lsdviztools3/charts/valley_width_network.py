@@ -11,7 +11,7 @@ Reads the outputs of one lsdtt3 ``lsdtt-valley-centreline`` run made with
   <stem>_valley_centreline_nodes.csv    centreline nodes with distance_m
   <stem>_valley_segment_channels.fgb    each segment's extracted D8 channel
 
-Three figures:
+Four figures:
 
 ``plot_valley_width_map``: each section's width line (left valley side to
 right side) on the hillshade, coloured by excluded_reason, with the
@@ -27,6 +27,11 @@ and drainage area in a second panel below (its own axis, not a second y-scale).
 centreline its sections hang from, on the hillshade - where the two part (a
 meandering channel, a channel hugging one valley wall) the sections follow the
 centreline, not the channel.
+
+``plot_centreline_profile``: down one segment's centreline, the elevation of
+the DEM pixel under each centreline node against the centreline's baseline (the
+reference the relative elevation is measured from), pins marked, and their
+difference - the relative elevation along the centreline - in a panel below.
 """
 
 from __future__ import annotations
@@ -68,16 +73,17 @@ def _read(stem, suffix):
     return p
 
 
-def largest_trunk(widths: pd.DataFrame, segments: pd.DataFrame) -> int:
+def largest_trunk(widths: pd.DataFrame | None, segments: pd.DataFrame) -> int:
     """The trunk segment (no parent) reaching the largest drainage area.
 
-    Falls back to the trunk with the most channel pixels when no station has a
-    drainage area.
+    Falls back to the trunk with the most channel pixels when there is no widths
+    table (a run without cross sections) or no station has a drainage area.
     """
     trunks = segments[segments["parent_segment_id"] < 0]["segment_id"]
     if trunks.empty:
         raise ValueError("no trunk segment in the segments table")
-    w = widths[widths["segment_id"].isin(trunks)]
+    w = (widths[widths["segment_id"].isin(trunks)] if widths is not None
+         else pd.DataFrame({"segment_id": [], "drainage_area_m2": []}))
     area = w.groupby("segment_id")["drainage_area_m2"].max().dropna()
     if not area.empty:
         return int(area.idxmax())
@@ -393,6 +399,89 @@ def plot_channel_and_centreline(
     ax.set_ylabel("northing (m)")
     ax.ticklabel_format(useOffset=False, style="plain")
     ax.set_title(title or "Extracted channel and valley centreline")
+
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+    return out_png
+
+
+def plot_centreline_profile(
+    stem,
+    out_png,
+    segment_id: int | None = None,
+    title: str | None = None,
+    figsize=(9.0, 6.0),
+    dpi: int = 200,
+) -> Path:
+    """Elevation under the centreline against its baseline, down one segment.
+
+    Works on any lsdtt-valley-centreline run (it reads
+    ``<stem>_valley_centreline_nodes.csv``). For a network run the default
+    segment is the trunk reaching the largest drainage area; for a run on
+    source points it is source 0.
+
+    Args:
+        stem: lsdtt-valley-centreline output stem.
+        out_png: Output PNG.
+        segment_id: Segment / source to plot.
+        title: Figure title.
+        figsize: Figure size (inches).
+        dpi: Output resolution.
+
+    Returns:
+        The path written.
+    """
+    nodes = pd.read_csv(_read(stem, "_valley_centreline_nodes.csv"))
+    seg_csv = Path(f"{stem}_valley_segments.csv")
+    is_network = seg_csv.exists()
+    if segment_id is None:
+        if is_network:
+            wcsv = Path(f"{stem}_valley_widths.csv")
+            widths = pd.read_csv(wcsv) if wcsv.exists() else None
+            segment_id = largest_trunk(widths, pd.read_csv(seg_csv))
+            default_note = " (largest trunk)"
+        else:
+            segment_id = 0
+            default_note = ""
+    else:
+        default_note = ""
+    n = nodes[nodes["source_id"] == int(segment_id)].sort_values("node_seq")
+    if n.empty:
+        raise ValueError(f"no centreline nodes for segment {segment_id}")
+    km = n["distance_m"] / 1000.0
+    z = n["elevation"]
+    b = n["baseline_elevation"]
+    pins = n["is_pin"] == 1
+
+    fig, (ax, ax_d) = plt.subplots(
+        2, 1, sharex=True, figsize=figsize,
+        gridspec_kw={"height_ratios": [3, 1.4], "hspace": 0.08})
+    ax.plot(km, z, color="#8a8a85", lw=1.0, label="DEM under the centreline", zorder=2)
+    ax.plot(km, b, color="#2a78d6", lw=1.8, label="centreline baseline", zorder=3)
+    if pins.any():
+        ax.plot(km[pins], b[pins], "o", ms=3, mfc="#eb6834", mec="none",
+                label=f"centreline node on its channel ({int(pins.sum())})", zorder=4)
+    if is_network:
+        conf = confluence_distances(stem, int(segment_id))
+        for i, d in enumerate(conf["distance_m"] / 1000.0):
+            for a in (ax, ax_d):
+                a.axvline(d, color="#b4b2a9", lw=0.8, ls="--", zorder=1,
+                          label="tributary confluence" if (i == 0 and a is ax) else None)
+    ax.set_ylabel("elevation (m)")
+    ax.grid(axis="y", color="#e6e5e0", lw=0.6)
+    ax.legend(fontsize=8, loc="upper right", framealpha=0.9)
+    ax.set_title(title or f"Centreline elevation profile, segment {segment_id}{default_note}")
+
+    ax_d.axhline(0.0, color="#5f5e5a", lw=0.8, zorder=1)
+    ax_d.plot(km, z - b, color="#3d3d3a", lw=1.0, zorder=2)
+    ax_d.set_ylabel("DEM - baseline\n(m)")
+    ax_d.set_xlabel("distance down the centreline from the channel head (km)")
+    ax_d.grid(axis="y", color="#e6e5e0", lw=0.6)
+    for a in (ax, ax_d):
+        for side in ("top", "right"):
+            a.spines[side].set_visible(False)
 
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)

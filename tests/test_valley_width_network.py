@@ -11,6 +11,7 @@ from shapely.geometry import LineString
 
 from lsdviztools3.charts.valley_width_network import (
     confluence_distances,
+    plot_centreline_profile,
     plot_channel_and_centreline,
     largest_trunk,
     plot_valley_width_map,
@@ -39,9 +40,12 @@ def _write_run(tmp_path):
     nodes = [(1, i, 500.0, 1000.0 - 100.0 * i, float(100 * i)) for i in range(11)]
     nodes += [(2, i, 700.0 - 45.0 * i, 600.0, float(45 * i)) for i in range(5)]
     nodes += [(0, i, 0.0, -10.0 * i, float(10 * i)) for i in range(10)]
-    pd.DataFrame(nodes, columns=["source_id", "node_seq", "x", "y", "distance_m"]).assign(
-        elevation=0.0, trough_elevation=0.0, baseline_elevation=0.0, is_pin=0
-    ).to_csv(f"{stem}_valley_centreline_nodes.csv", index=False)
+    nd = pd.DataFrame(nodes, columns=["source_id", "node_seq", "x", "y", "distance_m"])
+    nd["baseline_elevation"] = 100.0 - 0.01 * nd["distance_m"]
+    nd["elevation"] = nd["baseline_elevation"] + 0.5
+    nd["trough_elevation"] = nd["baseline_elevation"]
+    nd["is_pin"] = (nd["node_seq"] % 3 == 0).astype(int)
+    nd.to_csv(f"{stem}_valley_centreline_nodes.csv", index=False)
 
     reasons1 = ["not_in_valley", "none", "none", "tributary_crossing", "none",
                 "side_not_found", "none"]
@@ -134,12 +138,26 @@ def test_channel_and_centreline_map(tmp_path):
     assert out2.exists()
 
 
+def test_centreline_profile(tmp_path):
+    stem = _write_run(tmp_path)
+    out = plot_centreline_profile(stem, tmp_path / "cl.png")
+    assert out.exists() and out.stat().st_size > 0
+    # A run without cross sections (no widths table) falls back to pixel count:
+    # trunk 0 has the most channel pixels.
+    import os
+    os.remove(f"{stem}_valley_widths.csv")
+    segs = pd.read_csv(f"{stem}_valley_segments.csv")
+    assert largest_trunk(None, segs) == 0
+    assert plot_centreline_profile(stem, tmp_path / "cl2.png", segment_id=1).exists()
+
+
 def test_cli(tmp_path):
     stem = _write_run(tmp_path)
     rc = plot_valley_widths.main([
         "--stem", str(stem), "--base", str(tmp_path / "hs.tif"),
         "--out-map", str(tmp_path / "cm.png"), "--out-profile", str(tmp_path / "cp.png"),
-        "--out-channels", str(tmp_path / "cc.png"), "--segment-id", "1"])
+        "--out-channels", str(tmp_path / "cc.png"),
+        "--out-centreline-profile", str(tmp_path / "ccp.png"), "--segment-id", "1"])
     assert rc == 0
-    for f in ("cm.png", "cp.png", "cc.png"):
+    for f in ("cm.png", "cp.png", "cc.png", "ccp.png"):
         assert (tmp_path / f).exists()
