@@ -1195,7 +1195,7 @@ levels it found are real.
 | `plot_ladder_band_map` | `lsdviz3-ladder-bands` | `<stem>_band_index.tif` | The band index over a hillshade. Bands are per window, so read patches, not a continuous surface. |
 | `plot_valley_sections` | `lsdviz3-valley-sections` | `<stem>_valley_cross_section_samples.csv` | One panel per station: ground profile, picked valley floor, low point, and an optional HAND field coloured by band. `summarise_sections` gives width and centreline-to-low-point offset. |
 | `plot_valley_section_map` | `lsdviz3-valley-section-map` | `<stem>_valley_cross_sections.fgb` (+ centreline, channel, sides) | Section lines against the centreline and channel network, flagging sections that cross no channel cell. |
-| `plot_valley_width_map`, `plot_valley_widths_along_channel` | `lsdviz3-valley-widths` | `<stem>_valley_cross_sections.fgb`, `_valley_widths.csv`, `_valley_segments.csv`, `_valley_centreline.fgb`, `_valley_centreline_nodes.csv` (`run_valley_width_network: true`) | Every segment's section width lines on the hillshade, coloured by `excluded_reason`; and valley width down one segment (default the trunk reaching the largest drainage area) with tributary confluences marked and drainage area in a panel below. |
+| `plot_valley_width_map`, `plot_valley_widths_along_channel`, `plot_channel_and_centreline` | `lsdviz3-valley-widths` | `<stem>_valley_cross_sections.fgb`, `_valley_widths.csv`, `_valley_segments.csv`, `_valley_segment_channels.fgb`, `_valley_centreline.fgb`, `_valley_centreline_nodes.csv` (`run_valley_width_network: true`) | Every segment's section width lines on the hillshade, coloured by `excluded_reason`; valley width down one segment (default the trunk reaching the largest drainage area) with tributary confluences marked and drainage area in a panel below; and each segment's extracted channel against its valley centreline. |
 
 ```bash
 pixi run lsdviz3-ladder-windows --windows run_ladder_windows.csv --out demo_output/ladder_windows.png
@@ -1210,7 +1210,8 @@ pixi run lsdviz3-valley-section-map --hillshade run_hs.tif \
   --channel run_channel_network_lines.fgb --out demo_output/valley_section_map.png
 pixi run lsdviz3-valley-widths --stem run_W --base run_hs.tif \
   --valley-mask run_floodplain_mask.tif \
-  --out-map demo_output/valley_widths_map.png --out-profile demo_output/valley_widths_profile.png
+  --out-map demo_output/valley_widths_map.png --out-profile demo_output/valley_widths_profile.png \
+  --out-channels demo_output/valley_widths_channels.png
 ```
 
 These sit alongside the matplotlib cross-section charts in
@@ -1398,7 +1399,7 @@ pixi run python examples/single_channel_basins.py --skip-compute  # replot only
 | `lsdviz3-ladder-bands` | ladder band index over a hillshade | `--hillshade --bands --out [--channel --centreline --max-band --title --dpi]` |
 | `lsdviz3-valley-sections` | valley cross-section panels with picked floor and optional HAND field | `--samples --out [--source-id --field --bands --field-label --max-panels --n-cols --summary --title --dpi]` |
 | `lsdviz3-valley-section-map` | cross-section lines vs centreline and channel network | `--hillshade --sections --out [--centreline --channel --samples --sides --source-id --label-every --title --dpi]` |
-| `lsdviz3-valley-widths` | valley-width network: section map by excluded_reason, width profile down the largest trunk | `--stem [--base --valley-mask --out-map --out-profile --segment-id --map-segments --bbox --hide-excluded --title --dpi]` |
+| `lsdviz3-valley-widths` | valley-width network: section map by excluded_reason, width profile down the largest trunk, channel vs centreline map | `--stem [--base --valley-mask --out-map --out-profile --out-channels --segment-id --map-segments --bbox --hide-excluded --title --dpi]` |
 | `lsdviz3-cosmo-compare` | cosmogenic comparison figures from standard lsdtt3 CSVs | `--scan-csv --outdir [--sample-csv --reference --pressure --erate --stem --dpi]` |
 | `lsdviz3-cosmo-published` | residual figure(s) from lsdtt3 published summary tables | `--published-dir --datasets [--mode --outdir --stem --dpi]` |
 | `lsdviz3-cosmo-transient` | transient (step-change) cosmogenic figure families ([§5.10](#510-transient-cosmogenic-and-landslide-charts)) | `--sweep-csv --outdir [--value-prefix --families --concentration-xmax --erate-ratio-xmax --no-title --dpi]` |
@@ -1454,7 +1455,7 @@ with the `<stem>` = lsdtt3 `write_fname` prefix stripped.
 | `lsdtt-lem` | channelization-index ladder run | `_model_iteration_<N>` rasters, `_initial_topography`, `_model_elevation_stats.csv` | elevation, CI history | `find_ci_frames` | `animate_ci_run` (`lsdviz3-lem-ci`) |
 | `lsdtt-fluvial-surfaces` | default / `write_ladder_histograms_csv` | `_ladder_windows.csv`, `_ladder_histograms.csv`, `_band_index.tif` | per-window breaks, level centres, status; HAND densities; band index | (path) | `plot_ladder_windows`, `plot_ladder_density`, `plot_ladder_band_map` ([§5.12](#512-fluvial-surface-ladder-and-valley-sections)) |
 | `lsdtt-valley-centreline` | `write_valley_cross_sections` | `_valley_cross_sections.fgb`, `_valley_centreline.fgb`, `_valley_cross_section_sides.fgb` | section geometry, centreline, margins | (path) | `plot_valley_sections`, `plot_valley_section_map` ([§5.12](#512-fluvial-surface-ladder-and-valley-sections)) |
-| `lsdtt-valley-centreline` | `run_valley_width_network` | `_valley_widths.csv`, `_valley_segments.csv`, `_valley_cross_sections.fgb` (with `segment_id`, `excluded_reason`) | width per station, channel tree, exclusions | (path) | `plot_valley_width_map`, `plot_valley_widths_along_channel` (`lsdviz3-valley-widths`, [§5.12](#512-fluvial-surface-ladder-and-valley-sections)) |
+| `lsdtt-valley-centreline` | `run_valley_width_network` | `_valley_widths.csv`, `_valley_segments.csv`, `_valley_cross_sections.fgb` (with `segment_id`, `excluded_reason`) | width per station, channel tree, exclusions | (path) | `plot_valley_width_map`, `plot_valley_widths_along_channel`, `plot_channel_and_centreline` (`lsdviz3-valley-widths`, [§5.12](#512-fluvial-surface-ladder-and-valley-sections)) |
 | `lsdtt-hillslope-channel-coupling` | default | trace / ridgeline / hilltop outputs | trace outcome, hillslope length, relief, E*, R* | `load_hilltop_outputs` | `charts.hilltop_coupling`, `plot_estar_rstar` (`lsdviz3-hilltop-coupling`, `lsdviz3-estar-rstar`) |
 | `lsdtt-cosmo-column-tool` | `step_change_sweep` | `cosmo_transient_sweep_<label>.csv`, `_joined_samples.csv` | normalised concentrations, apparent-rate ratios | `load_cosmo_transient_table`, `load_joined_samples` | [§5.10](#510-transient-cosmogenic-and-landslide-charts) (`lsdviz3-cosmo-transient`) |
 | `lsdtt-spectral-analysis` | valley spacing | `_valley_spacing.csv`, `_valley_spacing_spectrum.csv` | spectrum, peaks, spacing measures | `load_valley_spacing`, `load_valley_spacing_sweep` | `plot_valley_spectrum`, `plot_spacing_vs_ci` ([§5.14](#514-network-geometry-synthetic-networks-and-valley-spacing)) |

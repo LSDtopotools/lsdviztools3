@@ -9,6 +9,8 @@ writes any of:
   --out-profile  valley width down one segment (default the trunk with the
                  largest drainage area), tributary confluences marked,
                  drainage area below
+  --out-channels each segment's extracted D8 channel and its valley
+                 centreline on the hillshade
 """
 
 from __future__ import annotations
@@ -29,12 +31,14 @@ def build_parser() -> argparse.ArgumentParser:
                                          "sections (the run's valley_mask_fname).")
     p.add_argument("--out-map", help="PNG: section width lines on the hillshade.")
     p.add_argument("--out-profile", help="PNG: valley width down one segment.")
+    p.add_argument("--out-channels",
+                   help="PNG: extracted channels and valley centrelines on the hillshade.")
     p.add_argument("--segment-id", type=int, default=None,
                    help="Segment for --out-profile (default the trunk with the "
                         "largest drainage area).")
     p.add_argument("--map-segments", default=None,
-                   help="Comma-separated segment ids to draw on --out-map "
-                        "(default all).")
+                   help="Comma-separated segment ids to draw on --out-map and "
+                        "--out-channels (default all).")
     p.add_argument("--bbox", default=None,
                    help="Map extent xmin,ymin,xmax,ymax in map units "
                         "(default the sections' extent).")
@@ -47,20 +51,27 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    if not args.out_map and not args.out_profile:
-        raise SystemExit("Nothing to do: give --out-map and/or --out-profile.")
+    if not args.out_map and not args.out_profile and not args.out_channels:
+        raise SystemExit("Nothing to do: give --out-map, --out-profile and/or "
+                         "--out-channels.")
     from ..charts.valley_width_network import (
+        plot_channel_and_centreline,
         plot_valley_width_map,
         plot_valley_widths_along_channel,
     )
+    if (args.out_map or args.out_channels) and not args.base:
+        raise SystemExit("--out-map and --out-channels need --base.")
+    bbox = tuple(float(v) for v in args.bbox.split(",")) if args.bbox else None
+    if bbox is not None and len(bbox) != 4:
+        raise SystemExit("--bbox needs four numbers: xmin,ymin,xmax,ymax.")
+    segs = ([int(s) for s in args.map_segments.split(",")]
+            if args.map_segments else None)
+    if args.out_channels:
+        plot_channel_and_centreline(args.stem, args.base, args.out_channels,
+                                    valley_mask=args.valley_mask, bbox=bbox,
+                                    segment_ids=segs, title=args.title, dpi=args.dpi)
+        print("wrote", args.out_channels)
     if args.out_map:
-        if not args.base:
-            raise SystemExit("--out-map needs --base.")
-        bbox = tuple(float(v) for v in args.bbox.split(",")) if args.bbox else None
-        if bbox is not None and len(bbox) != 4:
-            raise SystemExit("--bbox needs four numbers: xmin,ymin,xmax,ymax.")
-        segs = ([int(s) for s in args.map_segments.split(",")]
-                if args.map_segments else None)
         plot_valley_width_map(args.stem, args.base, args.out_map,
                               valley_mask=args.valley_mask, bbox=bbox,
                               segment_ids=segs,

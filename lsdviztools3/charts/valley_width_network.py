@@ -9,8 +9,9 @@ Reads the outputs of one lsdtt3 ``lsdtt-valley-centreline`` run made with
   <stem>_valley_segments.csv            one row per channel segment
   <stem>_valley_centreline.fgb          one centreline per segment
   <stem>_valley_centreline_nodes.csv    centreline nodes with distance_m
+  <stem>_valley_segment_channels.fgb    each segment's extracted D8 channel
 
-Two figures:
+Three figures:
 
 ``plot_valley_width_map``: each section's width line (left valley side to
 right side) on the hillshade, coloured by excluded_reason, with the
@@ -21,6 +22,11 @@ the excluded ones show what the tributary rules removed and why.
 segment's centreline (by default the trunk with the largest drainage area), kept
 stations joined, excluded ones as hollow markers, tributary confluences marked,
 and drainage area in a second panel below (its own axis, not a second y-scale).
+
+``plot_channel_and_centreline``: each segment's extracted D8 channel and the
+centreline its sections hang from, on the hillshade - where the two part (a
+meandering channel, a channel hugging one valley wall) the sections follow the
+centreline, not the channel.
 """
 
 from __future__ import annotations
@@ -297,6 +303,96 @@ def plot_valley_width_map(
     ax.set_ylabel("northing (m)")
     ax.ticklabel_format(useOffset=False, style="plain")
     ax.set_title(title or "Valley cross sections by excluded_reason")
+
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+    return out_png
+
+
+CHANNEL_COLOUR = "#2a78d6"
+CENTRELINE_MAP_COLOUR = "#eb6834"
+
+
+def plot_channel_and_centreline(
+    stem,
+    hillshade,
+    out_png,
+    valley_mask=None,
+    bbox=None,
+    segment_ids=None,
+    title: str | None = None,
+    figsize=(10.0, 11.0),
+    dpi: int = 200,
+) -> Path:
+    """Each segment's extracted channel and its valley centreline on the hillshade.
+
+    Args:
+        stem: lsdtt-valley-centreline output stem.
+        hillshade: Hillshade raster on the run's grid.
+        out_png: Output PNG.
+        valley_mask: Optional valley mask raster (cells > 0.5), drawn pale.
+        bbox: Optional (xmin, ymin, xmax, ymax); default the extent of the
+            drawn channels.
+        segment_ids: Optional iterable of segments to draw (default all).
+        title: Figure title.
+        figsize: Figure size (inches).
+        dpi: Output resolution.
+
+    Returns:
+        The path written.
+    """
+    import geopandas as gpd
+    import rasterio
+    from rasterio.plot import plotting_extent
+
+    with rasterio.open(str(hillshade)) as src:
+        hs = src.read(1, masked=True).astype("float64").filled(np.nan)
+        extent = plotting_extent(src)
+    ch = gpd.read_file(str(_read(stem, "_valley_segment_channels.fgb")))
+    cl = gpd.read_file(str(_read(stem, "_valley_centreline.fgb")))
+    if segment_ids is not None:
+        keep = set(int(s) for s in segment_ids)
+        ch = ch[ch["segment_id"].isin(keep)]
+        cl = cl[cl["source_id"].isin(keep)]
+
+    fig, ax = plt.subplots(figsize=figsize)
+    ax.imshow(hs, cmap="gray", extent=extent, origin="upper", zorder=0)
+    handles = []
+    if valley_mask is not None:
+        with rasterio.open(str(valley_mask)) as src:
+            vm = src.read(1, masked=True).filled(0)
+            vext = plotting_extent(src)
+        rgba = np.zeros(vm.shape + (4,), dtype=np.float32)
+        rgba[..., :3] = matplotlib.colors.to_rgb(MASK_COLOUR)
+        rgba[..., 3] = np.where(vm > 0.5, 0.6, 0.0)
+        ax.imshow(rgba, extent=vext, origin="upper", interpolation="nearest", zorder=1)
+    ch.plot(ax=ax, color=CHANNEL_COLOUR, lw=1.0, zorder=2)
+    cl.plot(ax=ax, color=CENTRELINE_MAP_COLOUR, lw=1.3, zorder=3)
+    handles.append(plt.Line2D([], [], color=CHANNEL_COLOUR, lw=1.2,
+                              label=f"extracted channel ({len(ch)} segments)"))
+    handles.append(plt.Line2D([], [], color=CENTRELINE_MAP_COLOUR, lw=1.4,
+                              label="valley centreline"))
+    if valley_mask is not None:
+        handles.append(plt.Rectangle((0, 0), 1, 1, fc=MASK_COLOUR, alpha=0.6,
+                                     label="valley mask"))
+    ax.legend(handles=handles, loc="upper center", bbox_to_anchor=(0.5, -0.07),
+              ncol=3, fontsize=8, frameon=False)
+
+    if bbox is not None:
+        x0, y0, x1, y1 = bbox
+    else:
+        x0, y0, x1, y1 = ch.total_bounds
+        mx, my = 0.04 * max(x1 - x0, 1.0), 0.04 * max(y1 - y0, 1.0)
+        x0, x1, y0, y1 = x0 - mx, x1 + mx, y0 - my, y1 + my
+    ax.set_xlim(x0, x1)
+    ax.set_ylim(y0, y1)
+    ax.set_aspect("equal")
+    ax.set_xlabel("easting (m)")
+    ax.set_ylabel("northing (m)")
+    ax.ticklabel_format(useOffset=False, style="plain")
+    ax.set_title(title or "Extracted channel and valley centreline")
 
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)

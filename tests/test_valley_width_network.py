@@ -11,6 +11,7 @@ from shapely.geometry import LineString
 
 from lsdviztools3.charts.valley_width_network import (
     confluence_distances,
+    plot_channel_and_centreline,
     largest_trunk,
     plot_valley_width_map,
     plot_valley_widths_along_channel,
@@ -72,6 +73,12 @@ def _write_run(tmp_path):
                       "right_x": r.x + half, "right_y": r.y})
     gpd.GeoDataFrame(attrs, geometry=geoms, crs=CRS).to_file(
         f"{stem}_valley_cross_sections.fgb", driver="FlatGeobuf")
+    gpd.GeoDataFrame({"segment_id": [0, 1, 2], "parent_segment_id": [-1, -1, 1]},
+                     geometry=[LineString([(0, 0), (5, -45), (0, -90)]),
+                               LineString([(500, 1000), (530, 500), (500, 0)]),
+                               LineString([(700, 600), (600, 610), (520, 600)])],
+                     crs=CRS).to_file(f"{stem}_valley_segment_channels.fgb",
+                                      driver="FlatGeobuf")
     gpd.GeoDataFrame({"source_id": [0, 1, 2]}, geometry=[
         LineString([(0, 0), (0, -90)]), LineString([(500, 1000), (500, 0)]),
         LineString([(700, 600), (520, 600)])], crs=CRS).to_file(
@@ -117,11 +124,22 @@ def test_profile_and_map_write(tmp_path):
     assert m2.exists()
 
 
+def test_channel_and_centreline_map(tmp_path):
+    stem = _write_run(tmp_path)
+    out = plot_channel_and_centreline(stem, tmp_path / "hs.tif", tmp_path / "c.png",
+                                      valley_mask=tmp_path / "mask.tif")
+    assert out.exists() and out.stat().st_size > 0
+    out2 = plot_channel_and_centreline(stem, tmp_path / "hs.tif", tmp_path / "c2.png",
+                                       segment_ids=[1, 2], bbox=(400, 0, 800, 1000))
+    assert out2.exists()
+
+
 def test_cli(tmp_path):
     stem = _write_run(tmp_path)
     rc = plot_valley_widths.main([
         "--stem", str(stem), "--base", str(tmp_path / "hs.tif"),
         "--out-map", str(tmp_path / "cm.png"), "--out-profile", str(tmp_path / "cp.png"),
-        "--segment-id", "1"])
+        "--out-channels", str(tmp_path / "cc.png"), "--segment-id", "1"])
     assert rc == 0
-    assert (tmp_path / "cm.png").exists() and (tmp_path / "cp.png").exists()
+    for f in ("cm.png", "cp.png", "cc.png"):
+        assert (tmp_path / f).exists()
