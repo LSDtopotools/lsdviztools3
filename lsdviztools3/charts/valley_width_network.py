@@ -11,7 +11,7 @@ Reads the outputs of one lsdtt3 ``lsdtt-valley-centreline`` run made with
   <stem>_valley_centreline_nodes.csv    centreline nodes with distance_m
   <stem>_valley_segment_channels.fgb    each segment's extracted D8 channel
 
-Four figures:
+Five figures:
 
 ``plot_valley_width_map``: each section's width line (left valley side to
 right side) on the hillshade, coloured by excluded_reason, with the
@@ -32,6 +32,12 @@ centreline, not the channel.
 the DEM pixel under each centreline node against the centreline's baseline (the
 reference the relative elevation is measured from), pins marked, and their
 difference - the relative elevation along the centreline - in a panel below.
+
+``plot_terrace_profile``: terrace patches against the valley floor profile,
+from ``<stem>_terrace_profile.csv`` (write_terrace_profile_csv): each patch's
+bins along its centreline as 25-75 percentile bars with the median marked,
+coloured by level and numbered, over the centreline baseline and the DEM under
+the centreline (elevation), or over zero (relative elevation).
 """
 
 from __future__ import annotations
@@ -483,6 +489,120 @@ def plot_centreline_profile(
         for side in ("top", "right"):
             a.spines[side].set_visible(False)
 
+    out_png = Path(out_png)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+    return out_png
+
+
+def plot_terrace_profile(
+    stem,
+    out_png,
+    centreline_id: int | None = None,
+    field: str = "elevation",
+    include_floodplain: bool = False,
+    min_bin_pixels: int = 5,
+    max_relative_elevation: float | None = None,
+    title: str | None = None,
+    figsize=(11.0, 6.0),
+    dpi: int = 200,
+) -> Path:
+    """Terrace patches binned along a valley centreline, against the floor profile.
+
+    Args:
+        stem: lsdtt-valley-centreline output stem (a run with
+            write_terrace_profile_csv).
+        out_png: Output PNG.
+        centreline_id: Centreline to plot (default: for a network run the
+            trunk reaching the largest drainage area, as the other profiles;
+            otherwise the centreline holding the most patch pixels).
+        field: "elevation" (over the baseline and the DEM under the
+            centreline) or "relative_elevation" (over zero).
+        include_floodplain: Also draw patches whose class is floodplain.
+        min_bin_pixels: Bins with fewer pixels are not drawn.
+        max_relative_elevation: Patches whose median relative elevation is
+            above this (m) are not drawn (flats far up the valley sides).
+        title: Figure title.
+        figsize: Figure size (inches).
+        dpi: Output resolution.
+
+    Returns:
+        The path written.
+    """
+    if field not in ("elevation", "relative_elevation"):
+        raise ValueError("field is elevation or relative_elevation")
+    prof = pd.read_csv(_read(stem, "_terrace_profile.csv"))
+    patches = pd.read_csv(_read(stem, "_terrace_patches.csv"))
+    if not include_floodplain and "class" in prof.columns:
+        prof = prof[prof["class"].fillna("") != "floodplain"]
+        patches = patches[patches["class"].fillna("") != "floodplain"]
+    if max_relative_elevation is not None:
+        keep = set(patches.loc[patches.relative_elevation_median <= max_relative_elevation,
+                               "patch_label"])
+        patches = patches[patches.patch_label.isin(keep)]
+        prof = prof[prof.patch_label.isin(keep)]
+    if centreline_id is None:
+        if patches.empty:
+            raise ValueError("no patches to plot")
+        seg_csv = Path(f"{stem}_valley_segments.csv")
+        if seg_csv.exists():
+            wcsv = Path(f"{stem}_valley_widths.csv")
+            centreline_id = largest_trunk(pd.read_csv(wcsv) if wcsv.exists() else None,
+                                          pd.read_csv(seg_csv))
+        else:
+            centreline_id = int(patches.groupby("centreline_id")["n_pixels"].sum().idxmax())
+    pr = prof[(prof.centreline_id == centreline_id) & (prof.n_pixels >= min_bin_pixels)]
+    if pr.empty:
+        raise ValueError(f"no patch bins on centreline {centreline_id}")
+
+    has_band = "band" in pr.columns and pr["band"].notna().any()
+    bands = sorted(pr["band"].dropna().unique()) if has_band else []
+    cmap = plt.get_cmap("viridis", max(len(bands), 2))
+    band_colour = {b: cmap(i / max(len(bands) - 1, 1)) for i, b in enumerate(bands)}
+
+    fig, ax = plt.subplots(figsize=figsize)
+    if field == "elevation":
+        nodes = pd.read_csv(_read(stem, "_valley_centreline_nodes.csv"))
+        n = nodes[nodes.source_id == centreline_id].sort_values("node_seq")
+        km = n["distance_m"] / 1000.0
+        ax.plot(km, n["elevation"], color="#8a8a85", lw=0.9, label="DEM under the centreline", zorder=2)
+        ax.plot(km, n["baseline_elevation"], color="#2a78d6", lw=1.8, label="centreline baseline", zorder=3)
+    else:
+        ax.axhline(0.0, color="#2a78d6", lw=1.4, label="centreline baseline", zorder=2)
+
+    lo, md, hi = (f"{field}_p25", f"{field}_median", f"{field}_p75")
+    seen_bands = set()
+    for lab, g in pr.groupby("patch_label"):
+        b = g["band"].iloc[0] if has_band else None
+        c = band_colour.get(b, "#eb6834")
+        x = g["bin_centre_m"] / 1000.0
+        ax.vlines(x, g[lo], g[hi], color=c, lw=3.0, alpha=0.85, zorder=4)
+        ax.plot(x, g[md], "_", color="#2c2c2a", ms=6, mew=1.2, zorder=5)
+        top = g.loc[g.n_pixels.idxmax()]
+        ax.annotate(str(int(lab)), (top.bin_centre_m / 1000.0, top[hi]), xytext=(0, 3),
+                    textcoords="offset points", ha="center", va="bottom", fontsize=7,
+                    color="#2c2c2a", zorder=6)
+        if has_band and b not in seen_bands:
+            seen_bands.add(b)
+    handles, labels = ax.get_legend_handles_labels()
+    for b in bands:
+        if b in seen_bands:
+            handles.append(plt.Line2D([], [], color=band_colour[b], lw=3.0))
+            labels.append(f"level {int(b) if float(b).is_integer() else b}")
+    if not has_band:
+        handles.append(plt.Line2D([], [], color="#eb6834", lw=3.0))
+        labels.append("patch bins")
+    handles.append(plt.Line2D([], [], color="#2c2c2a", marker="_", ls="none", ms=6, mew=1.2))
+    labels.append("bin median (bar = 25-75 percentile)")
+    ax.legend(handles, labels, fontsize=8, loc="best", framealpha=0.9)
+    ax.set_xlabel("distance down the centreline from the channel head (km)")
+    ax.set_ylabel("elevation (m)" if field == "elevation" else "relative elevation (m)")
+    ax.grid(axis="y", color="#e6e5e0", lw=0.6)
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    ax.set_title(title or f"Terrace patches along centreline {centreline_id} "
+                 f"(numbers are patch labels)")
     out_png = Path(out_png)
     out_png.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_png, dpi=dpi, bbox_inches="tight")

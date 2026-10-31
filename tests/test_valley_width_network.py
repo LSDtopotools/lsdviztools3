@@ -11,6 +11,7 @@ from shapely.geometry import LineString
 
 from lsdviztools3.charts.valley_width_network import (
     confluence_distances,
+    plot_terrace_profile,
     plot_centreline_profile,
     plot_channel_and_centreline,
     largest_trunk,
@@ -151,13 +152,50 @@ def test_centreline_profile(tmp_path):
     assert plot_centreline_profile(stem, tmp_path / "cl2.png", segment_id=1).exists()
 
 
+def _write_terrace_profile(stem):
+    rows = []
+    for lab, band, cls, base in ((1, 0, "floodplain", 1.0), (2, 1, "terrace", 8.0),
+                                 (3, 2, "terrace", 15.0)):
+        for b in range(4):
+            rows.append({"centreline_id": 1, "patch_label": lab, "band": band, "class": cls,
+                         "bin_centre_m": 50.0 + 100.0 * b + 100.0 * lab,
+                         "n_pixels": 40 if b else 3,
+                         **{f"elevation_{q}": 100.0 + base + o for q, o in
+                            zip(["min", "p25", "median", "p75", "max"], [-2, -1, 0, 1, 2])},
+                         **{f"relative_elevation_{q}": base + o for q, o in
+                            zip(["min", "p25", "median", "p75", "max"], [-2, -1, 0, 1, 2])}})
+    pd.DataFrame(rows).to_csv(f"{stem}_terrace_profile.csv", index=False)
+    pd.DataFrame({"patch_label": [1, 2, 3], "band": [0, 1, 2],
+                  "class": ["floodplain", "terrace", "terrace"], "centreline_id": [1, 1, 1],
+                  "n_pixels": [123, 123, 123], "n_pixels_reassigned": [0, 0, 0],
+                  "along_min_m": [0, 0, 0], "along_max_m": [1, 1, 1],
+                  "elevation_median": [101, 108, 115],
+                  "relative_elevation_median": [1, 8, 15]}).to_csv(
+        f"{stem}_terrace_patches.csv", index=False)
+
+
+def test_terrace_profile(tmp_path):
+    stem = _write_run(tmp_path)
+    _write_terrace_profile(stem)
+    for field in ("elevation", "relative_elevation"):
+        out = plot_terrace_profile(stem, tmp_path / f"tp_{field}.png", field=field)
+        assert out.exists() and out.stat().st_size > 0
+    assert plot_terrace_profile(stem, tmp_path / "tp_fp.png", include_floodplain=True,
+                                centreline_id=1).exists()
+    # Patch 3 (median 15 m) above the limit is dropped; patch 2 (8 m) stays.
+    assert plot_terrace_profile(stem, tmp_path / "tp_max.png",
+                                max_relative_elevation=10.0).exists()
+
+
 def test_cli(tmp_path):
     stem = _write_run(tmp_path)
+    _write_terrace_profile(stem)
     rc = plot_valley_widths.main([
         "--stem", str(stem), "--base", str(tmp_path / "hs.tif"),
         "--out-map", str(tmp_path / "cm.png"), "--out-profile", str(tmp_path / "cp.png"),
         "--out-channels", str(tmp_path / "cc.png"),
-        "--out-centreline-profile", str(tmp_path / "ccp.png"), "--segment-id", "1"])
+        "--out-centreline-profile", str(tmp_path / "ccp.png"),
+        "--out-terrace-profile", str(tmp_path / "ctp.png"), "--segment-id", "1"])
     assert rc == 0
-    for f in ("cm.png", "cp.png", "cc.png", "ccp.png"):
+    for f in ("cm.png", "cp.png", "cc.png", "ccp.png", "ctp.png"):
         assert (tmp_path / f).exists()

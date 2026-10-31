@@ -14,6 +14,9 @@ writes any of:
   --out-centreline-profile
                  elevation of the DEM under one segment's centreline against
                  its baseline, and their difference
+  --out-terrace-profile
+                 terrace patches binned along a centreline against the valley
+                 floor profile (needs write_terrace_profile_csv)
 """
 
 from __future__ import annotations
@@ -39,6 +42,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out-centreline-profile",
                    help="PNG: DEM elevation under one segment's centreline "
                         "against its baseline.")
+    p.add_argument("--out-terrace-profile",
+                   help="PNG: terrace patches along a centreline against the floor "
+                        "profile (<stem>_terrace_profile.csv).")
+    p.add_argument("--terrace-field", default="elevation",
+                   choices=["elevation", "relative_elevation"],
+                   help="Plot terrace bins as elevation (default) or relative elevation.")
+    p.add_argument("--include-floodplain", action="store_true",
+                   help="Also draw floodplain patches on --out-terrace-profile.")
+    p.add_argument("--min-bin-pixels", type=int, default=5,
+                   help="Skip terrace bins with fewer pixels (default 5).")
+    p.add_argument("--max-relative-elevation", type=float, default=None,
+                   help="Skip patches whose median relative elevation is above "
+                        "this (m) on --out-terrace-profile.")
     p.add_argument("--segment-id", type=int, default=None,
                    help="Segment for --out-profile and --out-centreline-profile "
                         "(default the trunk with the largest drainage area).")
@@ -58,11 +74,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
     if not (args.out_map or args.out_profile or args.out_channels or
-            args.out_centreline_profile):
+            args.out_centreline_profile or args.out_terrace_profile):
         raise SystemExit("Nothing to do: give --out-map, --out-profile, "
-                         "--out-channels and/or --out-centreline-profile.")
+                         "--out-channels, --out-centreline-profile and/or "
+                         "--out-terrace-profile.")
     from ..charts.valley_width_network import (
         plot_centreline_profile,
+        plot_terrace_profile,
         plot_channel_and_centreline,
         plot_valley_width_map,
         plot_valley_widths_along_channel,
@@ -74,6 +92,15 @@ def main(argv=None) -> int:
         raise SystemExit("--bbox needs four numbers: xmin,ymin,xmax,ymax.")
     segs = ([int(s) for s in args.map_segments.split(",")]
             if args.map_segments else None)
+    if args.out_terrace_profile:
+        plot_terrace_profile(args.stem, args.out_terrace_profile,
+                             centreline_id=args.segment_id, field=args.terrace_field,
+                             include_floodplain=args.include_floodplain,
+                             min_bin_pixels=args.min_bin_pixels,
+                             max_relative_elevation=args.max_relative_elevation,
+                             title=args.title,
+                             dpi=args.dpi)
+        print("wrote", args.out_terrace_profile)
     if args.out_centreline_profile:
         plot_centreline_profile(args.stem, args.out_centreline_profile,
                                 segment_id=args.segment_id, title=args.title,
