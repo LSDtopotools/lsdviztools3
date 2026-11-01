@@ -38,6 +38,11 @@ def build_parser() -> argparse.ArgumentParser:
                         help="<stem>_band_index.tif; colours the field points "
                              "by ladder band.")
     parser.add_argument("--field-label", default="HAND (m)")
+    parser.add_argument("--classes", action="append", default=[],
+                        metavar="LABEL=PATH",
+                        help="Surface-class raster (1 floodplain, 2 terrace) "
+                             "drawn as a strip under each profile; repeat to "
+                             "compare methods.")
     parser.add_argument("--max-panels", type=int, default=30)
     parser.add_argument("--n-cols", type=int, default=5)
     parser.add_argument("--summary", default=None,
@@ -58,10 +63,17 @@ def main(argv: list[str] | None = None) -> int:
         Process exit code.
     """
     args = build_parser().parse_args(argv)
+    classes = []
+    for c in args.classes:
+        label, sep, path = c.partition("=")
+        if not sep or not label or not path:
+            raise SystemExit(f"--classes needs LABEL=PATH (got {c!r}).")
+        classes.append((label, path))
     png = plot_valley_sections(args.samples, args.out,
                                source_id=args.source_id,
                                field_raster=args.field,
                                band_raster=args.bands,
+                               class_rasters=classes,
                                field_label=args.field_label,
                                max_panels=args.max_panels,
                                n_cols=args.n_cols,

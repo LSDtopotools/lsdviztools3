@@ -45,6 +45,12 @@ _BAND_COLOURS = ["#08519c", "#e6550d", "#6a51a3", "#31a354",
                  "#d94801", "#756bb1", "#78c679"]
 _N_BAND_COLOURS = len(_BAND_COLOURS)
 
+# Surface class strips (lsdtt-fluvial-surfaces <stem>_surface_class.tif:
+# 1 floodplain, 2 terrace); unclassified cells are left pale grey.
+_CLASS_COLOURS = {1: "#2a78d6", 2: "#eb6834"}
+_CLASS_NONE = "#e4e3df"
+_STRIP_HEIGHT = 0.07   # axes fraction per strip
+
 
 def _sample_raster(path, xs, ys):
     """Nearest-cell sample of a raster at projected coordinates.
@@ -85,6 +91,7 @@ def plot_valley_sections(
     field_raster: str | Path | None = None,
     field_label: str = "HAND (m)",
     band_raster: str | Path | None = None,
+    class_rasters=None,
     max_panels: int = 30,
     n_cols: int = 5,
     title: str | None = None,
@@ -103,6 +110,9 @@ def plot_valley_sections(
             shows whether a band is a terrace tread or a slice of hillslope.
             Band indices are PER WINDOW, so the same colour at two stations far
             apart is not the same height.
+        class_rasters: Optional list of (label, path) surface-class rasters
+            (1 floodplain, 2 terrace), each drawn as a strip under the ground
+            profile so methods can be compared section by section.
         max_panels: Cap on panels, sampled evenly downstream.
         n_cols: Panels per row.
         title: Figure title.
@@ -133,6 +143,10 @@ def plot_valley_sections(
         df = df.assign(_field=field)
     if bands is not None:
         df = df.assign(_band=bands)
+    class_rasters = list(class_rasters or [])
+    for j, (_, path) in enumerate(class_rasters):
+        df[f"_class{j}"] = _sample_raster(path, df["x"].to_numpy(),
+                                          df["y"].to_numpy())
 
     n_rows = int(np.ceil(len(stations) / n_cols))
     fig, axes = plt.subplots(n_rows, n_cols,
@@ -146,6 +160,28 @@ def plot_valley_sections(
         elev = s["elevation"].to_numpy()
 
         ax.plot(off, elev, "-", color="#555555", lw=1.2, zorder=3)
+
+        if class_rasters and np.isfinite(elev).any():
+            # Room under the profile for one strip per method.
+            e0, e1 = np.nanmin(elev), np.nanmax(elev)
+            frac = _STRIP_HEIGHT * len(class_rasters) + 0.04
+            pad = (e1 - e0) * frac / (1.0 - frac - 0.05)
+            ax.set_ylim(e0 - pad, e1 + 0.05 * (e1 - e0))
+            tr = ax.get_xaxis_transform()
+            # Each sample covers half the gap to its neighbours.
+            edges = np.r_[off[0], 0.5 * (off[1:] + off[:-1]), off[-1]]
+            for j, (label, _) in enumerate(class_rasters):
+                y0 = 0.01 + _STRIP_HEIGHT * (len(class_rasters) - 1 - j)
+                cv = s[f"_class{j}"].to_numpy()
+                for i in range(len(off)):
+                    c = _CLASS_COLOURS.get(int(cv[i]) if np.isfinite(cv[i]) else 0,
+                                           _CLASS_NONE)
+                    ax.fill_between([edges[i], edges[i + 1]], y0,
+                                    y0 + _STRIP_HEIGHT * 0.85, color=c, lw=0,
+                                    transform=tr, zorder=2)
+                ax.text(off[0], y0 + _STRIP_HEIGHT * 0.42, f" {label}",
+                        transform=tr, fontsize=5.5, va="center", ha="left",
+                        zorder=6)
 
         # The picked valley, shaded between its two sides.
         lo = s["left_offset_m"].iloc[0]
@@ -209,6 +245,13 @@ def plot_valley_sections(
         plt.Line2D([], [], color="#08519c", marker="v", ls="none",
                    label="section low point"),
     ]
+    if class_rasters:
+        handles += [plt.Rectangle((0, 0), 1, 1, fc=_CLASS_COLOURS[1],
+                                  label="floodplain"),
+                    plt.Rectangle((0, 0), 1, 1, fc=_CLASS_COLOURS[2],
+                                  label="terrace"),
+                    plt.Rectangle((0, 0), 1, 1, fc=_CLASS_NONE,
+                                  label="neither")]
     if field is not None and bands is None:
         handles.append(plt.Line2D([], [], color="#e6550d", marker=".",
                                   ls="none", label=field_label))
