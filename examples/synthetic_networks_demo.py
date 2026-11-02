@@ -40,7 +40,7 @@ LSDTT_DIR = os.environ.get("LSDTT3_DIR", "/mnt/c/LSDTopoTools/lsdtt3/build")
 
 GRID = 256            # n_rows = n_cols
 CELL = 30             # cell size in metres
-SRC_THRESH = 50       # source_pixels_threshold (same for extraction + analysis)
+SRC_THRESH = 50       # threshold_contributing_pixels (same for extraction + analysis)
 ISLAND_FILL = 0.92    # island_fill_fraction: bigger island => more channels
 
 
@@ -99,7 +99,7 @@ def run_case(case: Case) -> dict:
     run_lsdtt(
         "lsdtt-channel-extraction",
         dict(base, read_path=str(case_dir), read_fname=dem,
-             source_pixels_threshold=SRC_THRESH,
+             threshold_contributing_pixels=SRC_THRESH,
              write_channel_network_lines="true"),
         directory=case_dir, lsdtt_dir=LSDTT_DIR,
     )
@@ -108,9 +108,9 @@ def run_case(case: Case) -> dict:
     run_lsdtt(
         "lsdtt-channel-network-analysis",
         dict(base, read_path=str(case_dir), read_fname=dem,
-             source_pixels_threshold=SRC_THRESH,
+             threshold_contributing_pixels=SRC_THRESH,
              analyse_all_junctions="true",
-             write_junction_angles="true", junction_angles_output_format="csv",
+             write_junction_angles="true", write_vector_format="csv",
              write_junction_area_ratio_data="true"),
         directory=case_dir, lsdtt_dir=LSDTT_DIR,
     )

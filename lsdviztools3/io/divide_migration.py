@@ -27,7 +27,7 @@ import pandas as pd
 from .table import load_table
 from .vector import load_vector
 
-#: Vector extensions written by ``vector_output_format`` (in preference order).
+#: Vector extensions written by ``write_vector_format`` (in preference order).
 _VECTOR_SUFFIXES = (".fgb", ".gpkg", ".shp")
 
 

@@ -9,7 +9,14 @@ each, extracts the channel network with junction/bearing analysis restricted to
   b) junction opening angles (distribution, the two sites compared),
   c) outlet -> basin-centroid bearings as a rose diagram,
   and a circular (radial) comparison of the two sites' channel-bearing
-  distributions with a circular-Wasserstein distance + Kuiper test.
+  distributions.
+
+The statistics of that comparison come from lsdtt3, not from this script: one
+lsdtt-channel-network-analysis run over a DEM covering both sites, with each
+site's box as a region (channel_bearing_group_by: region), writes the circular
+Wasserstein distance, the Kuiper test and a block-permutation p-value between
+the two regions (<stem>_channel_bearing_comparisons.csv). The comparison plot
+draws the links of that same run (<stem>_channel_bearing_group_membership.csv).
 
 Outputs under ../data/channel_bearing_comparison (one subdir per site, plus a
 comparison/ dir). lsdtt3 binaries via $LSDTT3_DIR (default
@@ -24,7 +31,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,7 +51,7 @@ ROOT = Path(os.environ.get(
 LSDTT_DIR = os.environ.get("LSDTT3_DIR", "/mnt/c/LSDTopoTools/lsdtt3/build")
 
 HALF_DEG = 0.10        # half-width of the (square) bounding box in degrees
-SRC_THRESH = 500       # source_pixels_threshold (~0.45 km^2 on 30 m COP30)
+SRC_THRESH = 500       # threshold_contributing_pixels (~0.45 km^2 on 30 m COP30)
 
 
 @dataclass
@@ -109,30 +115,22 @@ def compute_site(site: Site) -> dict:
     )
 
     print(f"[{site.key}] channel-network analysis (complete basins) ...")
-    analysis = dict(
-        base, read_fname=f"{stem}_fill.tif", write_fname=stem,
-        raster_is_filled="true", source_pixels_threshold=SRC_THRESH,
-        analyse_all_junctions="true",
-        write_channel_link_bearings="true", channel_link_bearings_output_format="csv",
-        write_junction_angles="true", junction_angles_output_format="csv",
-        write_junction_centre_of_mass_bearings="true",
-        only_complete_basins="true",
+    run_lsdtt(
+        "lsdtt-channel-network-analysis",
+        dict(base, read_fname=f"{stem}_fill.tif", write_fname=stem,
+             raster_is_filled="true", threshold_contributing_pixels=SRC_THRESH,
+             analyse_all_junctions="true", only_complete_basins="true",
+             write_channel_link_bearings="true", write_junction_angles="true",
+             write_junction_centre_of_mass_bearings="true",
+             write_vector_format="csv"),
+        directory=site_dir, lsdtt_dir=LSDTT_DIR,
     )
-    try:
-        run_lsdtt("lsdtt-channel-network-analysis", analysis,
-                  directory=site_dir, lsdtt_dir=LSDTT_DIR)
-    except subprocess.CalledProcessError:
-        # Older binary without the complete-basin filter: retry without it.
-        print(f"  ! only_complete_basins not supported; retrying without it")
-        analysis.pop("only_complete_basins")
-        run_lsdtt("lsdtt-channel-network-analysis", analysis,
-                  directory=site_dir, lsdtt_dir=LSDTT_DIR)
 
     print(f"[{site.key}] channel-extraction (network lines for plotting) ...")
     run_lsdtt(
         "lsdtt-channel-extraction",
         dict(base, read_fname=f"{stem}_fill.tif", write_fname=stem,
-             raster_is_filled="true", source_pixels_threshold=SRC_THRESH,
+             raster_is_filled="true", threshold_contributing_pixels=SRC_THRESH,
              write_channel_network_lines="true"),
         directory=site_dir, lsdtt_dir=LSDTT_DIR,
     )
@@ -203,43 +201,85 @@ def plot_comparison(sites_paths) -> None:
     _savefig(fig, comp / "junction_angle_comparison.png")
     plt.close(fig)
 
-    # Channel-bearing distributions: circular comparison. The distance/p-value
-    # come from lsdtt3's authoritative `lsdtt-bearing-comparison` CLI; the plot
-    # only draws the empirical distributions and annotates those numbers.
-    (site_a, pa), (site_b, pb) = sites_paths
-    bearings_a = pd.read_csv(pa["links"])["bearing_deg"].to_numpy()
-    bearings_b = pd.read_csv(pb["links"])["bearing_deg"].to_numpy()
-    annotation = _bearing_comparison_lsdtt(pa, pb, comp)
+    # Channel-bearing distributions: circular comparison. The statistics are
+    # lsdtt3's (one run over both sites, grouped by region); the plot draws the
+    # links of that run and annotates lsdtt3's numbers.
+    (site_a, _), (site_b, _) = sites_paths
+    members = pd.read_csv(comp / f"{COMPARE_STEM}_channel_bearing_group_membership.csv")
+    bearings_a = members.loc[members.group_value == site_a.name, "bearing_deg"].to_numpy()
+    bearings_b = members.loc[members.group_value == site_b.name, "bearing_deg"].to_numpy()
     fig, _ = plot_circular_comparison(
         bearings_a, bearings_b, labels=(site_a.name, site_b.name),
-        bin_width_deg=10, kind="both", annotation=annotation,
+        bin_width_deg=10, kind="both", annotation=_comparison_annotation(comp),
         title="Channel-bearing distributions")
     _savefig(fig, comp / "channel_bearing_circular_comparison.png")
     plt.close(fig)
 
 
-def _bearing_comparison_lsdtt(pa: dict, pb: dict, out_dir: Path):
-    """Run lsdtt3's lsdtt-bearing-comparison; return an annotation string.
+COMPARE_STEM = "both_sites_COP30"
 
-    Falls back to None (the plot then computes the distance in Python) if the
-    CLI is unavailable.
-    """
-    try:
-        run_lsdtt(
-            "lsdtt-bearing-comparison",
-            {"write_path": str(out_dir), "write_fname": "channel_bearings",
-             "bearing_file_1": str(pa["links"]), "bearing_file_2": str(pb["links"]),
-             "bearing_column": "bearing_deg"},
-            directory=out_dir, lsdtt_dir=LSDTT_DIR,
-        )
-        row = pd.read_csv(out_dir / "channel_bearings_bearing_comparison.csv").iloc[0]
-        return (f"circular $W_1$ = {row.circular_wasserstein_deg:.1f}$\\degree$\n"
-                f"Kuiper V = {row.kuiper_V:.3f}, p = {row.kuiper_p:.3g}\n"
-                f"(lsdtt-bearing-comparison)")
-    except Exception as exc:  # noqa: BLE001 - fall back to the Python mirror
-        print(f"  ! lsdtt-bearing-comparison unavailable ({exc}); "
-              f"using the Python circular stats")
-        return None
+
+def _comparison_box() -> tuple:
+    """A WGS84 box (west, south, east, north) covering every site's box."""
+    pad = HALF_DEG + 0.02
+    return (min(s.lon for s in SITES) - pad, min(s.lat for s in SITES) - pad,
+            max(s.lon for s in SITES) + pad, max(s.lat for s in SITES) + pad)
+
+
+def compute_comparison() -> None:
+    """One lsdtt3 run over both sites, comparing their bearings as regions."""
+    import geopandas as gpd
+    from shapely.geometry import box
+
+    comp = ensure_dir(ROOT / "comparison")
+    dem = comp / f"{COMPARE_STEM}.tif"
+    if not dem.exists():
+        print("[comparison] downloading COP30 over both sites ...")
+        download_dem(_comparison_box(), source="planetary_computer",
+                     out_file=dem.name, directory=comp)
+
+    # Each site's box is a region; lsdtt3 reprojects the polygons to the DEM.
+    regions = comp / "site_regions.gpkg"
+    gpd.GeoDataFrame(
+        {"site": [s.name for s in SITES]},
+        geometry=[box(s.lon - HALF_DEG, s.lat - HALF_DEG, s.lon + HALF_DEG, s.lat + HALF_DEG)
+                  for s in SITES],
+        crs="EPSG:4326").to_file(regions, driver="GPKG")
+
+    base = {"read_path": str(comp), "write_path": str(comp)}
+    print("[comparison] preprocessing ...")
+    run_lsdtt(
+        "lsdtt-raster-preprocessing",
+        dict(base, read_fname=dem.name, write_fname=COMPARE_STEM, write_fill_raster="true"),
+        directory=comp, lsdtt_dir=LSDTT_DIR,
+    )
+    print("[comparison] channel-network analysis, bearings compared by region ...")
+    run_lsdtt(
+        "lsdtt-channel-network-analysis",
+        dict(base, read_fname=f"{COMPARE_STEM}_fill.tif", write_fname=COMPARE_STEM,
+             raster_is_filled="true", threshold_contributing_pixels=SRC_THRESH,
+             analyse_all_junctions="true", only_complete_basins="true",
+             write_channel_link_bearings="true", write_vector_format="csv",
+             write_channel_bearing_statistics="true",
+             channel_bearing_group_by="region",
+             channel_region_fname=regions.name, channel_region_field_name="site",
+             channel_bearing_comparison_mode="pairwise"),
+        directory=comp, lsdtt_dir=LSDTT_DIR,
+    )
+
+
+def _comparison_annotation(comp: Path) -> str:
+    """lsdtt3's statistics for the directional bearing comparison of the sites."""
+    rows = pd.read_csv(comp / f"{COMPARE_STEM}_channel_bearing_comparisons.csv")
+    rows = rows[(rows.measurand == "link_bearing") & (rows.angular_type == "directional")]
+    if "all" in set(rows.stratum_value.astype(str)):
+        rows = rows[rows.stratum_value.astype(str) == "all"]
+    row = rows.iloc[0]
+    return (f"circular $W_1$ = {row.circular_wasserstein_deg:.1f}$\\degree$\n"
+            f"Kuiper V = {row.kuiper_V:.3f}, p (iid) = {row.kuiper_p_iid_approx:.3g}\n"
+            f"block permutation p = {row.permutation_p:.3g} "
+            f"({int(row.n_blocks_a)} / {int(row.n_blocks_b)} blocks)\n"
+            f"(lsdtt-channel-network-analysis)")
 
 
 def main(argv=None) -> int:
@@ -257,6 +297,8 @@ def main(argv=None) -> int:
         plot_site(site, p)
         sites_paths.append((site, p))
 
+    if not args.skip_compute:
+        compute_comparison()
     plot_comparison(sites_paths)
     print(f"\nDone. Outputs under {ROOT}")
     return 0

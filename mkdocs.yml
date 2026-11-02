@@ -23,7 +23,21 @@ theme:
 
 nav:
   - Home: index.md
-  - Usage guide: documentation.md
+  - Getting started: getting_started.md
+  - Plots:
+      - Basic plots: basic_plots.md
+      - Chi analysis: chi_analysis.md
+      - Channel networks: channel_networks.md
+      - Lithology: lithology.md
+      - Valleys and cross sections: valleys_and_cross_sections.md
+      - Hillslopes and ridgelines: hillslopes_and_ridgelines.md
+      - Landscape evolution: landscape_evolution.md
+      - Cosmogenic nuclides: cosmogenic_nuclides.md
+      - Spectral analysis: spectral_analysis.md
+  - Reference:
+      - Command reference: cli_reference.md
+      - lsdtt3 outputs: lsdtt3_outputs.md
+  - Design (developers): design.md
 
 markdown_extensions:
   - admonition

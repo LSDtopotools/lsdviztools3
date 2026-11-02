@@ -822,7 +822,7 @@ def test_plot_cross_section_informed_valley_mask_empty_raises(tmp_path):
 # --- chi profiles -----------------------------------------------------------
 #
 # These pin the lsdtt-chi-analysis column contract and the stacked-plot
-# conventions documented in docs/documentation.md §5.1. Frames are built with
+# conventions documented in docs/chi_analysis.md (Chi profiles). Frames are built with
 # the exact headers lsdtt3 writes, so a header change on the C++ side (or a
 # drifting loader) fails here rather than silently producing a wrong plot.
 

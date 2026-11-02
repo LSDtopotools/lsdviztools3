@@ -88,7 +88,7 @@ def compute() -> None:
                "write_fill_raster": "true", "write_hillshade_raster": "true",
                "clip_vector_data_to_raster": "true",
                "vector_data_fname": str(FAULTS_GLOBAL),
-               "vector_clip_output_format": "gpkg"},
+               "write_vector_format": "gpkg"},
               directory=ROOT, lsdtt_dir=LSDTT_DIR)
 
     print("Extracting basins crossing the fault (+ per-basin analysis) ...")
@@ -97,7 +97,7 @@ def compute() -> None:
     run_lsdtt("lsdtt-basin-extraction",
               {"read_path": str(ROOT), "write_path": str(ROOT),
                "read_fname": f"{STEM}_fill.tif", "write_fname": "parkfield",
-               "raster_is_filled": "true", "source_pixels_threshold": SRC_THRESH,
+               "raster_is_filled": "true", "threshold_contributing_pixels": SRC_THRESH,
                "select_basins_from_line_crossings": "true",
                "crossing_line_fname": str(FAULT),
                "crossing_minimum_contributing_pixels": CROSS_MIN,

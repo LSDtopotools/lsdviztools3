@@ -33,7 +33,7 @@ from typing import Optional
 
 import pandas as pd
 
-#: Vector extensions written by ``vector_output_format``, in preference order.
+#: Vector extensions written by ``write_vector_format``, in preference order.
 _VECTOR_SUFFIXES = (".fgb", ".gpkg", ".shp", ".csv")
 
 #: Trace outcome codes, as emitted by ``lsdtt::streamline_outcome``.

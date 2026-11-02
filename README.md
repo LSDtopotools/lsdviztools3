@@ -16,7 +16,9 @@ profiles, rose diagrams and circular comparison of bearings, and many other
 options.
 
 **Full usage guide with examples for every plot (CLI and notebook):
-[`docs/documentation.md`](docs/documentation.md).** This README covers install
+[`docs/`](docs/index.md)**, one page per topic (basic plots, chi analysis,
+channel networks, lithology, valleys, hillslopes, landscape evolution,
+cosmogenic nuclides, spectral analysis) plus a command reference. This README covers install
 and the most basic usage only.
 
 ## Design at a glance
@@ -28,7 +30,7 @@ and the most basic usage only.
 - **Headless CLIs** (`lsdviztools3.cli`): render straight to PNG, suitable for
   WSL2 / headless servers.
 
-See [`DESIGN.md`](DESIGN.md) for the full design, the data-ingestion mapping,
+See [`docs/design.md`](docs/design.md) for the full design, the data-ingestion mapping,
 the secure key-handling spec, and the open questions for review.
 
 ## Install (pixi)
@@ -166,6 +168,7 @@ absolute path:
 | `lsdviz3-basins`   | `lsdviztools3.cli.plot_basins`      |
 | `lsdviz3-divide-migration` | `lsdviztools3.cli.plot_divide_migration` |
 | `lsdviz3-cosmo-basins` | `lsdviztools3.cli.plot_cosmo_basins` |
+| `lsdviz3-chi` | `lsdviztools3.cli.plot_chi` |
 | `lsdviz3-chi-cosmo` | `lsdviztools3.cli.plot_chi_cosmo` |
 | `lsdviz3-basemap`  | `lsdviztools3.cli.plot_basemap`     |
 | `lsdviz3-cosmo-compare` | `lsdviztools3.cli.plot_cosmo_compare` |
@@ -222,7 +225,7 @@ save_figure(fig, "demo_output/eigg_hillshade.png", style=style)  # or fig.show()
 For every other plot — channels coloured by log₁₀ k_sn, points sized by drainage
 area, basins, locator basemaps, chi profiles, swath profiles — and the full list
 of options for each (CLI flags and Python keyword arguments), see
-**[`docs/documentation.md`](docs/documentation.md)**.
+the guide in **[`docs/`](docs/index.md)**; [`docs/cli_reference.md`](docs/cli_reference.md) lists every command.
 
 Cosmogenic comparison CLIs:
 
@@ -287,8 +290,8 @@ plots need the optional `charts` extra (`pip install lsdviztools3[charts]`); it 
 already in the pixi env.
 
 For a quick cosmogenic end-to-end example, see
-`examples/cosmo_comparison_workflow.py` and docs section
-`5.9 Cosmo comparison workflows` in `docs/documentation.md`.
+`examples/cosmo_comparison_workflow.py` and 
+[`docs/cosmogenic_nuclides.md`](docs/cosmogenic_nuclides.md).
 
 For chi + basin summaries, the workflow helpers can now:
 - compute basin-median `k_sn` (+ 25th/75th percentile bounds) from

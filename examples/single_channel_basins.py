@@ -59,9 +59,9 @@ def prepare_points() -> None:
     run_lsdtt("lsdtt-channel-extraction",
               {"read_path": str(ROOT), "write_path": str(ROOT),
                "read_fname": f"{STEM}_fill.tif", "write_fname": "nujang",
-               "raster_is_filled": "true", "source_pixels_threshold": 5000,
+               "raster_is_filled": "true", "threshold_contributing_pixels": 5000,
                "write_channel_network_points": "true",
-               "channel_network_points_output_format": "gpkg"},
+               "channel_network_points_write_vector_format": "gpkg"},
               directory=ROOT, lsdtt_dir=LSDTT_DIR)
     pts = gpd.read_file(ROOT / "nujang_channel_network_points.gpkg").to_crs(4326)
     area = [c for c in pts.columns if "area" in c.lower()][0]
@@ -99,7 +99,7 @@ def compute() -> None:
                "write_side_tributary_main_channel": "true",
                "write_side_tributary_outlets": "true",
                "write_side_tributary_basin_outlines": "true",
-               "side_tributary_vector_output_format": "gpkg"},
+               "side_tributary_write_vector_format": "gpkg"},
               directory=ROOT, lsdtt_dir=LSDTT_DIR)
 
 

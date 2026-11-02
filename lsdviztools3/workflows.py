@@ -177,7 +177,7 @@ def lsdtt3_hillshade_channels_basin(
     """Run hillshade + channel + largest-basin extraction on a DEM with lsdtt3.
 
     Steps: ``lsdtt-raster-preprocessing`` (reproject to UTM, mask sea at
-    ``minimum_elevation=0``, write hillshade) -> ``lsdtt-channel-extraction``
+    ``min_elevation=0``, write hillshade) -> ``lsdtt-channel-extraction``
     (channel network lines) -> ``lsdtt-basin-extraction`` (single largest basin
     as a polygon). The channel/basin steps run on the sea-masked DEM.
 
@@ -200,7 +200,7 @@ def lsdtt3_hillshade_channels_basin(
     run_lsdtt(
         "lsdtt-raster-preprocessing",
         dict(base, read_path=str(dem.parent), read_fname=dem.name,
-             minimum_elevation=0.0, write_fill_raster="true", write_hillshade_raster="true"),
+             min_elevation=0.0, write_fill_raster="true", write_hillshade_raster="true"),
         data_path=str(workdir), lsdtt_dir=lsdtt_dir,
     )
     processed_dem = f"{stem}_fill.tif"
@@ -209,15 +209,16 @@ def lsdtt3_hillshade_channels_basin(
         "lsdtt-channel-extraction",
         dict(base, read_path=str(workdir), read_fname=processed_dem,
              raster_is_filled="true",
-             source_pixels_threshold=source_threshold,
+             threshold_contributing_pixels=source_threshold,
              write_channel_network_lines="true"),
         data_path=str(workdir), lsdtt_dir=lsdtt_dir,
     )
 
     run_lsdtt(
         "lsdtt-basin-extraction",
-        dict(base, read_path=str(workdir), read_fname=sea_removed,
-             source_pixels_threshold=source_threshold,
+        dict(base, read_path=str(workdir), read_fname=processed_dem,
+             raster_is_filled="true",
+             threshold_contributing_pixels=source_threshold,
              select_all_basins="true", filter_all_but_largest_basin="true",
              write_basin_outlines="true", write_basin_outlines_as_polygon="true"),
         data_path=str(workdir), lsdtt_dir=lsdtt_dir,
@@ -269,7 +270,7 @@ def lsdtt3_stream_order_basins(
             base,
             read_path=str(dem.parent),
             read_fname=dem.name,
-            minimum_elevation=0.0,
+            min_elevation=0.0,
             write_fill_raster="true",
             write_hillshade_raster="true",
         ),
@@ -281,7 +282,7 @@ def lsdtt3_stream_order_basins(
         "lsdtt-channel-extraction",
         dict(base, read_path=str(workdir), read_fname=processed_dem,
              raster_is_filled="true",
-             source_pixels_threshold=source_threshold,
+             threshold_contributing_pixels=source_threshold,
              write_channel_network_lines="true"),
         data_path=str(workdir), lsdtt_dir=lsdtt_dir,
     )
@@ -292,7 +293,7 @@ def lsdtt3_stream_order_basins(
             base,
             read_path=str(workdir), read_fname=processed_dem,
             raster_is_filled="true",
-            source_pixels_threshold=source_threshold,
+            threshold_contributing_pixels=source_threshold,
             select_all_basins="true",
             filter_basins_by_stream_order="true",
             basins_min_stream_order=stream_order,
@@ -336,7 +337,7 @@ def lsdtt3_chi_analysis(
     """Run chi analysis on a DEM and return the fitted-profile output paths.
 
     Steps: ``lsdtt-raster-preprocessing`` (reproject to UTM, mask sea at
-    ``minimum_elevation=0``) -> ``lsdtt-chi-analysis`` with the N-largest-complete
+    ``min_elevation=0``) -> ``lsdtt-chi-analysis`` with the N-largest-complete
     basin selection. Auto-detected coastal outlets are walked
     ``n_pixels_move_outlet_upstream`` pixels up the main stem so island basins
     clear the sea-nodata fringe and pass the completeness test; the ``N`` largest
@@ -365,7 +366,7 @@ def lsdtt3_chi_analysis(
     run_lsdtt(
         "lsdtt-raster-preprocessing",
         dict(base, read_path=str(dem.parent), read_fname=dem.name,
-             minimum_elevation=0.0),
+             min_elevation=0.0),
         data_path=str(workdir), lsdtt_dir=lsdtt_dir,
     )
     sea_removed = f"{stem}_remove_seas.tif"
@@ -373,15 +374,15 @@ def lsdtt3_chi_analysis(
     run_lsdtt(
         "lsdtt-chi-analysis",
         dict(base, read_path=str(workdir), read_fname=sea_removed,
-             source_pixels_threshold=source_threshold,
+             threshold_contributing_pixels=source_threshold,
              n_largest_basins=n_largest_basins,
              n_pixels_move_outlet_upstream=n_pixels_move_outlet_upstream,
-             print_chi_data_maps="true",
-             chi_data_maps_output_format="flatgeobuf",
+             write_chi_data_maps="true",
+             chi_data_maps_write_vector_format="flatgeobuf",
              fit_chi_networks="true",
              write_fit_tables="true",
              write_chi_fit_segment_lines="true",
-             chi_fit_segment_lines_output_format="flatgeobuf",
+             write_vector_format="flatgeobuf",
              mn_min=m_over_n, mn_max=m_over_n, mn_step=0.02),
         data_path=str(workdir), lsdtt_dir=lsdtt_dir,
     )
@@ -653,7 +654,7 @@ def lsdtt3_swath_profile(
     run_lsdtt(
         "lsdtt-raster-preprocessing",
         dict(base, read_path=str(dem.parent), read_fname=dem.name,
-             minimum_elevation=0.0),
+             min_elevation=0.0),
         data_path=str(workdir), lsdtt_dir=lsdtt_dir,
     )
     sea_removed = f"{stem}_remove_seas.tif"
@@ -662,12 +663,12 @@ def lsdtt3_swath_profile(
     run_lsdtt(
         "lsdtt-chi-analysis",
         dict(base, read_path=str(workdir), read_fname=sea_removed,
-             source_pixels_threshold=source_threshold,
+             threshold_contributing_pixels=source_threshold,
              n_largest_basins=1,
-             print_chi_data_maps="true",
-             chi_data_maps_output_format="flatgeobuf",
+             write_chi_data_maps="true",
+             chi_data_maps_write_vector_format="flatgeobuf",
              write_chi_data_map_lines="true",
-             chi_data_map_lines_output_format="flatgeobuf",
+             write_vector_format="flatgeobuf",
              fit_chi_networks="false"),
         data_path=str(workdir), lsdtt_dir=lsdtt_dir,
     )

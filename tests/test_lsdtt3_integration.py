@@ -94,7 +94,7 @@ def _run_and_check_chi(dem, workdir, *, stem, source_threshold, n_largest):
     assert outputs["fit_segments"].exists()
     assert outputs["segment_lines"].exists()
 
-    # Column contract (docs/documentation.md §5.1.1): every declared column is
+    # Column contract (docs/chi_analysis.md, "Inputs: which lsdtt3 call produces which file"): every declared column is
     # present, in the declared order, in what lsdtt3 actually wrote. Extra
     # trailing columns are tolerated; a rename, removal or reorder on the C++
     # side fails here so the loaders and the docs table get updated with it.
