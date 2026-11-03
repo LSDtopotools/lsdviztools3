@@ -82,8 +82,7 @@ flags (`--cmap` sets the drape colour map; the base stays gray).
 
 **Colour maps.** `--cmap` accepts GMT's own maps (`geo`, `roma`, `batlow`,
 `viridis`, `seis`, …), **matplotlib colour maps** (`cividis`, `Spectral`, `RdBu`,
-`twilight`, … — converted to a GMT CPT on the fly; needs the `charts`/matplotlib
-extra), a single named colour (`black`, `red`) for a solid mask, a `colour,colour`
+`twilight`, … — converted to a GMT CPT on the fly), a single named colour (`black`, `red`) for a solid mask, a `colour,colour`
 list, or a `.cpt` path. Plain GMT cannot read matplotlib maps; this conversion is
 done by `render.colormaps.resolve_cmap`, which all drape calls route through.
 

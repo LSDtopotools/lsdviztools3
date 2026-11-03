@@ -286,8 +286,7 @@ and chained `workflows`.
 Deferred (raise `NotImplementedError`): `charts.plot_profile`,
 `io.grids.make_hillshade`,
 `render.decorations.add_inset`, `io.vector.to_xy`. The matplotlib chart
-plots need the optional `charts` extra (`pip install lsdviztools3[charts]`); it is
-already in the pixi env.
+plots need matplotlib, which is a core dependency, so a plain install has it.
 
 For a quick cosmogenic end-to-end example, see
 `examples/cosmo_comparison_workflow.py` and 

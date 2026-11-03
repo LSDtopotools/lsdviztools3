@@ -31,11 +31,14 @@ dependencies = [
     "pandas",
     "numpy",
     "pillow",  # GIF assembly for transient-run animations (render.animation)
+    "matplotlib",  # x-y charts (charts.*), used by many lsdviz3-* commands, and matplotlib colour maps
 ]
 
 [project.optional-dependencies]
 download = ["requests", "planetary-computer", "pystac-client"]
-charts = ["matplotlib"]
+# Kept so `pip install lsdviztools3[charts]` still works; matplotlib is now a
+# core dependency.
+charts = []
 test = ["pytest"]
 
 [project.scripts]

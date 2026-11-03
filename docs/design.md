@@ -49,8 +49,8 @@ Two engines, chosen by the kind of figure:
   an existing `fig=` so layers (hillshade → drape → channels → basins → points
   → decorations) can be composed onto one figure.
 - **x–y charts: matplotlib.** Every `plot_*` function in `charts/` returns
-  `(fig, ax)` and accepts an existing `ax=`. matplotlib is the optional
-  `charts` extra (`pip install lsdviztools3[charts]`); the pixi environment has it.
+  `(fig, ax)` and accepts an existing `ax=`. matplotlib is a core
+  dependency (the `charts` extra is kept, empty, for old install commands).
 - **Animations** (`render/animation.py`, `lem_pulse.py`, `lem_ci_animation.py`,
   `hillslope_comparison_animation.py`) render frames and assemble a GIF with
   Pillow.
