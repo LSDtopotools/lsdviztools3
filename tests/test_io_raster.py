@@ -112,3 +112,49 @@ def test_exit_cleanup_is_registered_once():
     raster.register_exit_cleanup()
     raster.register_exit_cleanup()
     assert raster._EXIT_HANDLER_REGISTERED
+
+
+def _write_bng_tif(path):
+    """An 8 x 8 raster in British National Grid (EPSG:27700), in Kintyre."""
+    import rasterio
+    from rasterio.transform import from_origin
+
+    with rasterio.open(path, "w", driver="GTiff", height=8, width=8, count=1,
+                       dtype="float32", crs="EPSG:27700",
+                       transform=from_origin(172000, 633800, 10, 10)) as dst:
+        dst.write(np.arange(64, dtype="float32").reshape(8, 8), 1)
+
+
+def test_local_keeps_a_projected_raster_in_its_own_crs(tmp_path):
+    """Plotting is in the CRS the data are in: "local" never warps a projected raster."""
+    p = tmp_path / "bng.tif"
+    _write_bng_tif(p)
+    da = raster.load_raster(p)
+    assert raster.resolve_target_crs(da, "local").to_epsg() == 27700
+    out = raster.to_coordinates(da, "local")
+    assert raster.get_crs(out).to_epsg() == 27700
+    np.testing.assert_array_equal(out.values, da.values)   # no resampling
+
+
+def test_utm_still_reprojects_a_bng_raster(tmp_path):
+    p = tmp_path / "bng.tif"
+    _write_bng_tif(p)
+    assert raster.resolve_target_crs(raster.load_raster(p), "utm").to_epsg() == 32630
+
+
+def test_local_keeps_a_utm_raster(tmp_path):
+    p = tmp_path / "utm.tif"
+    _write_small_tif(p)
+    assert raster.resolve_target_crs(raster.load_raster(p), "local").to_epsg() == 32630
+
+
+def test_to_gmt_grid_hands_gmt_float64(tmp_path):
+    """A float32 grid reaches GMT as float64: GMT shaded a float32 BNG lidar grid
+    with about a tenth of the contrast of the same values as float64."""
+    p = tmp_path / "bng.tif"
+    _write_bng_tif(p)
+    da = raster.load_raster(p)
+    assert da.dtype == np.float32
+    g = raster.to_gmt_grid(da)
+    assert g.dtype == np.float64
+    np.testing.assert_array_equal(g.values, da.values.astype(np.float64))

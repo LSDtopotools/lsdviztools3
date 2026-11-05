@@ -988,8 +988,10 @@ def hillshade_with_vectors(
 
             Layers are drawn in list order (first = bottom).
         savepath: write a PNG here (``None`` = don't save, just return the fig).
-        coordinates: ``"local"`` (native UTM, default) / ``"geographic"`` /
-            explicit CRS. Base and all layers are put in this CRS so they align.
+        coordinates: ``"local"`` (default: the base raster's own CRS when
+            projected, UTM only for a geographic raster) / ``"utm"`` /
+            ``"geographic"`` / explicit CRS. Base and all layers are put in
+            this CRS so they align.
         shade: treat ``base_raster`` as elevation (True) or a ready hillshade.
         base_cmap: colour map for the base (default ``"gray"`` for a clean
             backdrop; pass e.g. ``"geo"`` for a coloured elevation base).

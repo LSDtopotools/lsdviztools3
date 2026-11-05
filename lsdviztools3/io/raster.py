@@ -11,6 +11,7 @@ from __future__ import annotations
 import atexit
 
 import rioxarray  # noqa: F401  (registers the .rio accessor on xarray objects)
+import numpy as np
 import xarray as xr
 from rasterio.crs import CRS
 
@@ -51,7 +52,10 @@ register_exit_cleanup()
 
 #: Accepted aliases for the two coordinate modes.
 _GEOGRAPHIC_ALIASES = {"geographic", "geo", "4326", "epsg:4326", "wgs84"}
-_LOCAL_ALIASES = {"local", "utm", "projected", "native"}
+# "local" keeps the data's own projected CRS (only geographic data are put in
+# an estimated UTM zone); "utm" always means the estimated UTM zone.
+_LOCAL_ALIASES = {"local", "projected", "native"}
+_UTM_ALIASES = {"utm"}
 
 
 def load_raster(path) -> xr.DataArray:
@@ -88,6 +92,16 @@ def to_gmt_grid(da: xr.DataArray) -> xr.DataArray:
         da = da.squeeze("band", drop=True)
     if da.ndim != 2:
         raise ValueError(f"Expected a 2-D grid for PyGMT, got dims {da.dims}.")
+    # Hand GMT float64. Measured (PyGMT 0.18, a 0.5 m lidar clip in
+    # EPSG:27700, drawn in km): the float32 grid, passed to
+    # grdimage(shading=True), renders with about a tenth of the hillshade
+    # contrast (mean neighbouring-pixel difference 1.8 grey levels) of the
+    # same values as float64 (19.3); a deep copy, .load(), attrs and encoding
+    # make no difference. The same clip warped to UTM shaded fully even as
+    # float32, which hid this while every raster was warped to UTM. The cause
+    # inside GMT is not identified; float64 shades fully in both cases.
+    if da.dtype != np.float64:
+        da = da.astype(np.float64)
     return da
 
 
@@ -119,10 +133,13 @@ def resolve_target_crs(da: xr.DataArray, coordinates="local") -> CRS:
 
     Args:
         da: Raster (used to estimate the local UTM zone when needed).
-        coordinates: ``"local"``/``"utm"`` for the native projected CRS (UTM
-            estimated from the raster's extent; a raster in an lsdtt3 oblique
-            frame keeps its frame), ``"geographic"`` for EPSG:4326,
-            or any explicit CRS (EPSG code, proj string, or CRS object).
+        coordinates: ``"local"`` (also ``"native"``, ``"projected"``) for the
+            raster's OWN CRS when it is projected (British National Grid stays
+            British National Grid; an lsdtt3 oblique frame stays in its frame);
+            a geographic raster is put in the UTM zone estimated from its
+            extent. ``"utm"`` for the estimated UTM zone whatever the raster's
+            CRS. ``"geographic"`` for EPSG:4326, or any explicit CRS (EPSG
+            code, proj string, or CRS object).
 
     Returns:
         A ``rasterio.crs.CRS``.
@@ -131,14 +148,17 @@ def resolve_target_crs(da: xr.DataArray, coordinates="local") -> CRS:
         key = coordinates.strip().lower()
         if key in _GEOGRAPHIC_ALIASES:
             return CRS.from_epsg(4326)
-        if key in _LOCAL_ALIASES:
-            # An lsdtt3 oblique frame is the local projected CRS of its own
-            # raster: keep it rather than warping back to UTM.
+        if key in _LOCAL_ALIASES or key in _UTM_ALIASES:
             from ..frames import is_oblique_frame
 
             native = getattr(da.rio, "crs", None)
-            if native is not None and is_oblique_frame(native):
-                return CRS.from_user_input(native)
+            if native is not None:
+                native_crs = CRS.from_user_input(native)
+                # Plot in the CRS the data are in: a projected raster is never
+                # warped for "local" (warping resamples it). An lsdtt3 oblique
+                # frame is kept even for "utm".
+                if is_oblique_frame(native) or (key in _LOCAL_ALIASES and native_crs.is_projected):
+                    return native_crs
             utm = da.rio.estimate_utm_crs()
             if utm is None:
                 raise ValueError(
@@ -153,8 +173,10 @@ def resolve_target_crs(da: xr.DataArray, coordinates="local") -> CRS:
 def to_coordinates(da: xr.DataArray, coordinates="local") -> xr.DataArray:
     """Reproject a raster to the chosen coordinate system if needed.
 
-    ``"local"`` -> native UTM (estimated), ``"geographic"`` -> EPSG:4326, or an
-    explicit CRS. A no-op when the raster is already in the target CRS.
+    ``"local"`` -> the raster's own CRS if projected (a no-op), else the
+    estimated UTM zone; ``"utm"`` -> the estimated UTM zone; ``"geographic"``
+    -> EPSG:4326; or an explicit CRS. A no-op when the raster is already in the
+    target CRS.
 
     Args:
         da: Raster as an ``xarray.DataArray``.

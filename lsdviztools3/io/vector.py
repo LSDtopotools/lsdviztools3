@@ -9,7 +9,9 @@ from __future__ import annotations
 import geopandas as gpd
 
 _GEOGRAPHIC_ALIASES = {"geographic", "geo", "4326", "epsg:4326", "wgs84"}
-_LOCAL_ALIASES = {"local", "utm", "projected", "native"}
+# See io.raster: "local" keeps a projected CRS, "utm" estimates the UTM zone.
+_LOCAL_ALIASES = {"local", "projected", "native"}
+_UTM_ALIASES = {"utm"}
 
 
 def load_vector(path, layer=None) -> gpd.GeoDataFrame:
@@ -51,8 +53,9 @@ def to_coordinates(gdf: gpd.GeoDataFrame, coordinates="local") -> gpd.GeoDataFra
     """Reproject a ``GeoDataFrame`` to the chosen coordinate system if needed.
 
     Mirrors ``io.raster.to_coordinates`` so vector overlays land in the same CRS
-    as the base raster: ``"local"`` -> native UTM (estimated; a vector in an
-    lsdtt3 oblique frame stays in it), ``"geographic"`` -> EPSG:4326, or an
+    as the base raster: ``"local"`` -> the vector's own CRS if projected
+    (estimated UTM only for geographic data; an lsdtt3 oblique frame stays in
+    it), ``"utm"`` -> the estimated UTM zone, ``"geographic"`` -> EPSG:4326, or an
     explicit CRS. Over a frame raster, pass the raster's CRS so vectors in any
     CRS land on it. A no-op when already in the target CRS.
     """
@@ -66,11 +69,15 @@ def to_coordinates(gdf: gpd.GeoDataFrame, coordinates="local") -> gpd.GeoDataFra
         key = coordinates.strip().lower()
         if key in _GEOGRAPHIC_ALIASES:
             target = "EPSG:4326"
-        elif key in _LOCAL_ALIASES:
+        elif key in _LOCAL_ALIASES or key in _UTM_ALIASES:
             from ..frames import is_oblique_frame
 
-            # Vectors made in an lsdtt3 oblique frame stay in it.
-            target = gdf.crs if is_oblique_frame(gdf.crs) else gdf.estimate_utm_crs()
+            # Vectors made in an lsdtt3 oblique frame stay in it; for "local" a
+            # projected vector stays in its own CRS.
+            if is_oblique_frame(gdf.crs) or (key in _LOCAL_ALIASES and gdf.crs.is_projected):
+                target = gdf.crs
+            else:
+                target = gdf.estimate_utm_crs()
         else:
             target = coordinates
     else:

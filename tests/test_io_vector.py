@@ -39,3 +39,15 @@ def test_to_coordinates_missing_crs_raises():
     gdf = gpd.GeoDataFrame({"id": [1]}, geometry=[Point(0, 0)])
     with pytest.raises(ValueError, match="no CRS metadata"):
         vector.to_coordinates(gdf, "geographic")
+
+
+def test_local_keeps_a_projected_vector_in_its_own_crs():
+    """A British National Grid layer stays in EPSG:27700 for "local"; "utm" moves it."""
+    import geopandas as gpd
+    from shapely.geometry import LineString
+    from lsdviztools3.io import vector
+
+    gdf = gpd.GeoDataFrame(geometry=[LineString([(172000, 633000), (172100, 633100)])],
+                           crs="EPSG:27700")
+    assert vector.to_coordinates(gdf, "local").crs.to_epsg() == 27700
+    assert vector.to_coordinates(gdf, "utm").crs.to_epsg() == 32630
