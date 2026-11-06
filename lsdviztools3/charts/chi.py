@@ -133,6 +133,42 @@ def _segment_lines(data: pd.DataFrame, x_shift: float):
     ]
 
 
+def stack_offsets(
+    data: pd.DataFrame,
+    basins: Optional[Sequence[int]] = None,
+    x_offset: Optional[float] = None,
+) -> dict:
+    """The chi shift of each basin on the stacked plot.
+
+    A basin's x on the stack is ``chi + shift``: each basin starts at zero and
+    is placed after the previous one plus ``x_offset`` (default 20% of the
+    widest basin's chi span). :func:`plot_chi_stacked` uses exactly these, so
+    other layers (e.g. knickpoints) can be placed on the same axis.
+
+    Returns:
+        ``{basin_index: shift}`` for the basins present.
+    """
+    segments = _is_segments(data)
+    if basins is None:
+        basins = sorted(data["basin_index"].unique())
+    bounds = {}
+    for b in basins:
+        rows = data[data["basin_index"] == b]
+        if not rows.empty:
+            bounds[b] = _basin_chi_bounds(rows, segments)
+    if x_offset is None:
+        widths = [hi - lo for lo, hi in bounds.values()]
+        x_offset = 0.2 * max(widths) if widths else 0.0
+    out, cursor = {}, 0.0
+    for b in basins:
+        if b not in bounds:
+            continue
+        lo, hi = bounds[b]
+        out[b] = -lo + cursor
+        cursor += (hi - lo) + x_offset
+    return out
+
+
 def plot_chi_profile(
     data: pd.DataFrame,
     *,
@@ -317,16 +353,7 @@ def plot_chi_stacked(
     lo, hi, extend = colour_limits(all_c, vmin, vmax, log_scale=log_color)
     norm = colors.Normalize(vmin=lo, vmax=hi)
 
-    # Default offset: a fraction of the widest basin's chi span.
-    if x_offset is None:
-        widths = []
-        for b in basins:
-            rows = data[data["basin_index"] == b]
-            if rows.empty:
-                continue
-            lo, hi = _basin_chi_bounds(rows, segments)
-            widths.append(hi - lo)
-        x_offset = 0.2 * max(widths) if widths else 0.0
+    shifts = stack_offsets(data, basins, x_offset)
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(max(6, 1.6 * len(basins)), 4))
@@ -335,14 +362,14 @@ def plot_chi_stacked(
 
     mappable = None
     all_lines, all_cvals = [], []
-    cursor = 0.0
     for b in basins:
         rows = data[data["basin_index"] == b]
         if rows.empty:
             continue
         chi0, chi_max = _basin_chi_bounds(rows, segments)
         width = chi_max - chi0
-        shift = -chi0 + cursor
+        shift = shifts[b]
+        cursor = shift + chi0
         rows, ghost = _split_removed(rows, removed, show_removed)
         if segments and len(ghost):
             ax.add_collection(LineCollection(_segment_lines(ghost, shift), colors=GHOST_COLOUR,
@@ -377,8 +404,6 @@ def plot_chi_stacked(
         if label_basins:
             ax.text(cursor + 0.05 * (width or 1.0), zmin, str(int(b)),
                     fontsize=8, va="bottom", ha="left")
-
-        cursor += width + x_offset
 
     if segments and all_lines:
         lc = LineCollection(all_lines, cmap=cmap, norm=norm, linewidths=1.2)

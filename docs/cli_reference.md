@@ -33,6 +33,7 @@ See [Chi analysis](chi_analysis.md).
 | Command | Purpose | Key flags |
 |---------|---------|-----------|
 | `lsdviz3-chi` | an lsdtt-chi-analysis run (`fit_chi_networks: true`): k_sn map of the fitted segments over a hillshade, stacked chi-elevation plot, optional per-basin profiles | `--data-dir --prefix --m-over-n --out-dir [--dem --out-prefix --per-basin --no-stacked --cmap --ksn-vmin --ksn-vmax --remove-ksn-above --min-tributary-area-m2 --min-tributary-area-fraction --top-tributaries --keep-descendants --show-removed --coordinates --dpi]` |
+| `lsdviz3-knickpoints` | knickpoints of an lsdtt-chi-analysis fit: distribution of k_sn changes with suggested thresholds, and the major knickpoints on the profile, along chi and on a map | `--data-dir --prefix --m-over-n --out-dir [--out-prefix --dem --measure --threshold --direction --include-junctions --along --basin --ksn-vmin --ksn-vmax --cmap --coordinates --dpi]` + tributary selection flags |
 
 ## Channel networks
 

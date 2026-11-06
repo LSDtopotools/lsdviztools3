@@ -120,6 +120,71 @@ fig, ax = plot_chi_stacked(segments, removed=removed, show_removed="ghost")
 `render_chi_ksn_map` and `render_chi_profiles`, and `render_chi_removed_map`
 draws the map. Selection only chooses what is drawn: the chi fit is not
 redone without the removed tributaries.
+## Knickpoints (`lsdviz3-knickpoints`)
+
+A current lsdtt3 chi run also writes `<prefix>_chi_knickpoints_mn_*.csv`
+(`write_chi_knickpoint_table`, on by default). It has one row per node where
+two fitted k_sn segments meet, with:
+- `delta_ksn`: upstream minus downstream k_sn, positive where the channel
+  steepens upstream;
+- `log_ratio_ksn`: log₁₀ of their ratio;
+- `at_junction`: 1 where a tributary's first segment meets its parent, at
+  its mouth.
+
+It also writes `<prefix>_chi_knickpoint_thresholds_mn_*.csv`, suggested
+thresholds for a "major" knickpoint over the within-tributary rows: for
+|Δk_sn| and |log ratio|, the 90th and 95th percentiles, the median plus three
+times the MAD (scaled by 1.4826) and Otsu's two-class split. lsdtt3 computes
+all of these; this command draws them and applies the threshold you choose.
+
+```bash
+pixi run lsdviz3-knickpoints --data-dir work/eigg --prefix eigg --m-over-n 0.45 \
+  --out-dir demo_output/knickpoints --dem work/eigg/eigg_remove_seas.tif \
+  --threshold otsu
+```
+
+| Flag | Meaning |
+|---|---|
+| `--measure delta\|log_ratio` | The change in k_sn: the difference (default) or the log ratio. |
+| `--threshold` | A value of \|measure\|, or a suggestion from the thresholds table: `p90`, `p95` (default), `median_plus_3mad`, `otsu`. |
+| `--direction both\|steepening\|shallowing` | Count changes in both directions (default), or only where the channel steepens, or shallows, upstream. |
+| `--include-junctions` | Also count changes at tributary mouths (left out by default). |
+| `--along chi\|chi_normalised\|elevation` | x axis of the along-chi plot. |
+| `--basin N` | One basin's profile instead of the stacked plot. |
+| `--ksn-vmin`, `--ksn-vmax`, `--cmap` | The k_sn colours of the profile and map, as `lsdviz3-chi`. |
+| tributary flags | `--remove-ksn-above`, `--min-tributary-area-m2`, `--min-tributary-area-fraction`, `--top-tributaries`, `--keep-descendants`, `--show-removed` as in [Removing tributaries](#removing-tributaries). The knickpoints of removed tributaries are dropped. |
+
+It writes:
+
+- `<prefix>_knickpoint_distribution.png`. Left: a histogram of the signed
+  change, with counts on a log axis so the tails show. Right: the absolute
+  changes ranked largest first, where a break in slope can be picked by eye.
+  Both carry every suggested threshold (with how many knickpoints lie
+  beyond it) and the chosen one in black. To choose by hand, read a value
+  off the ranked curve and pass it as `--threshold`.
+- `<prefix>_knickpoint_profile.png`: the chi profile (stacked, or one
+  basin) with the major knickpoints. An open upward triangle marks where the
+  channel steepens upstream, a filled downward one where it shallows; the
+  size scales with the change.
+- `<prefix>_knickpoints_along_chi.png`: a histogram of the major
+  knickpoints along chi over that of all segment boundaries, and one row per
+  basin. Knickpoints at the same chi across tributaries or basins are what a
+  wave of incision moving upstream would leave.
+- `<prefix>_knickpoint_map.png` (with `--dem`): the same symbols on the
+  hillshade over the k_sn network.
+- `<prefix>_major_knickpoints.csv`: the selected rows, with the measure,
+  threshold and direction used.
+
+A steep segment between two gentle ones gives a pair: a steepening knickpoint
+at its foot and a shallowing one at its top. A staircase of such pairs along
+one channel often marks a single knickzone fitted in pieces.
+
+In Python: `select_major_knickpoints`, `plot_knickpoint_distribution`,
+`plot_knickpoints_on_profile`, `plot_knickpoints_along_chi` and
+`render_knickpoint_map` in `lsdviztools3.charts.knickpoints`;
+`load_chi_knickpoints` and `load_chi_knickpoint_thresholds` in
+`lsdviztools3.io.chi`.
+
 ## Channel network coloured by log₁₀ k_sn
 
 The chi network with per-segment `k_sn` is in
