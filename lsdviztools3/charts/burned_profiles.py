@@ -1,7 +1,7 @@
 """Long profiles of channels burned by lsdtt3 ``lsdtt-stream-burning``.
 
 Reads ``<write_fname>_burned_profiles.csv`` from a run with
-``stream_burn_mode: burn_to_corridor`` (lsdtt3 river-lines plan, VT2): one row
+``stream_burn_mode: burn_to_corridor``: one row
 per channel cell, downstream order within each path (a chain of reaches from
 its head to where it joins another path or leaves the network), with
 

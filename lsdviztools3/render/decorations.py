@@ -64,6 +64,7 @@ def add_colourbar(
     position: Optional[str] = None,
     frame=None,
     cmap=True,
+    extend: str = "neither",
 ):
     """Add a colourbar for the active CPT.
 
@@ -80,12 +81,18 @@ def add_colourbar(
         position: Explicit GMT ``-D`` position string; overrides ``placement``.
         frame: Explicit colourbar frame; overrides ``label`` when given.
         cmap: CPT to use (``True`` = the active one).
+        extend: ``"neither"`` (default), ``"min"``, ``"max"`` or ``"both"``:
+            draw an extend triangle at the end(s) where data lie beyond the
+            colour range (GMT ``+e``). Set the CPT's background/foreground to
+            its end colours (``makecpt(background=True)``) to match.
 
     Returns:
         The same ``pygmt.Figure``.
     """
     if position is None:
         position = colourbar_position(placement)
+    from ..colour_limits import gmt_extend
+    position = position + gmt_extend(extend)
     if frame is None:
         frame = f'x+l{label}' if label else "af"
     fig.colorbar(cmap=cmap, position=position, frame=frame)

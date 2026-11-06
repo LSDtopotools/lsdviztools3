@@ -25,10 +25,101 @@ pixi run lsdviz3-chi --data-dir work/eigg --prefix eigg --m-over-n 0.45 \
 | `--per-basin` | Also write one chi–elevation profile per basin. |
 | `--no-stacked` | Skip the stacked plot. |
 | `--cmap`, `--coordinates`, `--dpi` | k_sn colour map (default `viridis`), map coordinates, profile DPI. |
+| `--ksn-vmin`, `--ksn-vmax` | The k_sn colour range, **in k_sn units** (see below). Default: the data's range. |
 
 It writes `<prefix>_ksn_map.png`, `<prefix>_chi_stacked.png` and
 `<prefix>_chi_profile_basin<N>.png`. The sections below describe the plots
 and the Python functions behind them.
+
+### Setting the k_sn colour range
+
+k_sn is coloured on a log₁₀ scale, so a few very steep links (a channel
+routed over a dam, a DEM artefact) stretch the scale and wash out the rest of
+the network. `--ksn-vmin` and `--ksn-vmax` set the range in **k_sn**, not in
+log₁₀ k_sn. `--ksn-vmax 400` puts the top of the scale at log₁₀ 400 = 2.6.
+
+- Links outside the range are drawn in the end colours, not dropped.
+- The colourbar shows an arrow (triangle) at each end that data run past.
+- The same range is used for the map, the stacked plot and every per-basin
+  profile, so per-basin profiles share one colour scale and can be compared.
+- Both limits must be above 0.
+- Check the spread of the run's k_sn first. The fit-segments table
+  `*_chi_fit_segments_mn_*.csv` has one `k_sn` per segment; its 95th or
+  99th percentile is a reasonable `--ksn-vmax`.
+
+```bash
+pixi run lsdviz3-chi --data-dir work/eigg --prefix eigg --m-over-n 0.45 \
+  --dem work/eigg/eigg_remove_seas.tif --out-dir demo_output/chi \
+  --ksn-vmin 10 --ksn-vmax 400
+```
+
+In Python the same limits are `vmin=` / `vmax=` on `plot_chi_profile`,
+`plot_chi_stacked` and `render_channels`. On the workflows
+`render_chi_ksn_map`, `render_chi_ksn_relief3d` and `render_chi_profiles`
+they are `ksn_vmin=` / `ksn_vmax=`. All of them take k_sn units.
+
+### Removing tributaries
+
+A run made with a current lsdtt3 also writes `<prefix>_chi_tributaries_mn_*.csv`
+(`write_chi_tributary_table`, on by default). It has one row per tributary of
+the fit: a branch from its head down to where it joins its parent. Each row
+gives:
+- its `source_key` (the chi data maps' channel key, also on every fit
+  segment);
+- the drainage area just before it joins (`junction_drainage_area_m2`), and
+  that area as a fraction of the basin;
+- its rank by that area within the basin;
+- its parent, and how many tributaries drain into it;
+- its steepest segment's k_sn (`ksn_max`).
+
+`lsdviz3-chi` uses it to leave tributaries out of the plots. Main stems are
+never removed:
+
+| Flag | Removes a tributary when |
+|---|---|
+| `--remove-ksn-above VALUE` | any of its segments is steeper than VALUE (k_sn). `q3_plus_3iqr` uses the outlier value lsdtt3 suggests in `<prefix>_chi_knickpoint_thresholds_mn_*.csv`. For links routed over a dam onto a steep face. |
+| `--min-tributary-area-m2 A` | its drainage area where it joins is below A. |
+| `--min-tributary-area-fraction F` | that area is below F of its basin's. |
+| `--top-tributaries N` | it is not among the N largest tributaries of its basin. |
+| `--keep-descendants` | (turns off) removing the tributaries that drain into a removed one, which is the default. |
+| `--show-removed ghost\|hide` | how removed tributaries appear on the profiles: thin and light grey (default), or not at all. |
+
+```bash
+pixi run lsdviz3-chi --data-dir work/eigg --prefix eigg --m-over-n 0.45 \
+  --dem work/eigg/eigg_remove_seas.tif --out-dir demo_output/chi \
+  --remove-ksn-above q3_plus_3iqr --min-tributary-area-fraction 0.01
+```
+
+With any of these flags the command also writes:
+- `<prefix>_removed_tributaries.csv`: the removed rows of the tributary
+  table, with a `reason` column (`ksn_outlier`, `small_area`,
+  `small_fraction`, `rank` or `drains_to_removed`; the first rule that
+  applied, in that order);
+- with `--dem`, `<prefix>_removed_tributaries_map.png`: the kept network
+  coloured by k_sn, each removed tributary dashed in its reason's style,
+  junctions of removed tributaries as open circles, and a legend with counts.
+
+The k_sn map and the profiles then show only the kept tributaries. Their
+colour range is taken from the kept ones, so removing a few dam-routed links
+also stops them stretching the scale. A steep step on a main stem (a dam on the
+trunk) is not removed: use `--ksn-vmax` for that.
+
+In Python:
+
+```python
+from lsdviztools3.io.chi import load_chi_fit_segments, load_chi_tributaries, select_tributaries
+from lsdviztools3.charts import plot_chi_stacked
+
+segments = load_chi_fit_segments("eigg_chi_fit_segments_mn_0p450.csv")
+kept, removed = select_tributaries(load_chi_tributaries("eigg_chi_tributaries_mn_0p450.csv"),
+                                   ksn_max=800, min_area_fraction=0.01)
+fig, ax = plot_chi_stacked(segments, removed=removed, show_removed="ghost")
+```
+
+`removed=` is accepted by `plot_chi_profile`, `plot_chi_stacked`,
+`render_chi_ksn_map` and `render_chi_profiles`, and `render_chi_removed_map`
+draws the map. Selection only chooses what is drawn: the chi fit is not
+redone without the removed tributaries.
 ## Channel network coloured by log₁₀ k_sn
 
 The chi network with per-segment `k_sn` is in

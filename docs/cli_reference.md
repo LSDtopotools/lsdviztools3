@@ -32,7 +32,7 @@ See [Chi analysis](chi_analysis.md).
 
 | Command | Purpose | Key flags |
 |---------|---------|-----------|
-| `lsdviz3-chi` | an lsdtt-chi-analysis run (`fit_chi_networks: true`): k_sn map of the fitted segments over a hillshade, stacked chi-elevation plot, optional per-basin profiles | `--data-dir --prefix --m-over-n --out-dir [--dem --out-prefix --per-basin --no-stacked --cmap --coordinates --dpi]` |
+| `lsdviz3-chi` | an lsdtt-chi-analysis run (`fit_chi_networks: true`): k_sn map of the fitted segments over a hillshade, stacked chi-elevation plot, optional per-basin profiles | `--data-dir --prefix --m-over-n --out-dir [--dem --out-prefix --per-basin --no-stacked --cmap --ksn-vmin --ksn-vmax --remove-ksn-above --min-tributary-area-m2 --min-tributary-area-fraction --top-tributaries --keep-descendants --show-removed --coordinates --dpi]` |
 
 ## Channel networks
 

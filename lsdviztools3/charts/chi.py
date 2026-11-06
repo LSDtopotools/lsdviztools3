@@ -31,6 +31,22 @@ from typing import Optional, Sequence
 import numpy as np
 import pandas as pd
 
+from ..colour_limits import colour_limits
+
+GHOST_COLOUR = "0.78"   # removed tributaries, drawn under the kept ones
+
+
+def _split_removed(rows: pd.DataFrame, removed, show_removed: str):
+    """(kept rows, removed rows to ghost) for one frame; see plot_chi_profile."""
+    if show_removed not in ("hide", "ghost"):
+        raise ValueError(f"show_removed must be 'hide' or 'ghost', got {show_removed!r}")
+    if removed is None or len(removed) == 0:
+        return rows, rows.iloc[0:0]
+    from ..io.chi import removed_mask
+    m = removed_mask(rows, removed)
+    gone = rows[m] if show_removed == "ghost" else rows.iloc[0:0]
+    return rows[~m], gone
+
 _MPL_MSG = (
     "Chi plotting needs matplotlib. Install the optional 'charts' extra, "
     "e.g. `pip install lsdviztools3[charts]` or `pip install matplotlib`."
@@ -131,6 +147,10 @@ def plot_chi_profile(
     observed_size: float = 2.0,
     ax=None,
     colorbar: bool = True,
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
+    removed: Optional[pd.DataFrame] = None,
+    show_removed: str = "ghost",
 ):
     """Plot a single basin's chi-elevation profile.
 
@@ -155,6 +175,16 @@ def plot_chi_profile(
         observed_size: Marker size for the observed overlay.
         ax: Existing matplotlib ``Axes`` or ``None`` for a new one.
         colorbar: Attach a colourbar.
+        vmin, vmax: Colour-scale limits in DATA units (k_sn, not log10 k_sn),
+            ``None`` for the basin's own range. Values beyond them take the end
+            colours and the colourbar shows an extend arrow. Fixed limits make
+            separate per-basin plots comparable.
+        removed: Tributaries to leave out (the ``removed`` frame of
+            :func:`lsdviztools3.io.chi.select_tributaries`, or any frame with
+            ``basin_index`` and ``branch_id``). The colour range is taken from
+            the kept tributaries only.
+        show_removed: ``"ghost"`` (default) draws removed tributaries thin and
+            light grey under the kept ones; ``"hide"`` leaves them out.
 
     Returns:
         ``(fig, ax)``.
@@ -178,11 +208,17 @@ def plot_chi_profile(
                           color=observed_color, size=observed_size)
 
     mappable = None
+    rows, ghost = _split_removed(rows, removed, show_removed)
+    cvals = _colour_values(rows[color_by].to_numpy(), log_color)
+    lo, hi, extend = colour_limits(cvals, vmin, vmax, log_scale=log_color)
+    norm = colors.Normalize(vmin=lo, vmax=hi)
+    if segments and len(ghost):
+        ax.add_collection(LineCollection(_segment_lines(ghost, 0.0), colors=GHOST_COLOUR,
+                                         linewidths=0.7, zorder=0))
+    elif len(ghost):
+        ax.scatter(ghost["chi"], ghost["observed_elevation"], c=GHOST_COLOUR,
+                   s=point_size * 0.6, edgecolors="none", zorder=0)
     if segments:
-        cvals = _colour_values(rows[color_by].to_numpy(), log_color)
-        finite = cvals[np.isfinite(cvals)]
-        norm = colors.Normalize(*(float(finite.min()), float(finite.max()))
-                                if finite.size else (0.0, 1.0))
         lc = LineCollection(_segment_lines(rows, 0.0), cmap=cmap, norm=norm,
                             linewidths=1.4)
         lc.set_array(cvals)
@@ -190,10 +226,9 @@ def plot_chi_profile(
         ax.autoscale()
         mappable = lc
     else:
-        cvals = _colour_values(rows[color_by].to_numpy(), log_color)
         mappable = ax.scatter(
             rows["chi"], rows["observed_elevation"],
-            c=cvals, cmap=cmap, s=point_size, edgecolors="none", zorder=2,
+            c=cvals, cmap=cmap, norm=norm, s=point_size, edgecolors="none", zorder=2,
         )
         if show_fit and "fitted_elevation" in rows.columns:
             for _, branch in rows.groupby("branch_id"):
@@ -205,7 +240,7 @@ def plot_chi_profile(
     ax.set_ylabel("Elevation (m)")
     ax.set_title(f"Basin {basin}")
     if colorbar and mappable is not None:
-        fig.colorbar(mappable, ax=ax, label=_colour_label(color_by, log_color))
+        fig.colorbar(mappable, ax=ax, label=_colour_label(color_by, log_color), extend=extend)
     return fig, ax
 
 
@@ -225,6 +260,10 @@ def plot_chi_stacked(
     label_basins: bool = True,
     ax=None,
     colorbar: bool = True,
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
+    removed: Optional[pd.DataFrame] = None,
+    show_removed: str = "ghost",
 ):
     """Stacked chi-elevation plot: basins normalised to chi=0 and offset right.
 
@@ -253,6 +292,12 @@ def plot_chi_stacked(
         label_basins: Annotate each stack with its ``basin_index``.
         ax: Existing matplotlib ``Axes`` or ``None``.
         colorbar: Attach a colourbar.
+        vmin, vmax: Colour-scale limits in DATA units (k_sn, not log10 k_sn),
+            ``None`` for the range over the selected basins. Values beyond them
+            take the end colours and the colourbar shows an extend arrow.
+        removed, show_removed: Tributaries to leave out, and whether to ghost
+            them; as :func:`plot_chi_profile`. Basin positions on the stack do
+            not change.
 
     Returns:
         ``(fig, ax)``.
@@ -267,10 +312,10 @@ def plot_chi_stacked(
 
     # Global colour normalisation across all selected basins.
     sel = data[data["basin_index"].isin(basins)]
+    sel, _ = _split_removed(sel, removed, show_removed)
     all_c = _colour_values(sel[color_by].to_numpy(), log_color)
-    finite = all_c[np.isfinite(all_c)]
-    vmin, vmax = (float(finite.min()), float(finite.max())) if finite.size else (0.0, 1.0)
-    norm = colors.Normalize(vmin=vmin, vmax=vmax)
+    lo, hi, extend = colour_limits(all_c, vmin, vmax, log_scale=log_color)
+    norm = colors.Normalize(vmin=lo, vmax=hi)
 
     # Default offset: a fraction of the widest basin's chi span.
     if x_offset is None:
@@ -298,6 +343,13 @@ def plot_chi_stacked(
         chi0, chi_max = _basin_chi_bounds(rows, segments)
         width = chi_max - chi0
         shift = -chi0 + cursor
+        rows, ghost = _split_removed(rows, removed, show_removed)
+        if segments and len(ghost):
+            ax.add_collection(LineCollection(_segment_lines(ghost, shift), colors=GHOST_COLOUR,
+                                             linewidths=0.6, zorder=0))
+        elif len(ghost):
+            ax.scatter(ghost["chi"].to_numpy() + shift, ghost["observed_elevation"],
+                       c=GHOST_COLOUR, s=point_size * 0.6, edgecolors="none", zorder=0)
 
         if observed is not None:
             _scatter_observed(ax, observed, b, shift,
@@ -338,7 +390,7 @@ def plot_chi_stacked(
     ax.set_xlabel(r"$\chi$ (m, offset per basin)")
     ax.set_ylabel("Elevation (m)")
     if colorbar and mappable is not None:
-        fig.colorbar(mappable, ax=ax, label=_colour_label(color_by, log_color))
+        fig.colorbar(mappable, ax=ax, label=_colour_label(color_by, log_color), extend=extend)
     return fig, ax
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ..workflows import render_chi_ksn_map, render_chi_profiles
+from ..workflows import render_chi_ksn_map, render_chi_profiles, render_chi_removed_map
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,6 +38,31 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Also write one chi-elevation profile per basin.")
     parser.add_argument("--no-stacked", action="store_true", help="Skip the stacked chi plot.")
     parser.add_argument("--cmap", default="viridis", help="Colour map for k_sn (default viridis).")
+    parser.add_argument("--ksn-vmin", type=float, default=None,
+                        help="Lower end of the k_sn colour scale, in k_sn units (the scale is "
+                             "log10 k_sn; default the data's minimum). Lower values take the end colour.")
+    parser.add_argument("--ksn-vmax", type=float, default=None,
+                        help="Upper end of the k_sn colour scale, in k_sn units (default the data's "
+                             "maximum). Higher values take the end colour, with an arrow on the colourbar.")
+    sel = parser.add_argument_group(
+        "tributary selection",
+        "Remove tributaries (branches of the chi fit, head to junction) from the plots, using "
+        "the run's <prefix>_chi_tributaries_mn_*.csv (write_chi_tributary_table). Main stems are "
+        "never removed. Writes <out-prefix>_removed_tributaries.csv, and with --dem "
+        "<out-prefix>_removed_tributaries_map.png.")
+    sel.add_argument("--remove-ksn-above", default=None,
+                     help="Remove tributaries with any segment k_sn above this: a value, or "
+                          "q3_plus_3iqr (the outlier value lsdtt3 suggests).")
+    sel.add_argument("--min-tributary-area-m2", type=float, default=None,
+                     help="Remove tributaries whose drainage area just before they join is below this (m^2).")
+    sel.add_argument("--min-tributary-area-fraction", type=float, default=None,
+                     help="Remove tributaries whose area where they join is below this fraction of the basin's.")
+    sel.add_argument("--top-tributaries", type=int, default=None,
+                     help="Keep only this many tributaries per basin, the largest by area where they join.")
+    sel.add_argument("--keep-descendants", action="store_true",
+                     help="Keep tributaries that drain into a removed one (default: remove them too).")
+    sel.add_argument("--show-removed", choices=["ghost", "hide"], default="ghost",
+                     help="Draw removed tributaries thin and grey on the profiles (ghost, default) or not at all.")
     parser.add_argument("--coordinates", default="local",
                         help="Map coordinates: local/projected (default) or geographic.")
     parser.add_argument("--dpi", type=int, default=300, help="DPI of the profile plots (default 300).")
@@ -59,6 +84,12 @@ def main(argv=None) -> int:
         Process exit code.
     """
     args = build_parser().parse_args(argv)
+    for name in ("ksn_vmin", "ksn_vmax"):
+        v = getattr(args, name)
+        if v is not None and not v > 0:
+            raise SystemExit(f"--{name.replace('_', '-')} must be > 0 (k_sn, on a log colour scale).")
+    if args.ksn_vmin is not None and args.ksn_vmax is not None and not args.ksn_vmin < args.ksn_vmax:
+        raise SystemExit("--ksn-vmin must be below --ksn-vmax.")
     data_dir = Path(args.data_dir)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -75,6 +106,39 @@ def main(argv=None) -> int:
             raise SystemExit(f"{outputs[key]} not found: was the chi run made with "
                              f"fit_chi_networks: true and write_fit_tables: true at m/n {mn}?")
 
+    removed = None
+    filters = (args.remove_ksn_above, args.min_tributary_area_m2,
+               args.min_tributary_area_fraction, args.top_tributaries)
+    if any(v is not None for v in filters):
+        from ..io.chi import load_chi_knickpoint_thresholds, load_chi_tributaries, select_tributaries
+        tpath = Path(f"{base}_tributaries_mn_{mn}.csv")
+        if not tpath.exists():
+            raise SystemExit(f"{tpath} not found: tributary selection needs a chi run with "
+                             "write_chi_tributary_table: true (lsdtt3 with tributary tables).")
+        ksn_max = args.remove_ksn_above
+        thresholds = None
+        if ksn_max is not None:
+            try:
+                ksn_max = float(ksn_max)
+            except ValueError:
+                thpath = Path(f"{base}_knickpoint_thresholds_mn_{mn}.csv")
+                if not thpath.exists():
+                    raise SystemExit(f"{thpath} not found (needed for --remove-ksn-above {ksn_max}).")
+                thresholds = load_chi_knickpoint_thresholds(thpath)
+        try:
+            _, removed = select_tributaries(
+                load_chi_tributaries(tpath), ksn_max=ksn_max,
+                min_junction_area_m2=args.min_tributary_area_m2,
+                min_area_fraction=args.min_tributary_area_fraction,
+                top_n=args.top_tributaries, remove_descendants=not args.keep_descendants,
+                thresholds=thresholds)
+        except ValueError as exc:
+            raise SystemExit(str(exc))
+        rpath = out_dir / f"{stem}_removed_tributaries.csv"
+        removed.to_csv(rpath, index=False)
+        counts = removed["reason"].value_counts().to_dict()
+        print(f"removed {len(removed)} tributaries {counts} -> {rpath}")
+
     written = []
     if args.dem:
         if not outputs["segment_lines"].exists():
@@ -82,10 +146,19 @@ def main(argv=None) -> int:
                              f"write_chi_fit_segment_lines: true in the chi run")
         written.append(render_chi_ksn_map(
             args.dem, outputs["segment_lines"], out_dir / f"{stem}_ksn_map.png",
-            coordinates=args.coordinates, cmap=args.cmap))
+            coordinates=args.coordinates, cmap=args.cmap,
+            ksn_vmin=args.ksn_vmin, ksn_vmax=args.ksn_vmax, removed=removed))
+        if removed is not None:
+            written.append(render_chi_removed_map(
+                args.dem, outputs["segment_lines"], removed,
+                out_dir / f"{stem}_removed_tributaries_map.png",
+                coordinates=args.coordinates, cmap=args.cmap,
+                ksn_vmin=args.ksn_vmin, ksn_vmax=args.ksn_vmax))
     written += render_chi_profiles(
         outputs, out_dir, stem=f"{stem}_chi", dpi=args.dpi,
-        stacked=not args.no_stacked, per_basin=args.per_basin)
+        stacked=not args.no_stacked, per_basin=args.per_basin,
+        ksn_vmin=args.ksn_vmin, ksn_vmax=args.ksn_vmax,
+        removed=removed, show_removed=args.show_removed)
     for path in written:
         print(path)
     return 0

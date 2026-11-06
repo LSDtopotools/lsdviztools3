@@ -831,7 +831,7 @@ CHI_NODE_HEADER = (
     "basin_index", "outlet_flat", "flat", "receiver_flat", "chi",
     "observed_elevation", "fitted_elevation", "residual_elevation",
     "abs_residual_elevation", "branch_id", "is_main_stem", "is_source",
-    "is_junction", "is_split_point",
+    "is_junction", "is_split_point", "source_key",
 )
 
 #: Header of ``*_chi_fit_segments_mn_*.csv``, in the order lsdtt3 writes it.
@@ -839,7 +839,7 @@ CHI_SEGMENT_HEADER = (
     "basin_index", "outlet_flat", "segment_id", "parent_segment_id",
     "branch_id", "downstream_flat", "upstream_flat", "downstream_chi",
     "upstream_chi", "downstream_elevation", "upstream_elevation", "k_sn",
-    "max_abs_residual", "n_nodes",
+    "max_abs_residual", "n_nodes", "source_key",
 )
 
 

@@ -406,6 +406,10 @@ def render_chi_profiles(
     stacked: bool = True,
     per_basin: bool = True,
     basins: Optional[Sequence[int]] = None,
+    ksn_vmin: Optional[float] = None,
+    ksn_vmax: Optional[float] = None,
+    removed=None,
+    show_removed: str = "ghost",
 ):
     """Plot fitted chi profiles from :func:`lsdtt3_chi_analysis` outputs.
 
@@ -422,6 +426,12 @@ def render_chi_profiles(
         stacked: Write the stacked chi plot.
         per_basin: Write one profile PNG per basin.
         basins: Optional basin list to render. Defaults to all in the fit table.
+        ksn_vmin, ksn_vmax: Colour-scale limits in k_sn units (the scale is
+            log10 k_sn), applied to every plot so per-basin profiles share one
+            scale; ``None`` for each plot's own range.
+        removed, show_removed: Tributaries to leave out (the ``removed`` frame
+            of :func:`lsdviztools3.io.chi.select_tributaries`) and whether to
+            ghost them (``"ghost"``) or hide them (``"hide"``).
 
     Returns:
         List of written PNG Paths.
@@ -438,14 +448,16 @@ def render_chi_profiles(
     selected_basins = sorted(nodes["basin_index"].unique()) if basins is None else [int(b) for b in basins]
 
     if stacked:
-        fig, _ = plot_chi_stacked(nodes, basins=selected_basins)
+        fig, _ = plot_chi_stacked(nodes, basins=selected_basins, vmin=ksn_vmin, vmax=ksn_vmax,
+                                  removed=removed, show_removed=show_removed)
         path = out_dir / f"{stem}_stacked.png"
         fig.savefig(path, dpi=dpi, bbox_inches="tight")
         written.append(path)
 
     if per_basin:
         for b in selected_basins:
-            fig, _ = plot_chi_profile(nodes, basin=int(b))
+            fig, _ = plot_chi_profile(nodes, basin=int(b), vmin=ksn_vmin, vmax=ksn_vmax,
+                                      removed=removed, show_removed=show_removed)
             path = out_dir / f"{stem}_profile_basin{int(b)}.png"
             fig.savefig(path, dpi=dpi, bbox_inches="tight")
             written.append(path)
@@ -462,6 +474,9 @@ def render_chi_ksn_map(
     width: str = MapStyle.MAX_WIDTH,
     cmap: str = "viridis",
     high_res: bool = False,
+    ksn_vmin: Optional[float] = None,
+    ksn_vmax: Optional[float] = None,
+    removed=None,
 ):
     """Render the chi network coloured by log10 k_sn over a hillshade.
 
@@ -479,6 +494,11 @@ def render_chi_ksn_map(
         width: Figure width (defaults to the 17 cm max).
         cmap: CPT for the log10 k_sn colour scale.
         high_res: Save at high-res DPI.
+        ksn_vmin, ksn_vmax: Colour-scale limits in k_sn units (the scale is
+            log10 k_sn); ``None`` for the data's range.
+        removed: Tributaries to leave off the map (the ``removed`` frame of
+            :func:`lsdviztools3.io.chi.select_tributaries`); the colour range is
+            then that of the kept ones. :func:`render_chi_removed_map` shows them.
 
     Returns:
         ``Path`` to the written PNG.
@@ -497,13 +517,126 @@ def render_chi_ksn_map(
         str(dem_path), coordinates=coordinates, shade=True,
         style=MapStyle(cmap="gray", figure_size=width, transparent=False),
     )
+    lines = str(segment_lines)
+    if removed is not None and len(removed):
+        from .io.chi import removed_mask
+        from .io.vector import load_vector
+        gdf = load_vector(lines)
+        lines = gdf[~removed_mask(gdf, removed)]
     fig = render_channels(
-        str(segment_lines), color_by="k_sn", log_color=True, cmap=cmap,
+        lines, color_by="k_sn", log_color=True, cmap=cmap,
         colorbar=True, colorbar_label="log@-10@-k@-sn@-",
         coordinates=coordinates,
         style=MapStyle(line_width="1.2p", cmap=cmap, figure_size=width),
-        fig=fig,
+        fig=fig, vmin=ksn_vmin, vmax=ksn_vmax,
     )
+    add_scalebar(fig, extent, crs)
+    save_figure(fig, png_path, style=MapStyle(figure_size=width, transparent=False),
+                high_res=high_res)
+    return Path(png_path)
+
+
+#: Line style (GMT pen) and legend text per removal reason, for
+#: :func:`render_chi_removed_map`. Dash patterns as well as colours, so the
+#: reasons stay apart over the k_sn colours and in greyscale.
+REMOVED_STYLES = {
+    "ksn_outlier": ("1.4p,#d6266e,-", "removed: k_sn outlier"),
+    "small_area": ("1.0p,black,-", "removed: small drainage area"),
+    "small_fraction": ("1.0p,black,.", "removed: small fraction of basin"),
+    "rank": ("1.0p,#5a5a5a,-.", "removed: outside the top tributaries"),
+    "drains_to_removed": ("0.7p,#5a5a5a,.", "removed: drains into a removed one"),
+}
+
+
+def render_chi_removed_map(
+    dem_path: PathLike,
+    segment_lines: PathLike,
+    removed,
+    png_path: PathLike,
+    *,
+    coordinates: str = "local",
+    width: str = MapStyle.MAX_WIDTH,
+    cmap: str = "viridis",
+    high_res: bool = False,
+    ksn_vmin: Optional[float] = None,
+    ksn_vmax: Optional[float] = None,
+    legend_position: str = "JTR+jTR+o0.2c",
+):
+    """Map the tributaries removed from the chi plots, and why.
+
+    The kept chi network is drawn coloured by log10 k_sn as in
+    :func:`render_chi_ksn_map`. Each removed tributary is drawn in its reason's
+    dashed style (:data:`REMOVED_STYLES`), with its junction (where it joins
+    its parent) as an open circle, and a legend of the reasons present.
+
+    Args:
+        dem_path: Projected DEM for the hillshade.
+        segment_lines: ``*_chi_fit_segment_lines_mn_*.fgb``.
+        removed: The ``removed`` frame of
+            :func:`lsdviztools3.io.chi.select_tributaries` (``basin_index``,
+            ``branch_id``, ``reason``, ``junction_x``, ``junction_y``).
+        png_path: Output PNG.
+        coordinates, width, cmap, high_res, ksn_vmin, ksn_vmax: as
+            :func:`render_chi_ksn_map`.
+        legend_position: GMT legend position string.
+
+    Returns:
+        ``Path`` to the written PNG.
+    """
+    import io as _io
+
+    import geopandas as gpd
+
+    from .io.chi import removed_mask
+    from .io.raster import get_crs, load_raster, to_coordinates, to_gmt_grid
+    from .io.vector import load_vector
+    from .render.base import grid_to_display, save_figure
+    from .render.channels import render_channels
+    from .render.decorations import add_scalebar
+    from .render.hillshade import render_hillshade
+    from .render.points import render_points
+
+    da = to_coordinates(load_raster(dem_path), coordinates)
+    crs = get_crs(da)
+    _, extent = grid_to_display(to_gmt_grid(da), crs)
+    gdf = load_vector(str(segment_lines))
+    gone = removed_mask(gdf, removed)
+
+    fig = render_hillshade(
+        str(dem_path), coordinates=coordinates, shade=True,
+        style=MapStyle(cmap="gray", figure_size=width, transparent=False),
+    )
+    fig = render_channels(
+        gdf[~gone], color_by="k_sn", log_color=True, cmap=cmap,
+        colorbar=True, colorbar_label="log@-10@-k@-sn@-", coordinates=coordinates,
+        style=MapStyle(line_width="1.0p", cmap=cmap, figure_size=width),
+        fig=fig, vmin=ksn_vmin, vmax=ksn_vmax,
+    )
+    rows = []
+    if removed is not None and len(removed):
+        keyed = gdf[gone].merge(removed[["basin_index", "branch_id", "reason"]],
+                                on=["basin_index", "branch_id"], how="left")
+        for reason, (pen, label) in REMOVED_STYLES.items():
+            part = keyed[keyed["reason"] == reason]
+            if part.empty:
+                continue
+            width_p, colour = pen.split(",")[0], ",".join(pen.split(",")[1:])
+            fig = render_channels(part, coordinates=coordinates,
+                                  style=MapStyle(line_width=width_p, line_color=colour,
+                                                 figure_size=width), fig=fig)
+            rows.append(f"S 0.3c - 0.6c - {pen} 0.9c {label} ({part[['basin_index', 'branch_id']].drop_duplicates().shape[0]})")
+        j = removed.dropna(subset=["junction_x", "junction_y"])
+        if len(j):
+            pts = gpd.GeoDataFrame(j[["reason"]].copy(),
+                                   geometry=gpd.points_from_xy(j["junction_x"], j["junction_y"]),
+                                   crs=gdf.crs)
+            fig = render_points(pts, coordinates=coordinates, symbol="c", pen="0.8p,black",
+                                style=MapStyle(point_size="0.14c", line_color="white",
+                                               figure_size=width), fig=fig)
+            rows.append("S 0.3c c 0.14c white 0.8p,black 0.9c junction of a removed tributary")
+    if rows:
+        fig.legend(spec=_io.StringIO("\n".join(rows)), position=legend_position,
+                   box="+gwhite@20+p0.5p,black")
     add_scalebar(fig, extent, crs)
     save_figure(fig, png_path, style=MapStyle(figure_size=width, transparent=False),
                 high_res=high_res)
@@ -522,6 +655,8 @@ def render_chi_ksn_relief3d(
     cmap: str = "viridis",
     width: str = MapStyle.MAX_WIDTH,
     high_res: bool = False,
+    ksn_vmin: Optional[float] = None,
+    ksn_vmax: Optional[float] = None,
 ):
     """Drape the chi network (log10 k_sn) over a 3D perspective relief.
 
@@ -541,6 +676,8 @@ def render_chi_ksn_relief3d(
         cmap: CPT for the log10 k_sn colour scale.
         width: Figure width.
         high_res: Save at high-res DPI.
+        ksn_vmin, ksn_vmax: Colour-scale limits in k_sn units (the scale is
+            log10 k_sn); ``None`` for the data's range.
 
     Returns:
         ``Path`` to the written PNG.
@@ -585,7 +722,9 @@ def render_chi_ksn_relief3d(
     z[ksn > 0] = np.log10(ksn[ksn > 0])
     finite = z[np.isfinite(z)]
     if finite.size:
-        pygmt.makecpt(cmap=cmap, series=[float(finite.min()), float(finite.max())])
+        from .colour_limits import colour_limits
+        lo, hi, extend = colour_limits(z, ksn_vmin, ksn_vmax, log_scale=True)
+        pygmt.makecpt(cmap=cmap, series=[lo, hi], background=True)
 
         for geom, zval in zip(gdf.geometry, z):
             if not np.isfinite(zval):
@@ -607,7 +746,7 @@ def render_chi_ksn_relief3d(
                     region=region, projection=projection,
                     perspective=perspective, zsize=zsize,
                 )
-        add_colourbar(fig, label="log@-10@-k@-sn@-")
+        add_colourbar(fig, label="log@-10@-k@-sn@-", extend=extend)
 
     save_figure(fig, png_path, style=MapStyle(figure_size=width, transparent=False),
                 high_res=high_res)

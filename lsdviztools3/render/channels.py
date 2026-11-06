@@ -287,6 +287,8 @@ def render_channels(
     coordinates: str = "local",
     style: Optional[MapStyle] = None,
     fig=None,
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
 ):
     """Render a channel network as lines, typically over a hillshade.
 
@@ -307,11 +309,16 @@ def render_channels(
         style: Styling options (``line_width``, ``line_color``, ``cmap``).
         fig: Existing ``pygmt.Figure`` to compose onto (e.g. from
             ``render_hillshade``). If ``None``, a new framed figure is created.
+        vmin, vmax: Colour-scale limits in DATA units (e.g. k_sn, not log10
+            k_sn); ``None`` for the data's range. Lines beyond them take the
+            end colours, and the colourbar shows an extend triangle.
 
     Returns:
         The ``pygmt.Figure``.
     """
     import pygmt
+
+    from ..colour_limits import colour_limits
 
     style = style or MapStyle()
     gdf_display, crs = _prepare_overlay(lines_or_points, coordinates, style)
@@ -333,10 +340,10 @@ def render_channels(
     finite = z[np.isfinite(z)]
     if finite.size == 0:
         raise ValueError(f"No finite values to colour by in {color_by!r}.")
-    vmin, vmax = float(finite.min()), float(finite.max())
-    if vmin == vmax:
-        vmax = vmin + 1.0
-    pygmt.makecpt(cmap=cmap or style.cmap, series=[vmin, vmax])
+    lo, hi, extend = colour_limits(z, vmin, vmax, log_scale=log_color)
+    # background=True: values beyond the range take the end colours (GMT's
+    # default background/foreground would paint them black / white).
+    pygmt.makecpt(cmap=cmap or style.cmap, series=[lo, hi], background=True)
 
     # Colour each line segment by its (log10) value via a per-feature z.
     for geom, zval in zip(gdf_display.geometry, z):
@@ -347,5 +354,5 @@ def render_channels(
                      pen=f"{style.line_width}+z")
 
     if colorbar:
-        add_colourbar(fig, label=colorbar_label)
+        add_colourbar(fig, label=colorbar_label, extend=extend)
     return fig
