@@ -2,7 +2,7 @@
 
 Channel network maps, channel-link bearings and junction angles, network
 geometry across synthetic networks, divide migration, and the stream-burning
-quality-control maps. For k_sn on the network see
+quality-control maps and burned long profiles. For k_sn on the network see
 [Chi analysis](chi_analysis.md); for statistics by rock type see
 [Lithology](lithology.md).
 
@@ -206,6 +206,82 @@ plot_segment_classification(
     flow_traces="sd_acc_flow_traces.fgb",
     region=[171600, 172400, 634200, 634800])  # native-CRS zoom
 ```
+
+### Burned long profiles (`lsdviz3-burned-profiles`)
+
+For `lsdtt-stream-burning` runs with `stream_burn_mode: burn_to_corridor`
+(a vector network taken as the truth, e.g. OS Open Rivers prepared by
+`lsdtt-fetch-river-lines`). In that mode lsdtt3 builds each burned channel's
+elevations from the minima of the input DEM along the channel. Small pits
+are filled first (`burn_profile_max_pit_pixels`, default 16). The minima are
+joined by straight lines in distance, or in chi
+(`burn_profile_fit_algorithm_choice: chi`). The rest of the DEM is then
+carved and filled to drain to the channel. lsdtt3 writes
+`<stem>_burned_profiles.csv` (switch `write_burned_profiles_csv`, on by
+default), one row per channel cell. This command draws it.
+
+```bash
+pixi run lsdviz3-burned-profiles \
+  --csv runs/site_x0_burned_profiles.csv \
+  --csv runs/site_x60_burned_profiles.csv \
+  --labels "X = 0 m" "X = 60 m" \
+  --name "River Name" --out figures/site_burned_profiles.png
+```
+
+One panel per `--csv`, all following the same course on a shared x axis. A
+course is a channel path from its head down to the network outlet, following
+the paths it joins. Choose it with one of:
+
+- `--name`: from the most upstream cell carrying that river name. The run
+  needs `vector_name_field`; lines prepared by `lsdtt-fetch-river-lines`
+  carry the name in `name`.
+- `--path-rank`: 0, the default, is the first path lsdtt3 fitted, the
+  longest.
+- `--path-id`: one `--csv` only, since path ids differ between runs.
+
+Each panel draws:
+
+| Mark | Meaning |
+|---|---|
+| grey line | the input DEM under the channel |
+| blue line | the burned channel in the output DEM |
+| dots / crosses | minima the profile joins / minima rejected by `burn_profile_max_cut_metres` |
+| orange band | cut below the input DEM |
+| green band | a small pit filled before the profile was sampled, where the channel sits in it |
+| purple band | raised above the input DEM for another reason: a tributary raised to meet the channel it joins, or a rejected minimum |
+| grey ticks | where other paths join the course, the longest named |
+
+The bands split each cell's change against the input DEM without overlap.
+Where a filled pit was then cut through, only the cut shows. The panel title
+gives the counts: pits filled, minima used and rejected, and how many steps
+of the burned channel rise downstream (lsdtt3 also checks this in its log;
+it should be 0).
+
+Comparison panels are the main use. Give one `--csv` per run to compare
+`vector_corridor_half_width_metres` values, `burn_profile_max_pit_pixels`
+values, or a linear against a chi fit. Other options:
+
+- `--x chi` plots against chi; it needs a chi-fit run. Each path's chi in the
+  CSV counts from that path's head, and the plot shifts it to be continuous
+  where paths join, so a chi fit draws as straight lines between minima.
+- `--mark x,y,label` draws a vertical line at the course cell nearest a
+  point, in the run's CRS.
+- `--max-join-labels` limits how many joining rivers are named.
+
+In Python:
+
+```python
+from lsdviztools3.charts.burned_profiles import (
+    plot_burned_profiles, read_burned_profiles, select_course)
+
+plot_burned_profiles(["site_x0_burned_profiles.csv", "site_x60_burned_profiles.csv"],
+                     "profiles.png", labels=["X = 0 m", "X = 60 m"], name="River Name")
+course, label = select_course(read_burned_profiles("site_x0_burned_profiles.csv"),
+                              path_rank=0)   # the rows, downstream, with course_distance_m
+```
+
+Files from older `burn_to_corridor` runs, with `z_filled` and `z_burned`
+columns, are refused: that design was replaced.
 
 ## Worked examples
 ### Channel-bearing comparison (dendritic vs trellis)
