@@ -283,6 +283,73 @@ course, label = select_course(read_burned_profiles("site_x0_burned_profiles.csv"
 Files from older `burn_to_corridor` runs, with `z_filled` and `z_burned`
 columns, are refused: that design was replaced.
 
+## Smoothed channel profiles and slopes (`lsdviz3-channel-slopes`)
+
+`lsdtt-channel-extraction` with `write_channel_slope_points: true` writes
+`<write_fname>_channel_slope_points.<csv|fgb|gpkg>` (format from
+`channel_slope_points_write_vector_format`, else `write_vector_format`). It
+has one point per channel cell, with these columns:
+
+| Column | Meaning |
+|---|---|
+| `drainage_area_m2`, `flow_distance_m` | drainage area; flow distance to the outlet |
+| `elevation_m` | the pit-filled DEM |
+| `slope_m_per_m` | least-squares slope of elevation against distance along the channel, over ± `slope_window_half_length_metres` |
+| `smoothed_elevation_m` | that fitted line's elevation at the cell |
+| `slope_valid`, `slope_window_length_m` | whether the fit was usable; the along-channel span it used |
+
+Upstream, the window follows the donor with the largest drainage area. A
+fit is unusable where the window covers fewer than 3 cells or spans less
+than the half-length, which happens near sources. Unusable fits are NaN and
+are left out of the slope plots.
+
+```bash
+pixi run lsdviz3-channel-slopes \
+  --slope-points runs/site_channel_slope_points.csv \
+  --dem runs/site.tif --min-area-m2 1e6 --out-dir figures
+```
+
+This writes:
+
+- `<stem>_channel_profiles.png`: elevation against flow distance to the
+  outlet. The pit-filled DEM is grey; the smoothed profile is blue.
+- `<stem>_slope_distance.png`: smoothed slope against flow distance, with a
+  log slope axis.
+- `<stem>_slope_area.png`: smoothed slope against drainage area, log-log.
+- `<stem>_channel_slope_map.png` (with `--dem`): channel cells coloured by
+  log₁₀ slope over a hillshade.
+
+The colour range is set by `--slope-vmin` / `--slope-vmax`, in m/m. Values
+outside it show the end colours, with arrows on the colourbar.
+
+A flat in the DEM appears as a band of slopes at the gradient that pit
+filling imposes on flats (`fill_min_slope`, 0.0001 by default). Pit filling makes those
+slopes, not the landscape. The slope measures elevation that pit filling has
+raised in places, so treat low-gradient reaches with that in mind.
+
+`--min-area-m2` keeps only cells that drain at least that area.
+
+`--field-points` overlays your own points. The file can be csv with
+`latitude`/`longitude`, fgb or gpkg. It needs `drainage_area_m2` and
+`slope_m_per_m` columns. For the profiles it also needs `flow_distance_m`,
+plus `smoothed_elevation_m` or `elevation_m`.
+
+`--field-color-by <column>` colours the field points by one of their
+attributes, such as a grain size, and adds a colourbar. Without it they are
+a single colour. On the map they are open circles.
+
+In Python:
+
+```python
+from lsdviztools3.charts.channel_slopes import (
+    load_channel_points, plot_channel_profiles, plot_slope_area,
+    plot_slope_distance, render_channel_slope_map)
+
+pts = load_channel_points("site_channel_slope_points.csv")
+fig, ax = plot_slope_area(pts, min_area_m2=1e6)
+render_channel_slope_map("site.tif", pts, "slope_map.png", slope_vmin=1e-3, slope_vmax=0.3)
+```
+
 ## Worked examples
 ### Channel-bearing comparison (dendritic vs trellis)
 
