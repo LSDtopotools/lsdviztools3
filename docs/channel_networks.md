@@ -329,10 +329,22 @@ raised in places, so treat low-gradient reaches with that in mind.
 
 `--min-area-m2` keeps only cells that drain at least that area.
 
-`--field-points` overlays your own points. The file can be csv with
-`latitude`/`longitude`, fgb or gpkg. It needs `drainage_area_m2` and
-`slope_m_per_m` columns. For the profiles it also needs `flow_distance_m`,
-plus `smoothed_elevation_m` or `elevation_m`.
+`--field-points` overlays your own points, such as field sites.
+`lsdtt-channel-extraction` with `run_channel_point_attributes: true` makes
+them from any point file (`channel_points_fname`):
+
+- each point moves to the nearest channel cell by straight-line distance,
+  not along its D8 path;
+- it keeps all of its attributes;
+- it gains `drainage_area_m2`, `flow_distance_m`, `elevation_m`,
+  `smoothed_elevation_m`, `slope_m_per_m` and the snap distance and status;
+- the result is written to `<write_fname>_channel_points.<ext>`.
+
+Run it with the same `threshold_contributing_pixels` and
+`slope_window_half_length_metres` as the slope points, so both use the same
+slope. Any csv (with `latitude`/`longitude`), fgb or gpkg file with those
+columns also works. `--min-area-m2` filters the channel cells only; field
+points are always drawn.
 
 `--field-color-by <column>` colours the field points by one of their
 attributes, such as a grain size, and adds a colourbar. Without it they are
