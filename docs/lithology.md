@@ -5,10 +5,10 @@ lsdtt3; these commands draw them:
 
 | lsdtt3 run | What it writes | Command |
 |---|---|---|
-| `lsdtt-fetch-lithology` | `<prefix>_macrostrat_units.fgb` (Macrostrat geologic map) | — (input to the runs below) |
-| `lsdtt-chi-analysis` with `lithology_fname` | k_sn by lithologic unit, `<prefix>_lithology_code.tif` (`write_lithology_code_raster`) | `lsdviz3-ksn-by-lithology`, `lsdviz3-lithology-map` |
+| [`lsdtt-fetch-lithology`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_fetch_lithology.html) | `<prefix>_macrostrat_units.fgb` (Macrostrat geologic map) | — (input to the runs below) |
+| [`lsdtt-chi-analysis`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_chi_analysis.html) with `lithology_fname` | k_sn by lithologic unit, `<prefix>_lithology_code.tif` (`write_lithology_code_raster`) | `lsdviz3-ksn-by-lithology`, `lsdviz3-lithology-map` |
 | `lsdtt-chi-analysis` with `erosion_rate_fname` | erodibility calibration (erosion rate against k_sn) | `lsdviz3-erodibility-calibration` |
-| `lsdtt-channel-network-analysis` with `lithology_fname` and `channel_bearing_group_by: lithology` | bearing and junction-angle statistics by unit | `lsdviz3-channel-bearings --group-key lithology` ([Channel networks](channel_networks.md#bearing-and-junction-angle-statistics-lsdviz3-channel-bearings)) |
+| [`lsdtt-channel-network-analysis`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_channel_network_analysis.html) with `lithology_fname` and `channel_bearing_group_by: lithology` | bearing and junction-angle statistics by unit | `lsdviz3-channel-bearings --group-key lithology` ([Channel networks](channel_networks.md#bearing-and-junction-angle-statistics-lsdviz3-channel-bearings)) |
 
 All three lithology commands accept `--unit-colours`: a `name,colour` CSV, or a
 JSON `{name: colour}`, fixing each unit's colour by name. Use the same file for

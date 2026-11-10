@@ -1,10 +1,10 @@
 # Valleys and cross sections
 
 Floodplains, terraces, valley floors, valley widths and cross sections from
-`lsdtt-fluvial-surfaces`, `lsdtt-flat-surface-finder`,
-`lsdtt-valley-centreline` and `lsdtt-channel-extraction`
+[`lsdtt-fluvial-surfaces`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_fluvial_surfaces.html), [`lsdtt-flat-surface-finder`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_flat_surface_finder.html),
+[`lsdtt-valley-centreline`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_valley_centreline.html) and [`lsdtt-channel-extraction`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_channel_extraction.html)
 (`run_perimeter_sources`). Most figures need a hillshade on the run's grid,
-from `lsdtt-raster-preprocessing` (`write_hillshade_raster`) or
+from [`lsdtt-raster-preprocessing`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_raster_preprocessing.html) (`write_hillshade_raster`) or
 `lsdtt-valley-centreline` (`write_hillshade_raster`).
 
 ## Floodplain maps (`lsdviz3-floodplain`)

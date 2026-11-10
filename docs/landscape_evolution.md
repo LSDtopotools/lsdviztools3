@@ -1,6 +1,6 @@
 # Landscape evolution
 
-Animations of `lsdtt-lem` runs, and the figures used to test the hillslope
+Animations of [`lsdtt-lem`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_lem.html) runs, and the figures used to test the hillslope
 solvers against analytical and benchmark solutions.
 
 ## Animating a transient run (`lsdviz3-animate`)

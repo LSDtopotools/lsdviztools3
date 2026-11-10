@@ -8,7 +8,8 @@ draining into that channel (complete + minimum-size filtered). All of that is
 done in lsdtt3 (C++); this script orchestrates and plots.
 
 Test site: a stretch of the Nujiang (Nu/Salween) gorge around
-26.835, 98.880. Outputs under ../data/nujang. lsdtt3 via $LSDTT3_DIR.
+26.835, 98.880. Outputs under ./data/nujang, or $NUJANG_DIR. lsdtt3 is found through
+$LSDTT3_DIR, the lsdviztools3 config file, or PATH.
 
 Run:
     pixi run python examples/single_channel_basins.py
@@ -32,8 +33,10 @@ from lsdviztools3.render.hillshade import render_hillshade
 from lsdviztools3.render.points import render_points
 from lsdviztools3.render.style import MapStyle
 
-ROOT = Path(os.environ.get("NUJANG_DIR", "/mnt/c/LSDTopoTools/data/nujang")).resolve()
-LSDTT_DIR = os.environ.get("LSDTT3_DIR", "/mnt/c/LSDTopoTools/lsdtt3/build")
+ROOT = Path(os.environ.get("NUJANG_DIR", "data/nujang")).resolve()
+# None lets the driver find lsdtt3 itself: $LSDTT3_DIR, the lsdviztools3
+# config file (lsdviz3-lsdtt --set-lsdtt-dir), then PATH.
+LSDTT_DIR = os.environ.get("LSDTT3_DIR")
 STEM = "nujang_COP30"
 MIN_BASIN_PIXELS = 2000     # min side-basin size (~1.8 km2 on 30 m COP30)
 

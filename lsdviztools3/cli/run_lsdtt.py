@@ -13,9 +13,15 @@ from ..driver import run_lsdtt, write_user_config
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser for ``lsdviz3-lsdtt``."""
+    from lsdviztools3.driver.config import LSDTT3_DOCS_URL, LSDTT3_INSTALL_URL
+
     parser = argparse.ArgumentParser(
         prog="lsdviz3-lsdtt",
         description="Run an lsdtt3 command-line tool, or configure its location.",
+        epilog=(f"lsdtt3 documentation: {LSDTT3_DOCS_URL}\n"
+                f"Installing lsdtt3:    {LSDTT3_INSTALL_URL}\n"
+                "Each lsdtt3 tool also lists its parameters with <tool> -h."),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "tool",

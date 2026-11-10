@@ -18,9 +18,9 @@ Wasserstein distance, the Kuiper test and a block-permutation p-value between
 the two regions (<stem>_channel_bearing_comparisons.csv). The comparison plot
 draws the links of that same run (<stem>_channel_bearing_group_membership.csv).
 
-Outputs under ../data/channel_bearing_comparison (one subdir per site, plus a
-comparison/ dir). lsdtt3 binaries via $LSDTT3_DIR (default
-/mnt/c/LSDTopoTools/lsdtt3/build).
+Outputs under ./data/channel_bearing_comparison, or $CHANNEL_BEARING_DIR (one
+subdir per site, plus a comparison/ dir). lsdtt3 is found through $LSDTT3_DIR,
+the lsdviztools3 config file, or PATH.
 
 Run:
     pixi run python examples/channel_bearing_comparison.py
@@ -47,8 +47,10 @@ from lsdviztools3.render.hillshade import render_hillshade
 from lsdviztools3.render.style import MapStyle
 
 ROOT = Path(os.environ.get(
-    "CHANNEL_BEARING_DIR", "/mnt/c/LSDTopoTools/data/channel_bearing_comparison"))
-LSDTT_DIR = os.environ.get("LSDTT3_DIR", "/mnt/c/LSDTopoTools/lsdtt3/build")
+    "CHANNEL_BEARING_DIR", "data/channel_bearing_comparison"))
+# None lets the driver find lsdtt3 itself: $LSDTT3_DIR, the lsdviztools3
+# config file (lsdviz3-lsdtt --set-lsdtt-dir), then PATH.
+LSDTT_DIR = os.environ.get("LSDTT3_DIR")
 
 HALF_DEG = 0.10        # half-width of the (square) bounding box in degrees
 SRC_THRESH = 500       # threshold_contributing_pixels (~0.45 km^2 on 30 m COP30)

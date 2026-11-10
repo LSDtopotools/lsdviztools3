@@ -1,0 +1,80 @@
+name: Documentation site
+
+# Builds the MkDocs site and publishes it to GitHub Pages at
+# https://lsdtopotools.github.io/lsdviztools3/
+#
+# Published on releases, so the site always describes a version users can
+# install, not unreleased work on main. A documentation-only fix between
+# releases can go out with a manual run (Actions tab -> Run workflow, on main).
+#
+# One-off setup, once the repository is public:
+#   1. Settings -> Pages -> Build and deployment -> Source: GitHub Actions
+#   2. Settings -> Environments -> github-pages -> Deployment branches and tags:
+#      add a TAG rule "v*". The environment allows only the default branch by
+#      default, and a tag-triggered deploy is otherwise rejected.
+#
+# Every job is skipped while the repository is private (Pages from a private
+# repository needs a paid plan), so this file needs no edit at that point.
+#
+# Triggers:
+#   - push of a version tag vX.Y.Z
+#   - manual run from the Actions tab
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # The same pins as lsdtt3's documentation workflow.
+      - name: Install documentation dependencies
+        run: >-
+          python3 -m pip install
+          mkdocs==1.6.1
+          mkdocs-material==9.7.7
+
+      # PYTHONPATH=.: mkdocs.yml loads the heading-anchor function from
+      # docs/_slugify.py (!!python/name:docs._slugify.github_slugify), which
+      # imports only with the repository root on the path. Locally the
+      # editable install puts it there; on a fresh runner nothing does.
+      # --strict: broken internal links fail the build instead of 404ing.
+      - name: Build site
+        run: PYTHONPATH=. mkdocs build --strict
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

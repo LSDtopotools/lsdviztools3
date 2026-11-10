@@ -1,6 +1,6 @@
 # Spectral analysis and valley spacing
 
-Figures from `lsdtt-spectral-analysis`: the 2D and radial spectra of a tile,
+Figures from [`lsdtt-spectral-analysis`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_spectral_analysis.html): the 2D and radial spectra of a tile,
 significant frequencies on a polar plot, and valley spacing.
 
 | Function | Module | What it draws |

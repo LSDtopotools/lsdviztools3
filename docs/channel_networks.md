@@ -13,7 +13,7 @@ pixi run lsdviz3-channels --base work/eigg/eigg_hillshade.tif \
   --lines work/eigg/eigg_channel_network_lines.fgb --out demo_output/channels.png
 ```
 
-Draws the channel lines from `lsdtt-channel-extraction`
+Draws the channel lines from [`lsdtt-channel-extraction`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_channel_extraction.html)
 (`write_channel_network_lines`) over the base raster, with the shared style
 flags. In Python, `render_channels(lines, color_by="stream_order")` colours
 them by any numeric attribute; see
@@ -22,7 +22,7 @@ full signature.
 
 ## Bearing and junction-angle statistics (`lsdviz3-channel-bearings`)
 
-`lsdtt-channel-network-analysis` with `write_channel_bearing_statistics` and
+[`lsdtt-channel-network-analysis`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_channel_network_analysis.html) with `write_channel_bearing_statistics` and
 `write_junction_angle_statistics` groups channel links (by Strahler order,
 lithology, region, ...) and compares the groups with circular statistics.
 `lsdviz3-channel-bearings` draws that run:
@@ -157,12 +157,12 @@ fig, ax = plot_distributions({"dendritic": angles_a, "trellis": angles_b})
 | `plot_hillshade`, `plot_network`, `plot_network_on_hillshade` | `charts.network_maps` | Matching map panels per synthetic-network case: relief, the network alone (line width ~ log area), and both together. |
 | `plot_metric_by_temperature`, `plot_branching_range`, `plot_flow_change_fraction` | `charts.snapping` | The OCN snapping experiment: does annealing temperature produce a range of branching, and does snapping reduce it? |
 
-`examples/synthetic_networks_demo.py` drives `lsdtt-synthetic-networks` and
+`examples/synthetic_networks_demo.py` drives [`lsdtt-synthetic-networks`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_synthetic_networks.html) and
 uses these charts end to end.
 ## Divide migration charts
 
 `lsdviz3-divide-migration` ([Command reference](cli_reference.md)) renders the full figure set
-for an `lsdtt-divide-migration` run. The pieces are available individually:
+for an [`lsdtt-divide-migration`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_divide_migration.html) run. The pieces are available individually:
 
 | Function | What it draws |
 |---|---|
@@ -186,7 +186,7 @@ conditioned the DEM (it just defaults `clip_to_valid=True`).
 **Segment-classification preset.** `plot_segment_classification(base_raster,
 segments, png_path=None, *, status_field="status", followed_value=0,
 burned_gaps=None, flow_traces=None, extra_layers=None, clip_to_valid=True,
-**kwargs)` maps the `lsdtt-stream-burning` trace-divergence burn
+**kwargs)` maps the [`lsdtt-stream-burning`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_stream_burning.html) trace-divergence burn
 (`snap_to_accumulation` mode) segment by segment. It splits the `_segments.fgb`
 diagnostic layer (written when `write_burn_diagnostics: true`) on its `status`
 field and draws each fixed-length vector segment by how the burn treated it —
@@ -211,7 +211,7 @@ plot_segment_classification(
 
 For `lsdtt-stream-burning` runs with `stream_burn_mode: burn_to_corridor`
 (a vector network taken as the truth, e.g. OS Open Rivers prepared by
-`lsdtt-fetch-river-lines`). In that mode lsdtt3 builds each burned channel's
+[`lsdtt-fetch-river-lines`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_fetch_river_lines.html)). In that mode lsdtt3 builds each burned channel's
 elevations from the minima of the input DEM along the channel. Small pits
 are filled first (`burn_profile_max_pit_pixels`, default 16). The minima are
 joined by straight lines in distance, or in chi
@@ -369,7 +369,7 @@ render_channel_slope_map("site.tif", pts, "slope_map.png", slope_vmin=1e-3, slop
 drainage-network *orientation* between two sites: an Allegheny Plateau tile
 (dendritic) and a Valley and Ridge tile (trellis, strongly structurally
 aligned). For each site it downloads a COP30 tile, fills and hillshades it
-(`lsdtt-raster-preprocessing` with `write_fill_raster` / `write_hillshade_raster`),
+([`lsdtt-raster-preprocessing`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_raster_preprocessing.html) with `write_fill_raster` / `write_hillshade_raster`),
 runs `lsdtt-channel-network-analysis` with `only_complete_basins: true` for
 channel-link bearings, junction angles and outlet→centroid bearings in complete
 basins, and `lsdtt-channel-extraction` for the plottable network lines. It
@@ -396,7 +396,7 @@ Read the block counts with the p-values: links in one valley are not
 independent, so the iid Kuiper p-value is far smaller than the block-permutation
 one when there are few independence blocks (`n_blocks_a`, `n_blocks_b`).
 
-Outputs land under `../data/channel_bearing_comparison` (one subdirectory per
+Outputs land under `./data/channel_bearing_comparison` (one subdirectory per
 site, plus a `comparison/` dir; set `CHANNEL_BEARING_DIR` to write elsewhere).
 
 ```bash
@@ -410,7 +410,7 @@ pixi run python examples/channel_bearing_comparison.py --skip-compute  # replot 
 structure — here the San Andreas Fault. It downloads a COP30 tile around
 Parkfield, fills + hillshades it, clips the global GEM active-fault database to
 the footprint, then extracts the basins whose channels cross the fault using
-`lsdtt-basin-extraction`'s `select_basins_from_line_crossings` mode. **All the
+[`lsdtt-basin-extraction`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_basin_extraction.html)'s `select_basins_from_line_crossings` mode. **All the
 analysis is done in lsdtt3 (C++)** — the tool reprojects the fault internally and
 writes `..._line_crossing_basins.csv` with each basin's outlet, centre of mass,
 area, outlet→COM bearing, local fault azimuth, side of the fault, and bearing
@@ -425,9 +425,9 @@ it reads that CSV (and the basin polygons) and draws
   for shear-related bending.
 
 This illustrates the intended division of labour: **lsdtt3 computes, lsdviztools3
-plots**. See the lsdtt3 basin-extraction reference for the
+plots**. See the [lsdtt3 basin-extraction reference](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_basin_extraction.html) for the
 `select_basins_from_line_crossings` parameters and the CSV columns. Outputs land
-under `../data/parkfield`.
+under `./data/parkfield` (set `PARKFIELD_DIR` to write elsewhere).
 
 ```bash
 pixi run python examples/fault_basin_deformation.py
@@ -445,8 +445,8 @@ truncated at the common-downstream point where the downstream point's flow joins
 minimum-size filtered). All analysis is in lsdtt3; the script preprocesses the
 DEM, runs the mode, and plots the single channel (blue) with the side basins
 (orange), outlets, and the input points. Test site: a stretch of the Nujiang
-(Nu/Salween) gorge; outputs under `../data/nujang`. See the lsdtt3 basin-extraction
-reference for the mode's parameters.
+(Nu/Salween) gorge; outputs under `./data/nujang` (set `NUJANG_DIR` to write elsewhere). See the [lsdtt3 basin-extraction
+reference](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_basin_extraction.html) for the mode's parameters.
 
 ```bash
 pixi run python examples/single_channel_basins.py
