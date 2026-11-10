@@ -43,6 +43,8 @@ ot_api_key*.txt
 
 # Rendered output
 *.png
+# ...except images the docs and README use
+!docs/images/*.png
 *.pdf
 *.ps
 

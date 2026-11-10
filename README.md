@@ -1,5 +1,7 @@
 # lsdviztools3
 
+![Drainage divides of third- and fourth-order basins over shaded relief, drawn with lsdviztools3 from lsdtt3 output](docs/images/readme_banner.png)
+
 [![Release](https://img.shields.io/github/v/release/LSDtopotools/lsdviztools3)](https://github.com/LSDtopotools/lsdviztools3/releases/latest)
 [![Release build](https://img.shields.io/github/actions/workflow/status/LSDtopotools/lsdviztools3/release.yml?label=release%20build)](https://github.com/LSDtopotools/lsdviztools3/actions/workflows/release.yml)
 [![Docs](https://img.shields.io/badge/docs-lsdtopotools.github.io-blue)](https://lsdtopotools.github.io/lsdviztools3/)
