@@ -1,15 +1,16 @@
 # lsdviztools3
 
-Welcome to `lsdviztools3`, the visualisation package for [`lsdtt3`](https://github.com/LSDtopotools/lsdtt3) ([documentation](https://lsdtopotools.github.io/lsdtt3/)). `lsdtt3` is a software package for topographic analysis, landscape evolution modelling, and hydrology, which runs in a command line environment, or in python with our python bindings. Outputs from `lsdtt3` can be visualised in any GIS software package, but `lsdviztools3` has been built to:
-
-* Enable production of publication-ready figures from `lsdtt3` outputs. It can also work with other standard geographic outputs generated from alternative topographic analysis packages. 
-* Provide python based wrappers around `lsdtt3` command line programs so analysis can be run in python notebooks (although this is better suited to the `lsdtt3` python bindings). 
-
 [![Release](https://img.shields.io/github/v/release/LSDtopotools/lsdviztools3)](https://github.com/LSDtopotools/lsdviztools3/releases/latest)
 [![Release build](https://img.shields.io/github/actions/workflow/status/LSDtopotools/lsdviztools3/release.yml?label=release%20build)](https://github.com/LSDtopotools/lsdviztools3/actions/workflows/release.yml)
 [![Docs](https://img.shields.io/badge/docs-lsdtopotools.github.io-blue)](https://lsdtopotools.github.io/lsdviztools3/)
 [![Docs build](https://img.shields.io/github/actions/workflow/status/LSDtopotools/lsdviztools3/docs.yml?label=docs%20build)](https://github.com/LSDtopotools/lsdviztools3/actions/workflows/docs.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24113499.svg)](https://doi.org/10.5281/zenodo.24113499)
+
+Welcome to `lsdviztools3`, the visualisation package for [`lsdtt3`](https://github.com/LSDtopotools/lsdtt3) ([documentation](https://lsdtopotools.github.io/lsdtt3/)). `lsdtt3` is a software package for topographic analysis, landscape evolution modelling, and hydrology, which runs in a command line environment, or in python with our python bindings. Outputs from `lsdtt3` can be visualised in any GIS software package, but `lsdviztools3` has been built to:
+
+* Enable production of publication-ready figures from `lsdtt3` outputs. It can also work with other standard geographic outputs generated from alternative topographic analysis packages. 
+* Provide python based wrappers around `lsdtt3` command line programs so analysis can be run in python notebooks (although this is better suited to the `lsdtt3` python bindings). 
 
 `lsdviztools3` is a ground-up rewrite of the `lsdviztools` plotting stack around
 [PyGMT](https://www.pygmt.org/) (maps) and matplotlib (x–y charts). It covers
