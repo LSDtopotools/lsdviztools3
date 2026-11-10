@@ -2,7 +2,8 @@
 
 Readers for the outputs of ``lsdtt-chi-analysis`` with ``erosion_rate_fname``
 (see the lsdtt3 chi reference, "Erodibility calibration from basin erosion
-rates"):
+rates":
+https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_chi_analysis.html#erodibility-calibration-from-basin-erosion-rates):
 
 * ``<w>_erodibility_calibration_samples_mn_<mn>.csv``   — one row per sample;
 * ``<w>_erodibility_calibration_basin_K_mn_<mn>.csv``   — per sample and n;

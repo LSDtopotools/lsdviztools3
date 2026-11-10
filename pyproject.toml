@@ -4,13 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lsdviztools3"
-version = "0.3.0"
+version = "0.4.0"
 description = "PyGMT-based visualisation tools for LSDTopoTools v3 (lsdtt3) output."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [
     { name = "Simon M. Mudd", email = "simon.m.mudd@ed.ac.uk" },
+    { name = "Rutger Vervoordeldonk" },
 ]
 keywords = ["geomorphology", "topography", "pygmt", "gmt", "lsdtopotools", "dem"]
 classifiers = [
@@ -33,6 +34,14 @@ dependencies = [
     "pillow",  # GIF assembly for transient-run animations (render.animation)
     "matplotlib",  # x-y charts (charts.*), used by many lsdviz3-* commands, and matplotlib colour maps
 ]
+
+[project.urls]
+Homepage = "https://lsdtopotools.github.io/lsdviztools3/"
+Documentation = "https://lsdtopotools.github.io/lsdviztools3/"
+Repository = "https://github.com/LSDtopotools/lsdviztools3"
+Issues = "https://github.com/LSDtopotools/lsdviztools3/issues"
+"lsdtt3 documentation" = "https://lsdtopotools.github.io/lsdtt3/"
+"lsdtt3 repository" = "https://github.com/LSDtopotools/lsdtt3"
 
 [project.optional-dependencies]
 download = ["requests", "planetary-computer", "pystac-client"]

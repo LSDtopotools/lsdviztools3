@@ -28,18 +28,60 @@ ENV_CONFIG = "LSDVIZTOOLS3_CONFIG"
 
 PathLike = Union[str, Path]
 
-#: Known lsdtt3 tools — used only for friendlier errors/validation; not exhaustive.
+#: lsdtt3 documentation and installation guide, quoted in messages and help.
+LSDTT3_REPOSITORY_URL = "https://github.com/LSDtopotools/lsdtt3"
+LSDTT3_DOCS_URL = "https://lsdtopotools.github.io/lsdtt3/"
+LSDTT3_INSTALL_URL = "https://lsdtopotools.github.io/lsdtt3/what_is_lsdtt3/install_lsdtt3.html"
+
+#: lsdtt3 command-line tools (the lsdtt_cli() targets of lsdtt3 0.9). Used only
+#: for friendlier errors/validation; a tool missing here still runs.
 KNOWN_TOOLS = (
-    "lsdtt-basic-metrics",
-    "lsdtt-channel-extraction",
+    "lsdtt-advection-diffusion",
+    "lsdtt-bankfull-width",
     "lsdtt-basin-extraction",
+    "lsdtt-basin-stats",
+    "lsdtt-basin-surface-metrics",
+    "lsdtt-channel-extraction",
     "lsdtt-channel-network-analysis",
     "lsdtt-chi-analysis",
-    "lsdtt-drainage-analysis",
+    "lsdtt-cosmo-column-tool",
+    "lsdtt-cosmo-landslides",
+    "lsdtt-cosmo-prediction",
     "lsdtt-cosmo-tool",
     "lsdtt-cross-sections",
-    "lsdtt-valley-metrics",
+    "lsdtt-distributed-hydrology",
+    "lsdtt-divide-migration",
+    "lsdtt-drainage-analysis",
+    "lsdtt-feature-finder",
+    "lsdtt-fetch-erosion-rates",
+    "lsdtt-fetch-lithology",
+    "lsdtt-fetch-raster",
+    "lsdtt-fetch-river-lines",
+    "lsdtt-flat-surface-finder",
+    "lsdtt-fluvial-surfaces",
+    "lsdtt-graphflood",
     "lsdtt-hillslope-channel-coupling",
+    "lsdtt-internal-drainage",
+    "lsdtt-lem",
+    "lsdtt-linear-stats",
+    "lsdtt-lithology-erodibility",
+    "lsdtt-marsh-topography",
+    "lsdtt-mountain-front",
+    "lsdtt-outlet-matching",
+    "lsdtt-raster-calculator",
+    "lsdtt-raster-preprocessing",
+    "lsdtt-ridgeline-analysis",
+    "lsdtt-sediment-routing",
+    "lsdtt-slope-area",
+    "lsdtt-spectral-analysis",
+    "lsdtt-stream-burning",
+    "lsdtt-surface-metrics",
+    "lsdtt-swath-profile",
+    "lsdtt-synthetic-networks",
+    "lsdtt-synthetic-surfaces",
+    "lsdtt-valley-centreline",
+    "lsdtt-water-centreline",
+    "lsdtt-water-line-repair",
 )
 
 
@@ -122,7 +164,8 @@ def _not_found_message(tool: str, directory: Optional[Path]) -> str:
         f"  - add to a config file:\n"
         f"        [lsdtt]\n        dir = \"/path/to/lsdtt3/bin\"\n"
         f"    (searched, in order: {locs})\n"
-        f"  - or run: lsdviztools3.driver.config.write_user_config('/path/to/lsdtt3/bin')"
+        f"  - or run: lsdviztools3.driver.config.write_user_config('/path/to/lsdtt3/bin')\n"
+        f"lsdtt3 not installed yet? See {LSDTT3_INSTALL_URL}"
     )
 
 

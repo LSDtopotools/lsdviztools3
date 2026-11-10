@@ -45,7 +45,7 @@ See [Channel networks](channel_networks.md).
 | `lsdviz3-channel-bearings` | channel-link bearing roses, junction-angle summaries and comparison tables by group, from lsdtt-channel-network-analysis | `--data-dir --prefix --out-dir [--group-key --stratum-key --plots --pdf-weight --measurands --compare-prefix --compare-label --map-dem --regions --region-field --region-title --label --title --dpi]` |
 | `lsdviz3-burned-profiles` | long profiles of channels burned by lsdtt-stream-burning `burn_to_corridor`, one panel per run: input DEM, burned channel, minima, filled pits, cuts and raises | `--csv (repeat) --out [--labels --name \| --path-rank \| --path-id --x --mark --max-join-labels --title --dpi]` |
 | `lsdviz3-channel-slopes` | smoothed long profiles and along-channel slopes from lsdtt-channel-extraction `write_channel_slope_points`: profiles, slope against distance and against area, and a map coloured by log₁₀ slope, with optional field points | `--slope-points --out-dir [--field-points --field-color-by --min-area-m2 --dem --slope-vmin --slope-vmax --cmap --coordinates --out-prefix --dpi]` |
-| `lsdviz3-divide-migration` | `lsdtt-divide-migration` figure set: hillshade + divide polylines + channel heads coloured by a metric, the side-vs-side pair chart (Δ = A − B, A the lower-numbered unit, error bar only when the run's uncertainty method is a dispersion), and a per-head scatter against distance to divide | `--prefix --outdir [--base --base-is-hillshade --metric --point-size --divide-color --alpha --stem --chart-dpi]` + style |
+| `lsdviz3-divide-migration` | [`lsdtt-divide-migration`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_divide_migration.html) figure set: hillshade + divide polylines + channel heads coloured by a metric, the side-vs-side pair chart (Δ = A − B, A the lower-numbered unit, error bar only when the run's uncertainty method is a dispersion), and a per-head scatter against distance to divide | `--prefix --outdir [--base --base-is-hillshade --metric --point-size --divide-color --alpha --stem --chart-dpi]` + style |
 
 ## Lithology
 
@@ -92,7 +92,7 @@ See [Landscape evolution](landscape_evolution.md).
 
 | Command | Purpose | Key flags |
 |---------|---------|-----------|
-| `lsdviz3-animate` | animate a transient `lsdtt-lem` run as a GIF | `--in --out --glob --stats-csv --fps --loop --no-annotate --keep-frames` + style |
+| `lsdviz3-animate` | animate a transient [`lsdtt-lem`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_lem.html) run as a GIF | `--in --out --glob --stats-csv --fps --loop --no-annotate --keep-frames` + style |
 | `lsdviz3-lem-pulse` | animate an `lsdtt-lem` incision-pulse run (hillshade + erosion drape + channels + history panel) | `--in --out --prefix --ext --stats-csv --erosion-cmap --erosion-vmin --erosion-vmax --erosion-percentile --erosion-transparency --channel-color --no-timeseries --no-annotate --fps --loop --keep-frames` + style |
 | `lsdviz3-lem-ci` | animate an `lsdtt-lem` channelization-index ladder run (CI history panel + map or oblique landscape) | `--in --out --view --prefix --ext --stats-csv --no-initial --map-width --azimuth --elevation --vertical-exaggeration --landscape-cmap --fps --frame-dpi --loop --keep-frames` + style |
 | `lsdviz3-hillslope-comparison` | animate paired Newton vs cellular hillslope rasters | `--newton --cellular --out [--glob --stats-csv --fps --loop --keep-frames --layout]` |

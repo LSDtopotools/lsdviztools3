@@ -47,8 +47,27 @@ from lsdtt3 CSV artefacts.
 
 Expected primary input:
 
-- `single_point_scan_comparison.csv` from
-  `tests/scripts/run_cosmo_single_point_scaling_scan.py` in lsdtt3.
+- `single_point_scan_comparison.csv`, written by
+  `tests/scripts/run_cosmo_single_point_scaling_scan.py` in a clone of lsdtt3
+  into the folder its `--outdir` names (it is generated, not tracked), for
+  example:
+
+  ```bash
+  cd ../lsdtt3
+  python3 tests/scripts/run_cosmo_single_point_scaling_scan.py \
+      --pred-exe build/lsdtt-cosmo-prediction --tool-exe build/lsdtt-cosmo-tool \
+      --with-cronus-v3 --sample-age-yr 0 \
+      --outdir ../lsdviztools3/scan_out
+  ```
+
+  `--with-cronus-v3` queries the online CRONUS v3 calculator for the reference
+  values that `reference="cronus_v3"` below compares against (without it those
+  columns are empty), and `--sample-age-yr 0` matches how CRONUS treats the
+  samples.
+
+The published-summary inputs below are tracked in lsdtt3, under
+`tests/expected/cosmo/published/`; the commands assume a clone of lsdtt3 next to
+this one.
 
 Optional secondary input:
 
@@ -61,11 +80,11 @@ Python API:
 from lsdviztools3.charts import load_cosmo_table, plot_cosmo_sweep_panels
 from lsdviztools3.workflows import render_cosmo_comparison_figures
 
-scan = load_cosmo_table("../lsdtt3/tests/expected/cosmo/generated/single_point_scan_comparison.csv")
+scan = load_cosmo_table("scan_out/single_point_scan_comparison.csv")
 fig, axes = plot_cosmo_sweep_panels(scan, reference="cronus_v3", representative_pressure_hpa=900)
 
 outputs = render_cosmo_comparison_figures(
-    scan_comparison_csv="../lsdtt3/tests/expected/cosmo/generated/single_point_scan_comparison.csv",
+    scan_comparison_csv="scan_out/single_point_scan_comparison.csv",
     sample_comparison_csv="../lsdtt3/tests/expected/cosmo/published/dethier2014_riversand_summary.csv",
     out_dir="demo_output/cosmo",
 )
@@ -76,7 +95,7 @@ Scripted example:
 
 ```bash
 python examples/cosmo_comparison_workflow.py \
-  --scan-csv ../lsdtt3/tests/expected/cosmo/generated/single_point_scan_comparison.csv \
+  --scan-csv scan_out/single_point_scan_comparison.csv \
   --outdir demo_output/cosmo
 
 # Published-summary residuals (stone/lsdn/riversand)
@@ -103,7 +122,7 @@ Main workflow helpers:
   `<dataset>_riversand_summary.csv` style files.
 ## Transient cosmogenic and landslide charts
 
-Charts over the `lsdtt-cosmo-column-tool` `step_change_sweep` CSVs
+Charts over the [`lsdtt-cosmo-column-tool`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_cosmo_column_tool.html) `step_change_sweep` CSVs
 (`cosmo_transient_sweep_<label>.csv`) and the per-sample
 `<stem>_joined_samples.csv` from a routed step-change landscape. Every quantity
 drawn is a column lsdtt3 already wrote: nothing is normalised or inverted here.

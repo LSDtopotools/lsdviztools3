@@ -1,6 +1,6 @@
 # Getting started
 
-How lsdviztools3 draws maps and charts (coordinates, styles, saving), how to
+This explains how lsdviztools3 draws maps and charts (coordinates, styles, saving), how to
 get a DEM, and how to run lsdtt3 from Python. Every plot page assumes these
 conventions.
 
@@ -74,6 +74,8 @@ In Python the same is `download_dem(..., directory="tucuy")`,
 `run_lsdtt(..., directory="tucuy")`, or `lsdviztools3.paths.resolve_in_dir`.
 
 ## Getting data: download a DEM
+
+**NOTE** The `lsdtt3` command line tools have a number of download options using [`lsdtt-fetch-raster`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_fetch_raster.html) and the preferred way to get toopographic data is to use that. 
 
 Keyless Copernicus GLO-30 via the Microsoft Planetary Computer (no credentials).
 
@@ -190,8 +192,9 @@ paths (or a Figure/PNG path).
 
 `lsdtt3_chi_analysis` selects the **N largest complete basins** and moves
 interior (coastal) outlets upstream so island basins pass the completeness test
-— see the lsdtt3 switches `n_largest_basins` and
-`n_pixels_move_outlet_upstream`.
+— see the switches `n_largest_basins` and
+`n_pixels_move_outlet_upstream` in the
+[lsdtt3 chi analysis reference](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_chi_analysis.html).
 
 ## Example scripts
 | Script | What it does |

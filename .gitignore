@@ -60,3 +60,8 @@ site/
 # Downloaded/cached DEMs and demo output (never committed)
 tests/_cache/
 demo_output/
+
+# Local, machine-specific files (not for the public repository)
+run_lsdtt3_server_maps.sh
+out/
+.claude/

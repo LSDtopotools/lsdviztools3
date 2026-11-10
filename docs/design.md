@@ -380,7 +380,7 @@ WCS DEM download is also deferred (decision 7).
     `write_chi_data_maps`, one `write_vector_format`, ...); lsdtt3 still accepts
     the old ones, with a deprecation warning.
 11. **Channel-bearing comparisons come from lsdtt3.** The separate
-    `lsdtt-bearing-comparison` CLI is gone; `lsdtt-channel-network-analysis`
+    `lsdtt-bearing-comparison` CLI is gone; [`lsdtt-channel-network-analysis`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_channel_network_analysis.html)
     (`write_channel_bearing_statistics`) compares groups (Strahler orders,
     basins, regions, lithologic units) with block-permutation p-values, and
     lsdviztools3 draws and annotates its tables.

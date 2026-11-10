@@ -1,10 +1,14 @@
 # lsdviztools3
 
-Welcome to `lsdviztools3`, the visualisation package for [`lsdtt3`](https://github.com/LSDtopotools/lsdtt3). `lsdtt3` is a software package for topographic analysis, landscape evolution modelling, and hydrology, which runs in a command line environment. Outputs from `lsdtt3` can be visualised in any GIS software package, but `lsdviztools3` has been built to 
+Welcome to `lsdviztools3`, the visualisation package for [`lsdtt3`](https://github.com/LSDtopotools/lsdtt3) ([documentation](https://lsdtopotools.github.io/lsdtt3/)). `lsdtt3` is a software package for topographic analysis, landscape evolution modelling, and hydrology, which runs in a command line environment, or in python with our python bindings. Outputs from `lsdtt3` can be visualised in any GIS software package, but `lsdviztools3` has been built to:
 
 * Enable production of publication-ready figures from `lsdtt3` outputs. It can also work with other standard geographic outputs generated from alternative topographic analysis packages. 
-* Provide python based wrappers around `lsdtt3` command line programs so analysis can be run in python notebooks. 
+* Provide python based wrappers around `lsdtt3` command line programs so analysis can be run in python notebooks (although this is better suited to the `lsdtt3` python bindings). 
 
+[![Release](https://img.shields.io/github/v/release/LSDtopotools/lsdviztools3)](https://github.com/LSDtopotools/lsdviztools3/releases/latest)
+[![Release build](https://img.shields.io/github/actions/workflow/status/LSDtopotools/lsdviztools3/release.yml?label=release%20build)](https://github.com/LSDtopotools/lsdviztools3/actions/workflows/release.yml)
+[![Docs](https://img.shields.io/badge/docs-lsdtopotools.github.io-blue)](https://lsdtopotools.github.io/lsdviztools3/)
+[![Docs build](https://img.shields.io/github/actions/workflow/status/LSDtopotools/lsdviztools3/docs.yml?label=docs%20build)](https://github.com/LSDtopotools/lsdviztools3/actions/workflows/docs.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 `lsdviztools3` is a ground-up rewrite of the `lsdviztools` plotting stack around
@@ -16,7 +20,8 @@ profiles, rose diagrams and circular comparison of bearings, and many other
 options.
 
 **Full usage guide with examples for every plot (CLI and notebook):
-[`docs/`](docs/index.md)**, one page per topic (basic plots, chi analysis,
+<https://lsdtopotools.github.io/lsdviztools3/>** (the source is
+[`docs/`](docs/index.md)), one page per topic (basic plots, chi analysis,
 channel networks, lithology, valleys, hillslopes, landscape evolution,
 cosmogenic nuclides, spectral analysis) plus a command reference. This README covers install
 and the most basic usage only.
@@ -31,7 +36,7 @@ and the most basic usage only.
   WSL2 / headless servers.
 
 See [`docs/design.md`](docs/design.md) for the full design, the data-ingestion mapping,
-the secure key-handling spec, and the open questions for review.
+the secure key-handling spec, and the design decisions made so far.
 
 ## Install (pixi)
 
@@ -79,6 +84,22 @@ pixi run demo-eigg
 
 GMT and PyGMT are conda-only; use the provided `pixi.toml` (conda-forge).
 
+### Installing a release instead of a clone
+
+Each [GitHub release](https://github.com/LSDtopotools/lsdviztools3/releases/latest)
+has a wheel, `lsdviztools3-<version>-py3-none-any.whl`, that works on every
+platform. pip cannot install GMT, so install it into an environment that
+already has GMT and PyGMT from conda-forge, for example:
+
+```bash
+conda create -n lsdviz -c conda-forge python=3.12 gmt pygmt rioxarray geopandas matplotlib pillow
+conda activate lsdviz
+python -m pip install https://github.com/LSDtopotools/lsdviztools3/releases/download/v0.4.0/lsdviztools3-0.4.0-py3-none-any.whl
+```
+
+Replace `0.4.0` with the version of the release you want (the release page
+lists the wheel's exact address).
+
 Users will be pleased to know that this will work on a server even if you do not have install permissions: `pixi` only requires you to have a writable file system. 
 
 ## lsdtt3 requirement for driver/workflows
@@ -88,7 +109,8 @@ driver/workflow path requires a separate installation of **lsdtt3** executables
 (`lsdtt-raster-preprocessing`, `lsdtt-channel-extraction`, etc.).
 
 - If you only use plotting/downloading, you do not need lsdtt3.
-- If you use `lsdviz3-lsdtt` or `lsdviztools3.workflows`, install lsdtt3 first.
+- If you use `lsdviz3-lsdtt` or `lsdviztools3.workflows`, install lsdtt3 first:
+  see the [lsdtt3 installation guide](https://lsdtopotools.github.io/lsdtt3/what_is_lsdtt3/install_lsdtt3.html).
 
 Point `lsdviztools3` at your lsdtt3 `bin` directory using one of:
 
@@ -159,39 +181,12 @@ absolute path:
 
 ## Console scripts
 
-| Command            | Module                              |
-|--------------------|-------------------------------------|
-| `lsdviz3-hillshade`| `lsdviztools3.cli.plot_hillshade`   |
-| `lsdviz3-drape`    | `lsdviztools3.cli.plot_drape`       |
-| `lsdviz3-sti`      | `lsdviztools3.cli.plot_sti`         |
-| `lsdviz3-channels` | `lsdviztools3.cli.plot_channels`    |
-| `lsdviz3-basins`   | `lsdviztools3.cli.plot_basins`      |
-| `lsdviz3-divide-migration` | `lsdviztools3.cli.plot_divide_migration` |
-| `lsdviz3-cosmo-basins` | `lsdviztools3.cli.plot_cosmo_basins` |
-| `lsdviz3-chi` | `lsdviztools3.cli.plot_chi` |
-| `lsdviz3-chi-cosmo` | `lsdviztools3.cli.plot_chi_cosmo` |
-| `lsdviz3-basemap`  | `lsdviztools3.cli.plot_basemap`     |
-| `lsdviz3-cosmo-compare` | `lsdviztools3.cli.plot_cosmo_compare` |
-| `lsdviz3-cosmo-published` | `lsdviztools3.cli.plot_cosmo_published` |
-| `lsdviz3-cosmo-transient` | `lsdviztools3.cli.plot_cosmo_transient` |
-| `lsdviz3-cosmo-transient` | `lsdviztools3.cli.plot_cosmo_transient` |
-| `lsdviz3-animate`  | `lsdviztools3.cli.plot_animation`   |
-| `lsdviz3-lem-pulse` | `lsdviztools3.cli.plot_lem_pulse` |
-| `lsdviz3-lem-ci`   | `lsdviztools3.cli.plot_lem_ci_animation` |
-| `lsdviz3-hillslope-comparison` | `lsdviztools3.cli.plot_hillslope_comparison` |
-| `lsdviz3-hilltop-coupling` | `lsdviztools3.cli.plot_hilltop_coupling` |
-| `lsdviz3-estar-rstar` | `lsdviztools3.cli.plot_estar_rstar` |
-| `lsdviz3-ladder-windows` | `lsdviztools3.cli.plot_ladder_windows` |
-| `lsdviz3-ladder-density` | `lsdviztools3.cli.plot_ladder_density` |
-| `lsdviz3-ladder-bands` | `lsdviztools3.cli.plot_ladder_band_map` |
-| `lsdviz3-lithology-map` | `lsdviztools3.cli.plot_lithology_map` |
-| `lsdviz3-ksn-by-lithology` | `lsdviztools3.cli.plot_ksn_by_lithology` |
-| `lsdviz3-channel-bearings` | `lsdviztools3.cli.plot_channel_bearings` |
-| `lsdviz3-erodibility-calibration` | `lsdviztools3.cli.plot_erodibility_calibration` |
-| `lsdviz3-valley-sections` | `lsdviztools3.cli.plot_valley_sections` |
-| `lsdviz3-valley-section-map` | `lsdviztools3.cli.plot_valley_section_map` |
-| `lsdviz3-grabdem`  | `lsdviztools3.cli.grab_dem`         |
-| `lsdviz3-lsdtt`    | `lsdviztools3.cli.run_lsdtt`        |
+The package installs 41 `lsdviz3-*` commands, one per kind of figure (for
+example `lsdviz3-hillshade`, `lsdviz3-channels`, `lsdviz3-chi`,
+`lsdviz3-valley-widths`, `lsdviz3-cosmo-basins`), plus `lsdviz3-grabdem` to
+download a DEM and `lsdviz3-lsdtt` to run an lsdtt3 tool. Every command takes
+`--help`. [`docs/cli_reference.md`](docs/cli_reference.md) lists them all, with
+the module each one runs and its main options.
 
 ## Basic usage
 
@@ -230,9 +225,11 @@ the guide in **[`docs/`](docs/index.md)**; [`docs/cli_reference.md`](docs/cli_re
 Cosmogenic comparison CLIs:
 
 ```bash
-# Sweep-based lsdtt3 vs CRONUS/cronuscalc figures
+# Sweep-based lsdtt3 vs CRONUS/cronuscalc figures (the scan CSV is generated by
+# lsdtt3's tests/scripts/run_cosmo_single_point_scaling_scan.py; see
+# docs/cosmogenic_nuclides.md)
 pixi run lsdviz3-cosmo-compare \
-  --scan-csv ../lsdtt3/tests/expected/cosmo/generated/single_point_scan_comparison.csv \
+  --scan-csv scan_out/single_point_scan_comparison.csv \
   --outdir demo_output/cosmo
 
 # Dataset summary residual figures from published summaries
@@ -245,22 +242,22 @@ pixi run lsdviz3-cosmo-published \
 # Standard basin map: join cosmo CSV to basin polygons and color by inferred rate
 # (fails by default if plotted basins are clipped/incomplete)
 pixi run lsdviz3-cosmo-basins \
-  --base ../data/sulawasi/sulawasi_group_0001_DEM.tif \
-  --hillshade ../data/sulawasi/sulawasi_group_0001_hs_hillshade.tif \
-  --basins ../data/sulawasi/sulawasi_group_0001_basin_outlines.fgb \
-  --cosmo-csv ../data/sulawasi/sulawasi_be10_CN_ERATE.csv \
-  --out demo_output/cosmo/sulawasi_basins_erate.png \
-  --joined-basins-out demo_output/cosmo/sulawasi_basins_erate.fgb \
+  --base path/to/run_group_0001_DEM.tif \
+  --hillshade path/to/run_group_0001_hs_hillshade.tif \
+  --basins path/to/run_group_0001_basin_outlines.fgb \
+  --cosmo-csv path/to/run_be10_CN_ERATE.csv \
+  --out demo_output/cosmo/basins_erate.png \
+  --joined-basins-out demo_output/cosmo/basins_erate.fgb \
   --colorbar
 
 # Chi + basin products (one profile PNG per basin + optional ksn-vs-erate)
 pixi run lsdviz3-chi-cosmo \
-  --fit-nodes-csv ../data/sulawasi/work/sulawasi_chi_fit_nodes_mn_0p45.csv \
-  --fit-segments-csv ../data/sulawasi/work/sulawasi_chi_fit_segments_mn_0p45.csv \
-  --base ../data/sulawasi/work/sulawasi_final_DEM.tif \
-  --hillshade ../data/sulawasi/work/sulawasi_final_hs_hillshade.tif \
-  --basins ../data/sulawasi/work/sulawasi_chi_basin_polygons.fgb \
-  --cosmo-csv ../data/sulawasi/work/sulawasi_be10_CN_ERATE.csv \
+  --fit-nodes-csv path/to/work/run_chi_fit_nodes_mn_0p45.csv \
+  --fit-segments-csv path/to/work/run_chi_fit_segments_mn_0p45.csv \
+  --base path/to/work/run_final_DEM.tif \
+  --hillshade path/to/work/run_final_hs_hillshade.tif \
+  --basins path/to/work/run_chi_basin_polygons.fgb \
+  --cosmo-csv path/to/work/run_be10_CN_ERATE.csv \
   --outdir demo_output/chi_cosmo
 ```
 

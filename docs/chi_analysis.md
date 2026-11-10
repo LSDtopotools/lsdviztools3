@@ -1,6 +1,6 @@
 # Chi analysis
 
-Maps and profiles of an `lsdtt-chi-analysis` run: channel steepness (k_sn) on
+Maps and profiles of an [`lsdtt-chi-analysis`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_chi_analysis.html) run: channel steepness (k_sn) on
 a map, stacked chi–elevation plots of many basins, and single-basin profiles.
 Nothing is computed here: chi, the piecewise fit and k_sn all come from
 lsdtt3.

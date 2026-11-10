@@ -3,13 +3,13 @@
 Usage example:
 
     python examples/cosmo_comparison_workflow.py \
-        --scan-csv ../lsdtt3/tests/expected/cosmo/generated/single_point_scan_comparison.csv \
+        --scan-csv scan_out/single_point_scan_comparison.csv \
         --outdir demo_output/cosmo
 
 Optional sample-level table (OCTOPUS/riversand summary style):
 
     python examples/cosmo_comparison_workflow.py \
-        --scan-csv ../lsdtt3/tests/expected/cosmo/generated/single_point_scan_comparison.csv \
+        --scan-csv scan_out/single_point_scan_comparison.csv \
         --sample-csv ../lsdtt3/tests/expected/cosmo/published/dethier2014_riversand_summary.csv \
         --outdir demo_output/cosmo
 """

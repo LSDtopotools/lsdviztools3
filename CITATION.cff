@@ -1,0 +1,81 @@
+# Citation metadata for lsdviztools3 (Citation File Format,
+# https://citation-file-format.github.io/). GitHub shows it as "Cite this
+# repository"; Zenodo reads it when it archives a release.
+#
+# Deliberately no `version:` or `date-released:`. The version lives in
+# pyproject.toml and lsdviztools3/__init__.py, and a copy here would go stale;
+# Zenodo takes the version and date from the release tag.
+#
+# Once Zenodo has archived the first release, add its CONCEPT DOI (the one that
+# always resolves to the latest version) under identifiers:, e.g.
+#
+#   identifiers:
+#     - type: doi
+#       value: 10.5281/zenodo.XXXXXXX
+#       description: Concept DOI, all versions of lsdviztools3
+cff-version: 1.2.0
+message: "If you use lsdviztools3 in your research, please cite it as below."
+type: software
+title: "lsdviztools3: visualisation tools for LSDTopoTools3"
+abstract: >-
+  lsdviztools3 is a Python package for making publication-ready maps and charts
+  from the output of LSDTopoTools3 (lsdtt3) and other geographic data: shaded
+  relief, channel networks, basins, chi profiles, swath profiles, valley and
+  hillslope analyses, landscape evolution model animations and cosmogenic
+  nuclide comparisons. Maps are drawn with PyGMT and x-y charts with
+  matplotlib. It also wraps the lsdtt3 command-line tools so analyses can be
+  run from Python and notebooks.
+authors:
+  - family-names: Mudd
+    given-names: Simon M.
+    orcid: "https://orcid.org/0000-0002-1357-8501"
+    affiliation: "School of GeoSciences, University of Edinburgh, Edinburgh, United Kingdom"
+    email: simon.m.mudd@ed.ac.uk
+  - family-names: Vervoordeldonk
+    given-names: Rutger
+    orcid: "https://orcid.org/0000-0001-9680-4094"
+    affiliation: "School of GeoSciences, University of Edinburgh, Edinburgh, United Kingdom"
+repository-code: "https://github.com/LSDtopotools/lsdviztools3"
+url: "https://lsdtopotools.github.io/lsdviztools3/"
+license: MIT
+keywords:
+  - geomorphology
+  - topographic analysis
+  - visualisation
+  - PyGMT
+  - digital elevation models
+  - LSDTopoTools
+references:
+  - type: software
+    title: "LSDTopoTools3 (lsdtt3): topographic analysis for geomorphology"
+    repository-code: "https://github.com/LSDtopotools/lsdtt3"
+    url: "https://lsdtopotools.github.io/lsdtt3/"
+    license: AGPL-3.0-or-later
+    authors:
+      - family-names: Mudd
+        given-names: Simon M.
+        orcid: "https://orcid.org/0000-0002-1357-8501"
+      - family-names: Vervoordeldonk
+        given-names: Rutger
+        orcid: "https://orcid.org/0000-0001-9680-4094"
+      - family-names: Gailleton
+        given-names: Boris
+        orcid: "https://orcid.org/0000-0001-6518-4304"
+      - family-names: Hawksworth
+        given-names: Martha E.
+        orcid: "https://orcid.org/0009-0003-5182-1466"
+      - family-names: Clubb
+        given-names: Fiona J.
+        orcid: "https://orcid.org/0000-0003-1135-1765"
+      - family-names: Grieve
+        given-names: Stuart W. D.
+        orcid: "https://orcid.org/0000-0003-1893-7363"
+      - family-names: Milodowski
+        given-names: David T.
+        orcid: "https://orcid.org/0000-0002-8419-8506"
+      - family-names: Valters
+        given-names: Declan
+        orcid: "https://orcid.org/0000-0002-4562-3944"
+      - family-names: Hurst
+        given-names: Martin D.
+        orcid: "https://orcid.org/0000-0002-9822-076X"

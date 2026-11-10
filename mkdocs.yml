@@ -1,5 +1,6 @@
 site_name: lsdviztools3
 site_description: PyGMT-based visualisation tools for LSDTopoTools v3 (lsdtt3) output.
+site_url: https://lsdtopotools.github.io/lsdviztools3/
 repo_url: https://github.com/LSDtopotools/lsdviztools3
 edit_uri: blob/main/docs/
 

@@ -21,7 +21,11 @@ It:
       e) outlet -> COM bearing relative to the fault-orthogonal, split by side
          of the fault (does dextral motion bend the basins?).
 
-Outputs under ../data/parkfield/plots. lsdtt3 via $LSDTT3_DIR.
+Outputs under ./data/parkfield/plots, or $PARKFIELD_DIR/plots. The fault traces
+are a vector file you supply: by default
+./data/fault_vector/gem_active_faults_harmonized.gpkg (the GEM Global Active
+Faults database), or set the path in $GEM_FAULTS.
+lsdtt3 is found through $LSDTT3_DIR, the lsdviztools3 config file, or PATH.
 
 Run:
     pixi run python examples/fault_basin_deformation.py
@@ -50,12 +54,14 @@ from lsdviztools3.render.points import render_points
 from lsdviztools3.render.style import MapStyle
 
 ROOT = Path(os.environ.get("PARKFIELD_DIR",
-                           "/mnt/c/LSDTopoTools/data/parkfield")).resolve()
+                           "data/parkfield")).resolve()
 FAULTS_GLOBAL = Path(os.environ.get(
     "GEM_FAULTS",
-    "/mnt/c/LSDTopoTools/data/fault_vector/gem_active_faults_harmonized.gpkg")
+    "data/fault_vector/gem_active_faults_harmonized.gpkg")
 ).resolve()
-LSDTT_DIR = os.environ.get("LSDTT3_DIR", "/mnt/c/LSDTopoTools/lsdtt3/build")
+# None lets the driver find lsdtt3 itself: $LSDTT3_DIR, the lsdviztools3
+# config file (lsdviz3-lsdtt --set-lsdtt-dir), then PATH.
+LSDTT_DIR = os.environ.get("LSDTT3_DIR")
 
 PARK_LAT, PARK_LON = 35.89865076816407, -120.44109502276305
 HALF_DEG = 0.20

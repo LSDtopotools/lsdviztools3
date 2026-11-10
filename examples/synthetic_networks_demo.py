@@ -9,9 +9,9 @@ Four cases: {rectangle, island} x {more-branching, less-branching}, all on a
 ``lsdtt-synthetic-networks`` (higher ``temperature_scale`` / faster
 ``cooling_rate`` / lower ``energy_exponent_gamma`` => more branching).
 
-Outputs go under ``../data/synthetic_networks`` (one subdir per case, plus a
-``comparison/`` dir). lsdtt3 binaries are located via ``$LSDTT3_DIR`` (default:
-``/mnt/c/LSDTopoTools/lsdtt3/build``).
+Outputs go under ``./data/synthetic_networks``, or ``$SYNTHETIC_NETWORKS_DIR``
+(one subdir per case, plus a ``comparison/`` dir). lsdtt3 is found through
+``$LSDTT3_DIR``, the lsdviztools3 config file, or ``PATH``.
 
 Run:
     pixi run python examples/synthetic_networks_demo.py
@@ -35,8 +35,10 @@ from lsdviztools3.render.hillshade import render_hillshade
 from lsdviztools3.render.style import MapStyle
 
 ROOT = Path(os.environ.get(
-    "SYNTHETIC_NETWORKS_DIR", "/mnt/c/LSDTopoTools/data/synthetic_networks"))
-LSDTT_DIR = os.environ.get("LSDTT3_DIR", "/mnt/c/LSDTopoTools/lsdtt3/build")
+    "SYNTHETIC_NETWORKS_DIR", "data/synthetic_networks"))
+# None lets the driver find lsdtt3 itself: $LSDTT3_DIR, the lsdviztools3
+# config file (lsdviz3-lsdtt --set-lsdtt-dir), then PATH.
+LSDTT_DIR = os.environ.get("LSDTT3_DIR")
 
 GRID = 256            # n_rows = n_cols
 CELL = 30             # cell size in metres

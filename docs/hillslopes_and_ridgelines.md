@@ -2,7 +2,7 @@
 
 Hillslope process diagnostics from real landscapes (slope–area, gradient
 against curvature, E*–R*, hilltop–channel coupling) and ridgeline profiles from
-`lsdtt-ridgeline-analysis`. For the solver tests see
+[`lsdtt-ridgeline-analysis`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_ridgeline_analysis.html). For the solver tests see
 [Landscape evolution](landscape_evolution.md#hillslope-solver-comparisons).
 
 ## Hillslope charts
@@ -23,7 +23,7 @@ pixi run lsdviz3-estar-rstar --metrics hilltop_metrics.csv --outdir demo_output/
 
 ## Hilltop–channel coupling (`lsdviz3-hilltop-coupling`)
 
-Hilltop/channel coupling (`lsdtt-hillslope-channel-coupling` output, loaded with
+Hilltop/channel coupling ([`lsdtt-hillslope-channel-coupling`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_hillslope_channel_coupling.html) output, loaded with
 `io.hilltop_coupling.load_hilltop_outputs`) has its own chart set in
 `charts.hilltop_coupling`: `plot_traces_on_hillshade`, `plot_trace_outcomes`,
 `plot_ridgelines_and_sides`, `plot_length_distributions`,
@@ -31,7 +31,7 @@ Hilltop/channel coupling (`lsdtt-hillslope-channel-coupling` output, loaded with
 
 ```bash
 # hilltop coupling figure set from one output directory or <write_path>/<write_fname> stem
-pixi run lsdviz3-hilltop-coupling --prefix ../data/run/run_stem --outdir demo_output/hilltop
+pixi run lsdviz3-hilltop-coupling --prefix path/to/run/run_stem --outdir demo_output/hilltop
 ```
 
 Flags: `--prefix --outdir [--dem --channels --max-traces --dpi]`.
@@ -53,4 +53,4 @@ flips its direction, and `--use-distance-range` with `--minimum-distance` /
 | `lsdviz3-ridgeline-curvature` | Ridge-crest elevation, moving-window detrending, maximal curvature and the Laplacian along one ridgeline | `--ridgeline-profile-csv`; `--moving-window-sizes-pixels` and `--curvature-lambdas-m` (four values each, default 25,49,99,149); `--site-display-name` |
 | `lsdviz3-ridgeline-summary` | Triple divide junctions, a ridgeline series with its curvature barcode, and a map of the ridgeline | `--ridgeline-profile-csv`; `--hillshade-raster-file` (map); up to three `--native-tdj-csv-N` and `--topological-tdj-csv-N` (threshold read from the file name); `--channel-network-vector-file`, `--paired-flowpaths-vector-file`; `--ridgeline-series`, `--highlighted-tdj-type`, `--highlighted-tdj-threshold` |
 | `lsdviz3-ridgeline-spacing` | Maximal-curvature zero-crossing spacing against polyfit scale beside slope–area, one row per site | `--site NAME PROFILE_CSV SLOPE_AREA_CSV` (repeat per site) or `site_<N>_*` driver entries with `--site-count`; `--log-spacing`, `--spacing-y-max-m` |
-| `lsdviz3-mdd-ridgeline` | A main-drainage-divide ridgeline profile above the model's drainage-area image | `--ridgeline-profile-csv` (range-defined, with a maximum-curvature metric); `--drainage-area-map-png` (`lsdtt-lem` log₁₀ drainage area of the same grid); `--model-name`, `--guide-interval` |
+| `lsdviz3-mdd-ridgeline` | A main-drainage-divide ridgeline profile above the model's drainage-area image | `--ridgeline-profile-csv` (range-defined, with a maximum-curvature metric); `--drainage-area-map-png` ([`lsdtt-lem`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_lem.html) log₁₀ drainage area of the same grid); `--model-name`, `--guide-interval` |
