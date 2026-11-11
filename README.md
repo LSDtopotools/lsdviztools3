@@ -45,7 +45,7 @@ the secure key-handling spec, and the design decisions made so far.
 
 `lsdviztools3` is on PyPI, and pip installs it with every Python package it
 needs, including PyGMT and matplotlib, **except GMT itself**. PyGMT is a
-wrapper around the GMT C library (version 6.4 or later), which pip cannot
+wrapper around the GMT C library (version 6.5 or later), which pip cannot
 install, so install GMT first. The simplest way is a conda-forge environment:
 
 ```bash
@@ -55,7 +55,7 @@ python -m pip install lsdviztools3
 ```
 
 GMT can also come from Homebrew (`brew install gmt`) or your system package
-manager, if it is GMT 6.4 or later. Without GMT, `lsdviztools3` still installs
+manager, if it is GMT 6.5 or later. Without GMT, `lsdviztools3` still installs
 and its matplotlib charts work, but every map command stops with
 `error: PyGMT is installed but cannot load the GMT library`, followed by
 these instructions.

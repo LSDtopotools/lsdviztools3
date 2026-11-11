@@ -1,0 +1,47 @@
+name: Tests
+
+# Runs the test suite in the repository's pixi environment, which has GMT, on
+# pushes to main, on pull requests, and by hand from the Actions tab.
+#
+# The environment comes from pixi.lock (locked: true), the same one used
+# locally, so a pass here means the locked versions work. Tests marked
+# `network` download a small DEM and skip themselves if it cannot be fetched;
+# tests that need the lsdtt3 executables skip when lsdtt3 is not installed.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest (pixi, Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: prefix-dev/setup-pixi@v0.11.2
+        with:
+          pixi-version: v0.70.2
+          locked: true
+          cache: true
+
+      - name: Install the package into the environment
+        run: pixi run install
+
+      - name: Check that PyGMT finds GMT
+        run: pixi run python -c "import pygmt; pygmt.show_versions()"
+
+      - name: Run the tests
+        run: pixi run test

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -7,33 +7,36 @@ name = "lsdviztools3"
 version = "0.4.0"
 description = "PyGMT-based visualisation tools for LSDTopoTools v3 (lsdtt3) output."
 readme = "README.md"
-requires-python = ">=3.11"
-license = { text = "MIT" }
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Simon M. Mudd", email = "simon.m.mudd@ed.ac.uk" },
     { name = "Rutger Vervoordeldonk" },
 ]
 keywords = ["geomorphology", "topography", "pygmt", "gmt", "lsdtopotools", "dem"]
 classifiers = [
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: GIS",
     "Topic :: Scientific/Engineering :: Visualization",
 ]
+# Minimum versions are the major.minor of the versions the tests run with
+# (pixi.lock, tests.yml). Older versions may well work but are untested; lower
+# a bound only after testing it. PyGMT 0.18 needs GMT 6.5 and Python 3.12,
+# which is why requires-python is 3.12.
 dependencies = [
     # pip installs PyGMT but not the GMT C library it wraps, which comes from
     # conda-forge / pixi, Homebrew or the system. Without it the map renderers
     # raise lsdviztools3._gmt.GMTNotAvailableError; the charts still work.
-    "pygmt",
-    "rioxarray",
-    "xarray",
-    "geopandas",
-    "pandas",
-    "numpy",
-    "pillow",  # GIF assembly for transient-run animations (render.animation)
-    "matplotlib",  # x-y charts (charts.*), used by many lsdviz3-* commands, and matplotlib colour maps
+    "pygmt>=0.18",
+    "rioxarray>=0.22",
+    "xarray>=2026.4",
+    "geopandas>=1.1",
+    "pandas>=3.0",
+    "numpy>=2.4",
+    "pillow>=12.2",  # GIF assembly for transient-run animations (render.animation)
+    "matplotlib>=3.11",  # x-y charts (charts.*), used by many lsdviz3-* commands, and matplotlib colour maps
 ]
 
 [project.urls]
@@ -45,11 +48,11 @@ Issues = "https://github.com/LSDtopotools/lsdviztools3/issues"
 "lsdtt3 repository" = "https://github.com/LSDtopotools/lsdtt3"
 
 [project.optional-dependencies]
-download = ["requests", "planetary-computer", "pystac-client"]
+download = ["requests>=2.34", "planetary-computer>=1.0", "pystac-client>=0.9"]
 # Kept so `pip install lsdviztools3[charts]` still works; matplotlib is now a
 # core dependency.
 charts = []
-test = ["pytest"]
+test = ["pytest>=9.1"]
 
 [project.scripts]
 lsdviz3-hillshade = "lsdviztools3.cli.plot_hillshade:main"

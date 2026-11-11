@@ -17,7 +17,7 @@ INSTALL_HELP = (
     "install GMT: install it from conda-forge (for example "
     "`conda install -c conda-forge gmt pygmt`, or use the pixi environment in "
     "the lsdviztools3 repository), Homebrew (`brew install gmt`) or your system "
-    "package manager (GMT 6.4 or later). The matplotlib charts work without it. "
+    "package manager (GMT 6.5 or later). The matplotlib charts work without it. "
     "See https://lsdtopotools.github.io/lsdviztools3/ for installation."
 )
 

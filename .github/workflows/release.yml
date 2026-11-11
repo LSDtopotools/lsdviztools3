@@ -95,11 +95,43 @@ jobs:
           python -m build --outdir dist .
           ls -l dist
 
-      - name: Check the wheel installs
+      # What a user gets from `pip install lsdviztools3`: the wheel with every
+      # dependency from PyPI, into a clean environment with no GMT. The
+      # dependencies must resolve and agree (pip check), every lsdviz3-*
+      # command must start, and asking for PyGMT must give the clear
+      # GMTNotAvailableError rather than PyGMT's own load error. The full test
+      # suite, with GMT, is tests.yml.
+      - name: Check the wheel installs with its dependencies
         run: |
           python -m venv /tmp/check
-          /tmp/check/bin/python -m pip install --quiet --no-deps dist/*.whl
+          /tmp/check/bin/python -m pip install --quiet dist/*.whl
+          /tmp/check/bin/python -m pip check
           /tmp/check/bin/python -c "import importlib.metadata as m; print('installed', m.version('lsdviztools3'))"
+
+      - name: Smoke-test the installed commands
+        run: |
+          python - <<'PY'
+          import subprocess, sys, tomllib
+          with open("pyproject.toml", "rb") as f:
+              scripts = sorted(tomllib.load(f)["project"]["scripts"])
+          failed = []
+          for name in scripts:
+              run = subprocess.run([f"/tmp/check/bin/{name}", "--help"],
+                                   capture_output=True, text=True)
+              if run.returncode != 0:
+                  failed.append(name)
+                  print(f"FAIL {name}:\n{run.stderr[-2000:]}")
+          print(f"{len(scripts) - len(failed)} of {len(scripts)} commands start")
+          sys.exit(1 if failed else 0)
+          PY
+          /tmp/check/bin/python - <<'PY'
+          from lsdviztools3._gmt import GMTNotAvailableError, require_pygmt
+          try:
+              require_pygmt()
+              print("GMT is installed on this runner; the missing-GMT message was not exercised")
+          except GMTNotAvailableError as err:
+              print("missing GMT reported as expected:", str(err)[:120], "...")
+          PY
 
       - name: Keep the packages for the publishing jobs
         uses: actions/upload-artifact@v5
