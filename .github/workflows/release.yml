@@ -1,12 +1,28 @@
 name: Build and release
 
-# Makes a GitHub Release for a version tag, with the wheel and sdist attached.
+# Builds the wheel and sdist for a version tag, attaches them to a GitHub
+# Release, and publishes them to PyPI.
 #
 # Triggers:
 #   - push of a version tag:
 #       git tag -a v0.3.0 -m "lsdviztools3 0.3.0" && git push origin v0.3.0
-#   - manual run from the Actions tab, naming an EXISTING tag (for a tag that
-#     was pushed before this workflow existed, or to redo a failed run)
+#     -> GitHub Release + PyPI
+#   - manual run from the Actions tab, naming an EXISTING tag, with
+#     publish_to:
+#       none     -> GitHub Release only (a tag pushed before this workflow
+#                   existed, or to redo a failed run)
+#       testpypi -> TestPyPI only, for a trial upload; the GitHub Release is
+#                   not touched
+#       pypi     -> GitHub Release + PyPI (to redo a failed PyPI upload)
+#
+# Publishing uses PyPI trusted publishing (OpenID Connect): no token is stored
+# in the repository. It needs, once, on pypi.org and test.pypi.org, a trusted
+# publisher for owner LSDtopotools, repository lsdviztools3, workflow
+# release.yml and environment pypi (on test.pypi.org: testpypi), and the
+# GitHub environments pypi and testpypi in the repository settings. Before the
+# first upload the project does not exist yet, so add it as a "pending"
+# publisher. A version can be uploaded only once (skip-existing makes a re-run
+# harmless), so a mistake needs a new version.
 #
 # The tag must match the version in pyproject.toml and __version__ in
 # lsdviztools3/__init__.py (tag v0.3.0 <-> version 0.3.0); the run fails
@@ -22,9 +38,17 @@ on:
       tag:
         description: Existing tag to release (e.g. v0.2.0)
         required: true
+      publish_to:
+        description: Where to publish the packages (none = GitHub Release only)
+        type: choice
+        options:
+          - none
+          - testpypi
+          - pypi
+        default: none
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.event.inputs.tag || github.ref }}
@@ -32,7 +56,10 @@ concurrency:
 
 jobs:
   release:
+    name: Build and GitHub Release
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
@@ -74,7 +101,15 @@ jobs:
           /tmp/check/bin/python -m pip install --quiet --no-deps dist/*.whl
           /tmp/check/bin/python -c "import importlib.metadata as m; print('installed', m.version('lsdviztools3'))"
 
+      - name: Keep the packages for the publishing jobs
+        uses: actions/upload-artifact@v5
+        with:
+          name: dist
+          path: dist/
+          retention-days: 14
+
       - name: Create the GitHub Release
+        if: github.event.inputs.publish_to != 'testpypi'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG }}
@@ -83,3 +118,42 @@ jobs:
             dist/*.whl
             dist/*.tar.gz
           generate_release_notes: true
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: release
+    if: github.event_name == 'push' || github.event.inputs.publish_to == 'pypi'
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/project/lsdviztools3/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: release
+    if: github.event.inputs.publish_to == 'testpypi'
+    runs-on: ubuntu-24.04
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/lsdviztools3/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true

@@ -1,12 +1,12 @@
 # lsdviztools3
 
-![Drainage divides of third- and fourth-order basins over shaded relief, drawn with lsdviztools3 from lsdtt3 output](docs/images/readme_banner.png)
+![Drainage divides of third- and fourth-order basins over shaded relief, drawn with lsdviztools3 from lsdtt3 output](https://raw.githubusercontent.com/LSDtopotools/lsdviztools3/main/docs/images/readme_banner.png)
 
 [![Release](https://img.shields.io/github/v/release/LSDtopotools/lsdviztools3)](https://github.com/LSDtopotools/lsdviztools3/releases/latest)
 [![Release build](https://img.shields.io/github/actions/workflow/status/LSDtopotools/lsdviztools3/release.yml?label=release%20build)](https://github.com/LSDtopotools/lsdviztools3/actions/workflows/release.yml)
 [![Docs](https://img.shields.io/badge/docs-lsdtopotools.github.io-blue)](https://lsdtopotools.github.io/lsdviztools3/)
 [![Docs build](https://img.shields.io/github/actions/workflow/status/LSDtopotools/lsdviztools3/docs.yml?label=docs%20build)](https://github.com/LSDtopotools/lsdviztools3/actions/workflows/docs.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/LSDtopotools/lsdviztools3/blob/main/LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24113499.svg)](https://doi.org/10.5281/zenodo.24113499)
 
 Welcome to `lsdviztools3`, the visualisation package for [`lsdtt3`](https://github.com/LSDtopotools/lsdtt3) ([documentation](https://lsdtopotools.github.io/lsdtt3/)). `lsdtt3` is a software package for topographic analysis, landscape evolution modelling, and hydrology, which runs in a command line environment, or in python with our python bindings. Outputs from `lsdtt3` can be visualised in any GIS software package, but `lsdviztools3` has been built to:
@@ -24,7 +24,7 @@ options.
 
 **Full usage guide with examples for every plot (CLI and notebook):
 <https://lsdtopotools.github.io/lsdviztools3/>** (the source is
-[`docs/`](docs/index.md)), one page per topic (basic plots, chi analysis,
+[`docs/`](https://github.com/LSDtopotools/lsdviztools3/tree/main/docs)), one page per topic (basic plots, chi analysis,
 channel networks, lithology, valleys, hillslopes, landscape evolution,
 cosmogenic nuclides, spectral analysis) plus a command reference. This README covers install
 and the most basic usage only.
@@ -38,14 +38,42 @@ and the most basic usage only.
 - **Headless CLIs** (`lsdviztools3.cli`): render straight to PNG, suitable for
   WSL2 / headless servers.
 
-See [`docs/design.md`](docs/design.md) for the full design, the data-ingestion mapping,
+See [the design page](https://lsdtopotools.github.io/lsdviztools3/design/) for the full design, the data-ingestion mapping,
 the secure key-handling spec, and the design decisions made so far.
 
-## Install (pixi)
+## Install
 
-We use the `pixi` package manager (it allows mixing of `conda/mamba` and `pip` python packages) for the installation environment. Testing of this package (i.e. pixi and the pixi environment) has been done in a WSL2 instance running Ubuntu 22.04. 
+`lsdviztools3` is on PyPI, and pip installs it with every Python package it
+needs, including PyGMT and matplotlib, **except GMT itself**. PyGMT is a
+wrapper around the GMT C library (version 6.4 or later), which pip cannot
+install, so install GMT first. The simplest way is a conda-forge environment:
 
-### Installing pixi itself
+```bash
+conda create -n lsdviz -c conda-forge python=3.12 gmt pygmt
+conda activate lsdviz
+python -m pip install lsdviztools3
+```
+
+GMT can also come from Homebrew (`brew install gmt`) or your system package
+manager, if it is GMT 6.4 or later. Without GMT, `lsdviztools3` still installs
+and its matplotlib charts work, but every map command stops with
+`error: PyGMT is installed but cannot load the GMT library`, followed by
+these instructions.
+
+Check that PyGMT finds GMT with
+`python -c "import pygmt; pygmt.show_versions()"`. The optional `download`
+extra (`pip install "lsdviztools3[download]"`) adds the packages for fetching
+DEMs from Planetary Computer.
+
+### From a clone, with pixi
+
+For development, the tests and the demos, use a clone of the repository and
+the `pixi` package manager (it mixes conda and PyPI packages). Testing of this
+package and its pixi environment has been done in a WSL2 instance running
+Ubuntu 22.04. pixi works on a server even if you do not have install
+permissions: it only needs a writable file system.
+
+#### Installing pixi itself
 
 [pixi](https://pixi.sh) is a fast conda/PyPI package manager that handles the
 whole `lsdviztools3` environment for you. Install it once:
@@ -66,10 +94,10 @@ Restart your shell (or `source ~/.bashrc`) and confirm it is on your `PATH`:
 pixi --version
 ```
 
-If `pixi: command not found`, see the [WSL2 notes](#wsl2-notes-ubuntu-2204-default)
+If `pixi: command not found`, see the [WSL2 notes](https://github.com/LSDtopotools/lsdviztools3#wsl2-notes-ubuntu-2204-default)
 below for fixing your `PATH`.
 
-### Project setup
+#### Project setup
 
 Once you have cloned `lsdviztools3`, navigate into that directory and run:
 
@@ -85,34 +113,20 @@ pixi run test
 pixi run demo-eigg
 ```
 
-The pixi environment includes GMT, which PyGMT needs and pip cannot install
-(see below).
+The pixi environment includes GMT, so nothing else needs installing.
 
-### Installing a release instead of a clone
+### A specific release from GitHub
 
-Each [GitHub release](https://github.com/LSDtopotools/lsdviztools3/releases/latest)
-has a wheel, `lsdviztools3-<version>-py3-none-any.whl`, that works on every
-platform. pip installs it with every Python package it depends on, including
-PyGMT and matplotlib, **except GMT itself**: PyGMT is a wrapper around the GMT
-C library, which pip cannot install. Install the wheel into an environment
-that already has GMT, for example one made from conda-forge:
+Each [GitHub release](https://github.com/LSDtopotools/lsdviztools3/releases/latest) also has the wheel,
+`lsdviztools3-<version>-py3-none-any.whl`, which works on every platform.
+Install it into an environment with GMT, as above, by its address:
 
 ```bash
-conda create -n lsdviz -c conda-forge python=3.12 gmt pygmt rioxarray geopandas matplotlib pillow
-conda activate lsdviz
 python -m pip install https://github.com/LSDtopotools/lsdviztools3/releases/download/v0.4.0/lsdviztools3-0.4.0-py3-none-any.whl
 ```
 
-Replace `0.4.0` with the version of the release you want (the release page
-lists the wheel's exact address).
-
-GMT can also come from Homebrew (`brew install gmt`) or your system package
-manager, if it is GMT 6.4 or later. Installed into an environment without GMT,
-the wheel still installs, and the matplotlib charts work, but every map
-command stops with `error: PyGMT is installed but cannot load the GMT
-library`, followed by these instructions.
-
-Users will be pleased to know that this will work on a server even if you do not have install permissions: `pixi` only requires you to have a writable file system. 
+Replace `0.4.0` with the version you want (the release page lists the wheel's
+exact address).
 
 ## lsdtt3 requirement for driver/workflows
 
@@ -197,7 +211,7 @@ The package installs 41 `lsdviz3-*` commands, one per kind of figure (for
 example `lsdviz3-hillshade`, `lsdviz3-channels`, `lsdviz3-chi`,
 `lsdviz3-valley-widths`, `lsdviz3-cosmo-basins`), plus `lsdviz3-grabdem` to
 download a DEM and `lsdviz3-lsdtt` to run an lsdtt3 tool. Every command takes
-`--help`. [`docs/cli_reference.md`](docs/cli_reference.md) lists them all, with
+`--help`. [The command reference](https://lsdtopotools.github.io/lsdviztools3/cli_reference/) lists them all, with
 the module each one runs and its main options.
 
 ## Basic usage
@@ -232,7 +246,7 @@ save_figure(fig, "demo_output/eigg_hillshade.png", style=style)  # or fig.show()
 For every other plot — channels coloured by log₁₀ k_sn, points sized by drainage
 area, basins, locator basemaps, chi profiles, swath profiles — and the full list
 of options for each (CLI flags and Python keyword arguments), see
-the guide in **[`docs/`](docs/index.md)**; [`docs/cli_reference.md`](docs/cli_reference.md) lists every command.
+the guide at **<https://lsdtopotools.github.io/lsdviztools3/>**; [the command reference](https://lsdtopotools.github.io/lsdviztools3/cli_reference/) lists every command.
 
 Cosmogenic comparison CLIs:
 
@@ -299,7 +313,7 @@ plots need matplotlib, which is a core dependency, so a plain install has it.
 
 For a quick cosmogenic end-to-end example, see
 `examples/cosmo_comparison_workflow.py` and 
-[`docs/cosmogenic_nuclides.md`](docs/cosmogenic_nuclides.md).
+[the cosmogenic nuclides page](https://lsdtopotools.github.io/lsdviztools3/cosmogenic_nuclides/).
 
 For chi + basin summaries, the workflow helpers can now:
 - compute basin-median `k_sn` (+ 25th/75th percentile bounds) from
