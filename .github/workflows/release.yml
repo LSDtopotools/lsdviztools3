@@ -7,6 +7,9 @@ name: Build and release
 #   - push of a version tag:
 #       git tag -a v0.3.0 -m "lsdviztools3 0.3.0" && git push origin v0.3.0
 #     -> GitHub Release + PyPI
+#   - push of a PRE-RELEASE tag (a, b, rc or dev, e.g. v0.4.1rc1)
+#     -> TestPyPI only: no GitHub Release (which would become "Latest" and be
+#        archived by Zenodo), no PyPI, no docs deploy. This is the trial run.
 #   - manual run from the Actions tab, naming an EXISTING tag, with
 #     publish_to:
 #       none     -> GitHub Release only (a tag pushed before this workflow
@@ -63,6 +66,8 @@ jobs:
       contents: write
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    outputs:
+      prerelease: ${{ steps.kind.outputs.prerelease }}
 
     steps:
       - uses: actions/checkout@v5
@@ -72,6 +77,16 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
+      - name: Is this a pre-release tag?
+        id: kind
+        run: |
+          if [[ "${TAG}" =~ (a|b|rc|dev)[0-9]+$ ]]; then
+            echo "prerelease=true" >> "${GITHUB_OUTPUT}"
+            echo "${TAG} is a pre-release: TestPyPI only"
+          else
+            echo "prerelease=false" >> "${GITHUB_OUTPUT}"
+          fi
 
       - name: Check the tag matches the package version
         run: |
@@ -147,7 +162,9 @@ jobs:
           retention-days: 14
 
       - name: Create the GitHub Release
-        if: github.event.inputs.publish_to != 'testpypi'
+        if: >-
+          steps.kind.outputs.prerelease != 'true'
+          && github.event.inputs.publish_to != 'testpypi'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG }}
@@ -160,7 +177,9 @@ jobs:
   publish-pypi:
     name: Publish to PyPI
     needs: release
-    if: github.event_name == 'push' || github.event.inputs.publish_to == 'pypi'
+    if: >-
+      (github.event_name == 'push' && needs.release.outputs.prerelease != 'true')
+      || github.event.inputs.publish_to == 'pypi'
     runs-on: ubuntu-24.04
     environment:
       name: pypi
@@ -179,7 +198,9 @@ jobs:
   publish-testpypi:
     name: Publish to TestPyPI
     needs: release
-    if: github.event.inputs.publish_to == 'testpypi'
+    if: >-
+      (github.event_name == 'push' && needs.release.outputs.prerelease == 'true')
+      || github.event.inputs.publish_to == 'testpypi'
     runs-on: ubuntu-24.04
     environment:
       name: testpypi
