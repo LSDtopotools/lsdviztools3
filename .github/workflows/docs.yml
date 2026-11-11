@@ -24,6 +24,11 @@ on:
   push:
     tags:
       - "v*"
+      # Pre-release tags (TestPyPI trials) do not change the published site.
+      - "!v*a[0-9]*"
+      - "!v*b[0-9]*"
+      - "!v*rc[0-9]*"
+      - "!v*dev[0-9]*"
   workflow_dispatch:
 
 permissions:

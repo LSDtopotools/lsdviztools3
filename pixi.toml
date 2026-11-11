@@ -1,6 +1,6 @@
 [workspace]
 name = "lsdviztools3"
-version = "0.4.0"
+# No version here: it is __version__ in lsdviztools3/__init__.py only.
 description = "PyGMT-based visualisation tools for LSDTopoTools v3 (lsdtt3) output."
 channels = ["conda-forge"]
 platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]

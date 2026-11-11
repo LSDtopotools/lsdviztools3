@@ -16714,16 +16714,16 @@ packages:
 - pypi: .
   name: lsdviztools3
   requires_dist:
-  - pygmt
-  - rioxarray
-  - xarray
-  - geopandas
-  - pandas
-  - numpy
-  - pillow
-  - matplotlib
-  - requests ; extra == 'download'
-  - planetary-computer ; extra == 'download'
-  - pystac-client ; extra == 'download'
-  - pytest ; extra == 'test'
-  requires_python: '>=3.11'
+  - pygmt>=0.18
+  - rioxarray>=0.22
+  - xarray>=2026.4
+  - geopandas>=1.1
+  - pandas>=3.0
+  - numpy>=2.4
+  - pillow>=12.2
+  - matplotlib>=3.11
+  - requests>=2.34 ; extra == 'download'
+  - planetary-computer>=1.0 ; extra == 'download'
+  - pystac-client>=0.9 ; extra == 'download'
+  - pytest>=9.1 ; extra == 'test'
+  requires_python: '>=3.12'

@@ -97,7 +97,8 @@ def render_method_classes(
     Returns:
         The ``pygmt.Figure``.
     """
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     all_methods = read_method_list(stem)
     methods = list(methods) if methods is not None else all_methods
@@ -153,7 +154,8 @@ def render_method_agreement(
     one colour, named in the legend by the methods that set it (bit k =
     method k in list order, from the summary CSV). Up to 4 methods.
     """
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     if surface_class not in ("floodplain", "terrace"):
         raise ValueError("surface_class is floodplain or terrace.")

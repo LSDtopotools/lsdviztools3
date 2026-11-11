@@ -28,7 +28,8 @@ def new_figure(style: Optional[MapStyle] = None):
     Returns:
         A new ``pygmt.Figure``.
     """
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     style = style or MapStyle()
     fig = pygmt.Figure()

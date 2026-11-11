@@ -683,7 +683,8 @@ def render_chi_ksn_relief3d(
         ``Path`` to the written PNG.
     """
     import numpy as np
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
     import xarray as xr
 
     from .io.raster import get_crs, load_raster, to_coordinates, to_gmt_grid

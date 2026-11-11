@@ -80,7 +80,8 @@ def render_calibration_basin_map(
     from dataclasses import replace
 
     import geopandas as gpd
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     from ..io.erodibility_calibration import BASIN_COLUMNS, SAMPLE_COLUMNS
     from ..io.raster import get_crs, load_raster, to_gmt_grid

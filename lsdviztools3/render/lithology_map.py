@@ -343,7 +343,8 @@ def render_region_overlay(
 def _draw_by_value(fig, kind, data, column, *, cmap, width, point_size,
                    clip_percentiles, log_scale, m_over_n, a0, colorbar_position):
     """Draw channels coloured by a numeric column through a continuous CPT."""
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     from .colormaps import resolve_cmap
     from .decorations import add_colourbar
@@ -652,7 +653,8 @@ def render_channel_order_map(
     # Legend of overlay rows only (no unit entries).
     import io as _io
 
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     title_rows = ([f"H 8p,Helvetica-Bold {legend_title}"]
                   if legend_title and network_status is None else [])

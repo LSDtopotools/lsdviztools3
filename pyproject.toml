@@ -1,38 +1,49 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
 name = "lsdviztools3"
-version = "0.4.0"
+dynamic = ["version"]  # from __version__ in lsdviztools3/__init__.py ([tool.hatch.version])
 description = "PyGMT-based visualisation tools for LSDTopoTools v3 (lsdtt3) output."
 readme = "README.md"
-requires-python = ">=3.11"
-license = { text = "MIT" }
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Simon M. Mudd", email = "simon.m.mudd@ed.ac.uk" },
     { name = "Rutger Vervoordeldonk" },
 ]
 keywords = ["geomorphology", "topography", "pygmt", "gmt", "lsdtopotools", "dem"]
+# Python versions: only those tests.yml runs. Add 3.13 / 3.14 when CI tests them.
 classifiers = [
-    "License :: OSI Approved :: MIT License",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Natural Language :: English",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: GIS",
     "Topic :: Scientific/Engineering :: Visualization",
 ]
+# Minimum versions are the major.minor of the versions the tests run with
+# (pixi.lock, tests.yml). Older versions may well work but are untested; lower
+# a bound only after testing it. PyGMT 0.18 needs GMT 6.5 and Python 3.12,
+# which is why requires-python is 3.12.
 dependencies = [
-    # NOTE: `gmt` and `pygmt` are conda-only; install via conda-forge / pixi.
-    # They are listed here for completeness but pip cannot provide `gmt`.
-    "pygmt",
-    "rioxarray",
-    "xarray",
-    "geopandas",
-    "pandas",
-    "numpy",
-    "pillow",  # GIF assembly for transient-run animations (render.animation)
-    "matplotlib",  # x-y charts (charts.*), used by many lsdviz3-* commands, and matplotlib colour maps
+    # pip installs PyGMT but not the GMT C library it wraps, which comes from
+    # conda-forge / pixi, Homebrew or the system. Without it the map renderers
+    # raise lsdviztools3._gmt.GMTNotAvailableError; the charts still work.
+    "pygmt>=0.18",
+    "rioxarray>=0.22",
+    "xarray>=2026.4",
+    "geopandas>=1.1",
+    "pandas>=3.0",
+    "numpy>=2.4",
+    "pillow>=12.2",  # GIF assembly for transient-run animations (render.animation)
+    "matplotlib>=3.11",  # x-y charts (charts.*), used by many lsdviz3-* commands, and matplotlib colour maps
 ]
 
 [project.urls]
@@ -44,11 +55,11 @@ Issues = "https://github.com/LSDtopotools/lsdviztools3/issues"
 "lsdtt3 repository" = "https://github.com/LSDtopotools/lsdtt3"
 
 [project.optional-dependencies]
-download = ["requests", "planetary-computer", "pystac-client"]
+download = ["requests>=2.34", "planetary-computer>=1.0", "pystac-client>=0.9"]
 # Kept so `pip install lsdviztools3[charts]` still works; matplotlib is now a
 # core dependency.
 charts = []
-test = ["pytest"]
+test = ["pytest>=9.1"]
 
 [project.scripts]
 lsdviz3-hillshade = "lsdviztools3.cli.plot_hillshade:main"
@@ -93,5 +104,26 @@ lsdviz3-mdd-ridgeline = "lsdviztools3.cli.plot_mdd_ridgeline:main"
 lsdviz3-floodplain = "lsdviztools3.cli.plot_floodplain:main"
 lsdviz3-surface-methods = "lsdviztools3.cli.plot_surface_methods:main"
 
+[tool.hatch.version]
+# The one place the version is written. The release workflow checks the tag
+# against it before building.
+path = "lsdviztools3/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["lsdviztools3"]
+
+# The sdist is the package, its tests and the files needed to build and cite
+# it: what a downstream packager (e.g. conda-forge) builds and tests from.
+# Left out: pixi.lock and pixi.toml (the development environment), the docs
+# site and its images, examples and CI config. .gitignore'd files, such as the
+# tests' DEM cache, are never included.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/lsdviztools3",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+    "/CITATION.cff",
+    "/pyproject.toml",
+]
+exclude = ["__pycache__"]

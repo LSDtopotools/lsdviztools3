@@ -1,16 +1,36 @@
 name: Build and release
 
-# Makes a GitHub Release for a version tag, with the wheel and sdist attached.
+# Builds the wheel and sdist for a version tag, attaches them to a GitHub
+# Release, and publishes them to PyPI.
 #
 # Triggers:
 #   - push of a version tag:
 #       git tag -a v0.3.0 -m "lsdviztools3 0.3.0" && git push origin v0.3.0
-#   - manual run from the Actions tab, naming an EXISTING tag (for a tag that
-#     was pushed before this workflow existed, or to redo a failed run)
+#     -> GitHub Release + PyPI
+#   - push of a PRE-RELEASE tag (a, b, rc or dev, e.g. v0.4.1rc1)
+#     -> TestPyPI only: no GitHub Release (which would become "Latest" and be
+#        archived by Zenodo), no PyPI, no docs deploy. This is the trial run.
+#   - manual run from the Actions tab, naming an EXISTING tag, with
+#     publish_to:
+#       none     -> GitHub Release only (a tag pushed before this workflow
+#                   existed, or to redo a failed run)
+#       testpypi -> TestPyPI only, for a trial upload; the GitHub Release is
+#                   not touched
+#       pypi     -> GitHub Release + PyPI (to redo a failed PyPI upload)
 #
-# The tag must match the version in pyproject.toml and __version__ in
-# lsdviztools3/__init__.py (tag v0.3.0 <-> version 0.3.0); the run fails
-# before building anything if they differ. lsdviztools3 is pure Python, so
+# Publishing uses PyPI trusted publishing (OpenID Connect): no token is stored
+# in the repository. It needs, once, on pypi.org and test.pypi.org, a trusted
+# publisher for owner LSDtopotools, repository lsdviztools3, workflow
+# release.yml and environment pypi (on test.pypi.org: testpypi), and the
+# GitHub environments pypi and testpypi in the repository settings. Before the
+# first upload the project does not exist yet, so add it as a "pending"
+# publisher. A version can be uploaded only once (skip-existing makes a re-run
+# harmless), so a mistake needs a new version.
+#
+# The version is written in one place, __version__ in lsdviztools3/__init__.py
+# (pyproject.toml reads it from there). The tag must match it (tag v0.3.0 <->
+# version 0.3.0); the run fails before building anything if they differ, and
+# again if the built packages carry another version. lsdviztools3 is pure Python, so
 # one py3-none-any wheel serves every platform.
 
 on:
@@ -22,9 +42,17 @@ on:
       tag:
         description: Existing tag to release (e.g. v0.2.0)
         required: true
+      publish_to:
+        description: Where to publish the packages (none = GitHub Release only)
+        type: choice
+        options:
+          - none
+          - testpypi
+          - pypi
+        default: none
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.event.inputs.tag || github.ref }}
@@ -32,9 +60,14 @@ concurrency:
 
 jobs:
   release:
+    name: Build and GitHub Release
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    outputs:
+      prerelease: ${{ steps.kind.outputs.prerelease }}
 
     steps:
       - uses: actions/checkout@v5
@@ -45,21 +78,29 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Is this a pre-release tag?
+        id: kind
+        run: |
+          if [[ "${TAG}" =~ (a|b|rc|dev)[0-9]+$ ]]; then
+            echo "prerelease=true" >> "${GITHUB_OUTPUT}"
+            echo "${TAG} is a pre-release: TestPyPI only"
+          else
+            echo "prerelease=false" >> "${GITHUB_OUTPUT}"
+          fi
+
       - name: Check the tag matches the package version
         run: |
           python - <<'PY'
-          import os, re, sys, tomllib
+          import os, re, sys
           tag = os.environ["TAG"]
           if not re.fullmatch(r"v\d+\.\d+\.\d+([.-]?(a|b|rc|post|dev)\d+)?", tag):
               sys.exit(f"tag {tag!r} is not a version tag like v0.3.0")
-          with open("pyproject.toml", "rb") as f:
-              project_version = tomllib.load(f)["project"]["version"]
           init = open("lsdviztools3/__init__.py", encoding="utf-8").read()
           match = re.search(r'^__version__\s*=\s*"([^"]+)"', init, re.M)
           init_version = match.group(1) if match else None
-          print(f"tag {tag}, pyproject.toml {project_version}, __init__.py {init_version}")
-          if tag[1:] != project_version or project_version != init_version:
-              sys.exit("tag, pyproject.toml and __init__.py versions must all agree")
+          print(f"tag {tag}, __init__.py {init_version}")
+          if tag[1:] != init_version:
+              sys.exit("the tag must match __version__ in lsdviztools3/__init__.py")
           PY
 
       - name: Build wheel and sdist
@@ -67,14 +108,63 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build --outdir dist .
           ls -l dist
+          # The file names carry the version hatchling read: both must be the tag's.
+          for f in dist/*; do
+            case "$(basename "$f")" in
+              lsdviztools3-"${TAG#v}"-*.whl|lsdviztools3-"${TAG#v}".tar.gz) ;;
+              *) echo "$f does not carry version ${TAG#v}" >&2; exit 1 ;;
+            esac
+          done
 
-      - name: Check the wheel installs
+      # What a user gets from `pip install lsdviztools3`: the wheel with every
+      # dependency from PyPI, into a clean environment with no GMT. The
+      # dependencies must resolve and agree (pip check), every lsdviz3-*
+      # command must start, and asking for PyGMT must give the clear
+      # GMTNotAvailableError rather than PyGMT's own load error. The full test
+      # suite, with GMT, is tests.yml.
+      - name: Check the wheel installs with its dependencies
         run: |
           python -m venv /tmp/check
-          /tmp/check/bin/python -m pip install --quiet --no-deps dist/*.whl
+          /tmp/check/bin/python -m pip install --quiet dist/*.whl
+          /tmp/check/bin/python -m pip check
           /tmp/check/bin/python -c "import importlib.metadata as m; print('installed', m.version('lsdviztools3'))"
 
+      - name: Smoke-test the installed commands
+        run: |
+          python - <<'PY'
+          import subprocess, sys, tomllib
+          with open("pyproject.toml", "rb") as f:
+              scripts = sorted(tomllib.load(f)["project"]["scripts"])
+          failed = []
+          for name in scripts:
+              run = subprocess.run([f"/tmp/check/bin/{name}", "--help"],
+                                   capture_output=True, text=True)
+              if run.returncode != 0:
+                  failed.append(name)
+                  print(f"FAIL {name}:\n{run.stderr[-2000:]}")
+          print(f"{len(scripts) - len(failed)} of {len(scripts)} commands start")
+          sys.exit(1 if failed else 0)
+          PY
+          /tmp/check/bin/python - <<'PY'
+          from lsdviztools3._gmt import GMTNotAvailableError, require_pygmt
+          try:
+              require_pygmt()
+              print("GMT is installed on this runner; the missing-GMT message was not exercised")
+          except GMTNotAvailableError as err:
+              print("missing GMT reported as expected:", str(err)[:120], "...")
+          PY
+
+      - name: Keep the packages for the publishing jobs
+        uses: actions/upload-artifact@v5
+        with:
+          name: dist
+          path: dist/
+          retention-days: 14
+
       - name: Create the GitHub Release
+        if: >-
+          steps.kind.outputs.prerelease != 'true'
+          && github.event.inputs.publish_to != 'testpypi'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG }}
@@ -83,3 +173,46 @@ jobs:
             dist/*.whl
             dist/*.tar.gz
           generate_release_notes: true
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: release
+    if: >-
+      (github.event_name == 'push' && needs.release.outputs.prerelease != 'true')
+      || github.event.inputs.publish_to == 'pypi'
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/project/lsdviztools3/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: release
+    if: >-
+      (github.event_name == 'push' && needs.release.outputs.prerelease == 'true')
+      || github.event.inputs.publish_to == 'testpypi'
+    runs-on: ubuntu-24.04
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/lsdviztools3/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true

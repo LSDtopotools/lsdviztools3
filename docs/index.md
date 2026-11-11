@@ -7,8 +7,18 @@ the `lsdviztools` plotting stack around [PyGMT](https://www.pygmt.org/) (maps)
 and matplotlib (x–y charts). lsdviztools3 only draws: every map and chart is a
 view of a file lsdtt3 wrote.
 
-Installation (pixi) and a quick start are in the
-[README](https://github.com/LSDtopotools/lsdviztools3#readme). Each page below
+**Install** with pip into an environment that has GMT (pip installs PyGMT and
+everything else, but not the GMT library PyGMT wraps):
+
+```bash
+conda create -n lsdviz -c conda-forge python=3.12 gmt pygmt
+conda activate lsdviz
+python -m pip install lsdviztools3
+```
+
+The [README](https://github.com/LSDtopotools/lsdviztools3#readme) has the other
+routes (GMT from Homebrew or your system, a clone with pixi for development, a
+specific release's wheel) and a quick start. Each page below
 shows its plots both as **command-line** invocations (headless PNG output) and
 as **Python / notebook** code.
 
@@ -38,7 +48,7 @@ examples/               End-to-end scripts (channel bearings, faults, cosmo, ...
 lsdviztools3/           io (data) · render (PyGMT maps) · charts (matplotlib) · cli (headless) · workflows
 ```
 
-## Quick start
+## Quick start from a clone
 
 ```bash
 # one-time install of project env + editable package

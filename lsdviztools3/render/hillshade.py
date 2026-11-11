@@ -57,7 +57,8 @@ def render_hillshade(
     Returns:
         The ``pygmt.Figure``.
     """
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     style = style or MapStyle()
     grid = raster if hasattr(raster, "rio") else load_raster(raster)
