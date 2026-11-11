@@ -85,14 +85,17 @@ pixi run test
 pixi run demo-eigg
 ```
 
-GMT and PyGMT are conda-only; use the provided `pixi.toml` (conda-forge).
+The pixi environment includes GMT, which PyGMT needs and pip cannot install
+(see below).
 
 ### Installing a release instead of a clone
 
 Each [GitHub release](https://github.com/LSDtopotools/lsdviztools3/releases/latest)
 has a wheel, `lsdviztools3-<version>-py3-none-any.whl`, that works on every
-platform. pip cannot install GMT, so install it into an environment that
-already has GMT and PyGMT from conda-forge, for example:
+platform. pip installs it with every Python package it depends on, including
+PyGMT and matplotlib, **except GMT itself**: PyGMT is a wrapper around the GMT
+C library, which pip cannot install. Install the wheel into an environment
+that already has GMT, for example one made from conda-forge:
 
 ```bash
 conda create -n lsdviz -c conda-forge python=3.12 gmt pygmt rioxarray geopandas matplotlib pillow
@@ -102,6 +105,12 @@ python -m pip install https://github.com/LSDtopotools/lsdviztools3/releases/down
 
 Replace `0.4.0` with the version of the release you want (the release page
 lists the wheel's exact address).
+
+GMT can also come from Homebrew (`brew install gmt`) or your system package
+manager, if it is GMT 6.4 or later. Installed into an environment without GMT,
+the wheel still installs, and the matplotlib charts work, but every map
+command stops with `error: PyGMT is installed but cannot load the GMT
+library`, followed by these instructions.
 
 Users will be pleased to know that this will work on a server even if you do not have install permissions: `pixi` only requires you to have a writable file system. 
 

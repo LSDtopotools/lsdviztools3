@@ -204,7 +204,8 @@ def render_channel_slope_map(dem_path, points, png_path, *, field=None, coordina
                              high_res: bool = False):
     """Channel cells coloured by log10 smoothed slope over a hillshade, with the
     field points as open circles. ``slope_vmin`` / ``slope_vmax`` are in m/m."""
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     from ..colour_limits import colour_limits
     from ..io.raster import get_crs, load_raster, to_coordinates, to_gmt_grid

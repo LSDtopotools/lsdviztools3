@@ -216,7 +216,8 @@ def erosion_colour_limits(
 
 def _add_channel_overlay(fig, mask_raster, coordinates, style, color):
     """Paint the channel pixels of a mask raster as a solid overlay."""
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     from .colormaps import _solid_cpt
 

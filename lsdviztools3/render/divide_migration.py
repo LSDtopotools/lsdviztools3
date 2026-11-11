@@ -148,7 +148,8 @@ def divide_migration_layers(
             "colour."
         )
 
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     # The grey CPT is nudged off pure grey (see render.colormaps) so NaN stays
     # transparent, and GMT's illumination amplifies saturation on dark cells —

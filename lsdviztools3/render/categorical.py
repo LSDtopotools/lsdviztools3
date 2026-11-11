@@ -132,7 +132,8 @@ def neutral_shading():
     Holding saturation at 0 keeps the relief gray. Used only around the base
     layer of an illumination-only hillshade.
     """
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     return pygmt.config(COLOR_HSV_MIN_S=0, COLOR_HSV_MAX_S=0)
 
@@ -188,7 +189,8 @@ def add_categorical_legend(
     """
     import io as _io
 
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     if not entries:
         return fig
@@ -304,7 +306,8 @@ def render_categorical_drape(
         The ``pygmt.Figure``.
     """
     import numpy as np
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
     from dataclasses import replace
 
     from ..io.raster import get_crs, load_raster, to_coordinates, to_gmt_grid
@@ -428,7 +431,8 @@ def render_binary_drape(
         The ``pygmt.Figure``.
     """
     import numpy as np
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     from ..io.raster import get_crs, load_raster, to_coordinates, to_gmt_grid
     from .base import auto_projection, grid_to_display, set_grid_gtype

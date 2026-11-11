@@ -59,7 +59,8 @@ def render_basins(
             pen=f"{style.line_width},{style.line_color}",
         )
     else:
-        import pygmt
+        from lsdviztools3._gmt import require_pygmt
+        pygmt = require_pygmt()
 
         from .colormaps import resolve_cmap
         from .decorations import add_colourbar

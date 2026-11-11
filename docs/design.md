@@ -82,7 +82,7 @@ lsdviztools3/
 ├── docs/                      This guide (mkdocs); design.md is this document.
 ├── README.md                  Quick start and console-script table.
 ├── pyproject.toml             PEP 621 metadata, deps, console_scripts.
-├── pixi.toml                  conda-forge env (gmt/pygmt are conda-only) + tasks.
+├── pixi.toml                  conda-forge env (includes gmt, which pip cannot install) + tasks.
 ├── lsdviztools3/
 │   ├── __init__.py            Package version + top-level re-exports.
 │   ├── frames.py              Oblique analysis frames (lsdtt3 rotated feature frames), grid convergence.

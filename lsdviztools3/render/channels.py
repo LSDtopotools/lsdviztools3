@@ -149,7 +149,8 @@ def render_drape(
     Returns:
         The ``pygmt.Figure``.
     """
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
     import tempfile
     from dataclasses import replace
 
@@ -316,7 +317,8 @@ def render_channels(
     Returns:
         The ``pygmt.Figure``.
     """
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     from ..colour_limits import colour_limits
 

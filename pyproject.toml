@@ -23,8 +23,9 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Visualization",
 ]
 dependencies = [
-    # NOTE: `gmt` and `pygmt` are conda-only; install via conda-forge / pixi.
-    # They are listed here for completeness but pip cannot provide `gmt`.
+    # pip installs PyGMT but not the GMT C library it wraps, which comes from
+    # conda-forge / pixi, Homebrew or the system. Without it the map renderers
+    # raise lsdviztools3._gmt.GMTNotAvailableError; the charts still work.
     "pygmt",
     "rioxarray",
     "xarray",

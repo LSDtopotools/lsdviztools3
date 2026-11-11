@@ -90,7 +90,8 @@ def render_points(
     Returns:
         The ``pygmt.Figure``.
     """
-    import pygmt
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
 
     style = style or MapStyle()
     gdf_display, crs = _prepare_overlay(df, coordinates, style)
