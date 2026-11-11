@@ -24,9 +24,10 @@ name: Build and release
 # publisher. A version can be uploaded only once (skip-existing makes a re-run
 # harmless), so a mistake needs a new version.
 #
-# The tag must match the version in pyproject.toml and __version__ in
-# lsdviztools3/__init__.py (tag v0.3.0 <-> version 0.3.0); the run fails
-# before building anything if they differ. lsdviztools3 is pure Python, so
+# The version is written in one place, __version__ in lsdviztools3/__init__.py
+# (pyproject.toml reads it from there). The tag must match it (tag v0.3.0 <->
+# version 0.3.0); the run fails before building anything if they differ, and
+# again if the built packages carry another version. lsdviztools3 is pure Python, so
 # one py3-none-any wheel serves every platform.
 
 on:
@@ -75,18 +76,16 @@ jobs:
       - name: Check the tag matches the package version
         run: |
           python - <<'PY'
-          import os, re, sys, tomllib
+          import os, re, sys
           tag = os.environ["TAG"]
           if not re.fullmatch(r"v\d+\.\d+\.\d+([.-]?(a|b|rc|post|dev)\d+)?", tag):
               sys.exit(f"tag {tag!r} is not a version tag like v0.3.0")
-          with open("pyproject.toml", "rb") as f:
-              project_version = tomllib.load(f)["project"]["version"]
           init = open("lsdviztools3/__init__.py", encoding="utf-8").read()
           match = re.search(r'^__version__\s*=\s*"([^"]+)"', init, re.M)
           init_version = match.group(1) if match else None
-          print(f"tag {tag}, pyproject.toml {project_version}, __init__.py {init_version}")
-          if tag[1:] != project_version or project_version != init_version:
-              sys.exit("tag, pyproject.toml and __init__.py versions must all agree")
+          print(f"tag {tag}, __init__.py {init_version}")
+          if tag[1:] != init_version:
+              sys.exit("the tag must match __version__ in lsdviztools3/__init__.py")
           PY
 
       - name: Build wheel and sdist
@@ -94,6 +93,13 @@ jobs:
           python -m pip install --upgrade pip build
           python -m build --outdir dist .
           ls -l dist
+          # The file names carry the version hatchling read: both must be the tag's.
+          for f in dist/*; do
+            case "$(basename "$f")" in
+              lsdviztools3-"${TAG#v}"-*.whl|lsdviztools3-"${TAG#v}".tar.gz) ;;
+              *) echo "$f does not carry version ${TAG#v}" >&2; exit 1 ;;
+            esac
+          done
 
       # What a user gets from `pip install lsdviztools3`: the wheel with every
       # dependency from PyPI, into a clean environment with no GMT. The

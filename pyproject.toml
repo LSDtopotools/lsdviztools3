@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "lsdviztools3"
-version = "0.4.0"
+dynamic = ["version"]  # from __version__ in lsdviztools3/__init__.py ([tool.hatch.version])
 description = "PyGMT-based visualisation tools for LSDTopoTools v3 (lsdtt3) output."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -15,9 +15,16 @@ authors = [
     { name = "Rutger Vervoordeldonk" },
 ]
 keywords = ["geomorphology", "topography", "pygmt", "gmt", "lsdtopotools", "dem"]
+# Python versions: only those tests.yml runs. Add 3.13 / 3.14 when CI tests them.
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Natural Language :: English",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: GIS",
     "Topic :: Scientific/Engineering :: Visualization",
 ]
@@ -97,5 +104,26 @@ lsdviz3-mdd-ridgeline = "lsdviztools3.cli.plot_mdd_ridgeline:main"
 lsdviz3-floodplain = "lsdviztools3.cli.plot_floodplain:main"
 lsdviz3-surface-methods = "lsdviztools3.cli.plot_surface_methods:main"
 
+[tool.hatch.version]
+# The one place the version is written. The release workflow checks the tag
+# against it before building.
+path = "lsdviztools3/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["lsdviztools3"]
+
+# The sdist is the package, its tests and the files needed to build and cite
+# it: what a downstream packager (e.g. conda-forge) builds and tests from.
+# Left out: pixi.lock and pixi.toml (the development environment), the docs
+# site and its images, examples and CI config. .gitignore'd files, such as the
+# tests' DEM cache, are never included.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/lsdviztools3",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+    "/CITATION.cff",
+    "/pyproject.toml",
+]
+exclude = ["__pycache__"]
