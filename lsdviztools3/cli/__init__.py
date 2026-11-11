@@ -4,9 +4,19 @@ Each CLI builds a ``pygmt.Figure`` via the render layer and calls
 ``.savefig(png)`` — suitable for headless WSL2 / server use.
 """
 
+import os as _os
 import sys as _sys
 
-from .._gmt import GMTNotAvailableError as _GMTNotAvailableError
+# The commands only write files, so matplotlib's non-interactive Agg backend is
+# always right. Set it before anything imports matplotlib: a notebook kernel
+# exports MPLBACKEND for its own inline plots (Colab:
+# module://matplotlib_inline.backend_inline), a command run from it with "!"
+# inherits it, and matplotlib then fails on import with "is not a valid value
+# for backend" when that module is not in the command's environment. Every
+# lsdviz3-* command imports this package first, so this covers them all.
+_os.environ["MPLBACKEND"] = "Agg"
+
+from .._gmt import GMTNotAvailableError as _GMTNotAvailableError  # noqa: E402
 
 _previous_excepthook = _sys.excepthook
 
