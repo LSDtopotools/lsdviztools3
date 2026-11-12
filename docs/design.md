@@ -1,9 +1,9 @@
 # lsdviztools3 — Design Document
 
-Status (2026-11-02): maps, x–y charts and animations are implemented for most
+Status (2026-11-12): maps, x–y charts and animations are implemented for most
 lsdtt3 outputs: 41 `lsdviz3-*` commands (see the
 [Command reference](cli_reference.md)) over the IO, render and charts layers
-described here. Four stubs remain deferred (§8). This document describes the
+described here. Three stubs remain deferred (§8). This document describes the
 architecture and the rules the code follows; the plot pages describe the
 figures, and [lsdtt3 outputs](lsdtt3_outputs.md) maps every lsdtt3 file to the
 function that plots it.

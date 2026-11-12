@@ -38,6 +38,7 @@ nav:
   - Reference:
       - Command reference: cli_reference.md
       - lsdtt3 outputs: lsdtt3_outputs.md
+  - What's new: changes.md
   - Design (developers): design.md
 
 markdown_extensions:

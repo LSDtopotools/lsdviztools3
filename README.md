@@ -43,8 +43,9 @@ the secure key-handling spec, and the design decisions made so far.
 
 ## Install
 
-`lsdviztools3` is on PyPI, and pip installs it with every Python package it
-needs, including PyGMT and matplotlib, **except GMT itself**. PyGMT is a
+`lsdviztools3` is on PyPI and needs **Python 3.12 or later**. pip installs it
+with every Python package it needs, including PyGMT and matplotlib, **except
+GMT itself**. PyGMT is a
 wrapper around the GMT C library (version 6.5 or later), which pip cannot
 install, so install GMT first. The simplest way is a conda-forge environment:
 
@@ -64,6 +65,34 @@ Check that PyGMT finds GMT with
 `python -c "import pygmt; pygmt.show_versions()"`. The optional `download`
 extra (`pip install "lsdviztools3[download]"`) adds the packages for fetching
 DEMs from Planetary Computer.
+
+### In Google Colab
+
+Colab has no GMT, so install it with conda through
+[condacolab](https://github.com/conda-incubator/condacolab), then
+lsdviztools3 with pip. Run these in separate cells:
+
+```python
+!pip install -q condacolab
+```
+
+```python
+import condacolab
+condacolab.install()    # restarts the runtime: wait for it to reconnect
+```
+
+```python
+!mamba install -y -q pygmt
+!pip install -q lsdviztools3
+```
+
+Run the `lsdviz3-*` commands with `!`, for example
+`!lsdviz3-hillshade --in dem.tif --out hillshade.png`. With lsdviztools3 0.4.1
+or earlier, start each with `MPLBACKEND=Agg` (`!MPLBACKEND=Agg lsdviz3-...`):
+Colab sets `MPLBACKEND` for its own inline plots, the commands inherit it, and
+matplotlib fails to start in them. Later versions set it themselves. The
+[lsdtt3 notebooks](https://github.com/LSDtopotools/lsdtt3_notebooks) use this
+setup throughout.
 
 ### From a clone, with pixi
 
