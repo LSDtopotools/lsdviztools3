@@ -202,3 +202,37 @@ def class_kwargs(args: argparse.Namespace) -> dict:
     return dict(classes=classes, n_classes=args.n_classes, class_colors=colours,
                 class_color_mode=args.class_color_mode)
 
+
+def add_locator_args(parser: argparse.ArgumentParser) -> None:
+    """Add the locator-inset options: ``--locator`` and its settings."""
+    g = parser.add_argument_group("locator inset")
+    g.add_argument("--locator", choices=["global", "regional"], default=None,
+                   help="Add a small locator map in a corner of the map: a globe, or the region "
+                        "(borders, rivers) with the raster's footprint outlined.")
+    g.add_argument("--locator-position", default="TR", choices=["TR", "TL", "BR", "BL"],
+                   help="Corner for the locator inset (default TR).")
+    g.add_argument("--locator-width", default="4c",
+                   help="Width of the locator inset (default 4c).")
+    g.add_argument("--locator-extent-km", type=float, default=None,
+                   help="Regional locator: width of the region shown, km (default: ten times "
+                        "the raster's diagonal, at least 250 km).")
+    g.add_argument("--locator-relief", action="store_true",
+                   help="Regional locator: shaded relief (downloads GMT relief data).")
+
+
+def locator_kwargs(args: argparse.Namespace):
+    """Keyword arguments for ``add_locator_inset`` from :func:`add_locator_args`, or ``None``."""
+    if getattr(args, "locator", None) is None:
+        return None
+    return dict(mode=args.locator, position=args.locator_position, width=args.locator_width,
+                extent_km=args.locator_extent_km, relief=args.locator_relief)
+
+
+def add_locator_from_args(fig, args: argparse.Namespace, raster) -> None:
+    """Draw the locator inset onto ``fig`` if ``--locator`` was given."""
+    kw = locator_kwargs(args)
+    if kw is not None:
+        from ..render.basemap import add_locator_inset
+
+        add_locator_inset(fig, raster, **kw)
+

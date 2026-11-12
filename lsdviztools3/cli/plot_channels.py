@@ -41,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--legend-title", default=None,
                         help="Title of the colourbar or class legend (GMT text).")
     _common.add_class_args(parser, what="the channels (by --color-by)")
+    _common.add_locator_args(parser)
     _common.add_style_args(parser)
     _common.add_target_dir_arg(parser)
     return parser
@@ -81,6 +82,7 @@ def main(argv=None) -> int:
         fig=fig,
         **class_kw,
     )
+    _common.add_locator_from_args(fig, args, args.base)
     _common.save_figure(fig, args.out, style=style, high_res=args.high_res,
                         directory=args.directory)
     return 0

@@ -1,26 +1,30 @@
-"""CLI: lsdviz3-basemap — render global/aerial basemap to PNG."""
+"""CLI: lsdviz3-basemap — a locator map of a raster (globe, region or aerial view) to PNG."""
 
 from __future__ import annotations
 
 import argparse
 
 from . import _common
-from ..render.basemap import render_orthographic_basemap
+from ..render.basemap import render_orthographic_basemap, render_regional_basemap
 
 
 def build_parser() -> argparse.ArgumentParser:
     """Build the argument parser for ``lsdviz3-basemap``."""
     parser = argparse.ArgumentParser(
         prog="lsdviz3-basemap",
-        description="Render a global orthographic or aerial perspective basemap.",
+        description="A locator map showing where a raster is: a globe, its region (borders, "
+                    "rivers, optional relief), or an aerial perspective view, with the raster's "
+                    "footprint outlined.",
     )
     parser.add_argument("--in", dest="input_raster", required=True, help="Input raster path.")
     parser.add_argument("--out", required=True, help="Output PNG path.")
     parser.add_argument(
         "--mode",
-        choices=("auto", "global", "aerial"),
+        choices=("auto", "global", "regional", "aerial"),
         default="auto",
-        help="Basemap mode (default: auto).",
+        help="global: a hemisphere centred on the raster; regional: a flat map of the region "
+             "around it; aerial: a perspective view from above. auto (default): global for "
+             "large rasters, regional otherwise.",
     )
     parser.add_argument(
         "--elevation-km",
@@ -55,8 +59,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-north-arrow",
         action="store_true",
-        help="Disable north arrow.",
+        help="Disable north arrow (regional and aerial maps; a globe has none).",
     )
+    parser.add_argument(
+        "--extent-km", type=float, default=None,
+        help="Regional mode: width of the map in km (default: ten times the raster's "
+             "diagonal, at least 250 km).",
+    )
+    parser.add_argument(
+        "--relief", action="store_true",
+        help="Regional mode: shade the land with GMT's global relief data (downloaded from "
+             "the GMT server on first use).",
+    )
+    parser.add_argument("--no-borders", action="store_true",
+                        help="Regional mode: leave out country and state borders.")
+    parser.add_argument("--no-rivers", action="store_true",
+                        help="Regional mode: leave out rivers.")
+    parser.add_argument("--no-scale-bar", action="store_true",
+                        help="Regional mode: leave out the scale bar.")
     _common.add_style_args(parser)
     _common.add_target_dir_arg(parser)
     return parser
@@ -66,17 +86,31 @@ def main(argv=None) -> int:
     """Entry point: render a basemap from raster footprint."""
     args = build_parser().parse_args(argv)
     style = _common.style_from_args(args)
-    fig = render_orthographic_basemap(
-        args.input_raster,
-        style=style,
-        mode=args.mode,
-        elevation_km=args.elevation_km,
-        view_limit_deg=args.view_limit_deg,
-        look_bearing=args.look_bearing,
-        look_vertical_angle=args.look_vertical_angle,
-        grid_spacing_deg=args.grid_spacing_deg,
-        show_north_arrow=not args.no_north_arrow,
-    )
+    if args.mode == "regional":
+        fig = render_regional_basemap(
+            args.input_raster,
+            style=style,
+            extent_km=args.extent_km,
+            relief=args.relief,
+            borders=not args.no_borders,
+            rivers=not args.no_rivers,
+            scale_bar=not args.no_scale_bar,
+            show_north_arrow=not args.no_north_arrow,
+        )
+    else:
+        fig = render_orthographic_basemap(
+            args.input_raster,
+            style=style,
+            mode=args.mode,
+            elevation_km=args.elevation_km,
+            view_limit_deg=args.view_limit_deg,
+            look_bearing=args.look_bearing,
+            look_vertical_angle=args.look_vertical_angle,
+            grid_spacing_deg=args.grid_spacing_deg,
+            show_north_arrow=not args.no_north_arrow,
+            extent_km=args.extent_km,
+            relief=args.relief,
+        )
     _common.save_figure(fig, args.out, style=style, high_res=args.high_res,
                         directory=args.directory)
     return 0

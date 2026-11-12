@@ -50,6 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--coordinates", default="local",
                         help="Map coordinates: local/projected (default) or geographic.")
     parser.add_argument("--dpi", type=int, default=300, help="DPI of the profile plots (default 300).")
+    _common.add_locator_args(parser)
     _common.add_class_args(parser, flag="--ksn-classes",
                            what="k_sn on the map (breaks in k_sn units; schemes work in log10 k_sn)")
     return parser
@@ -102,7 +103,7 @@ def main(argv=None) -> int:
             args.dem, outputs["segment_lines"], out_dir / f"{stem}_ksn_map.png",
             coordinates=args.coordinates, cmap=args.cmap,
             ksn_vmin=args.ksn_vmin, ksn_vmax=args.ksn_vmax, removed=removed,
-            **_ksn_class_kwargs(args)))
+            locator=_common.locator_kwargs(args), **_ksn_class_kwargs(args)))
         if removed is not None:
             written.append(render_chi_removed_map(
                 args.dem, outputs["segment_lines"], removed,

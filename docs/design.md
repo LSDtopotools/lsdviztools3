@@ -198,11 +198,21 @@ This section covers the core every figure is built on.
 
 ### render/basemap.py
 - `render_orthographic_basemap(raster, *, style=None, fig=None, mode="auto", ...)`
-  — a "globe inset" locator map outlining the raster footprint. `mode="global"`
-  draws an orthographic hemisphere, `"aerial"` a perspective view from a camera
-  `elevation_km` above Earth, and `"auto"` chooses based on bbox area. Controls
-  include `look_bearing`, `look_vertical_angle`, `view_twist`, graticule spacing,
-  and an optional north arrow.
+  — a locator map outlining the raster footprint. `mode="global"` draws an
+  orthographic hemisphere (never with a north arrow: GMT's rose on a
+  whole-globe map breaks the PNG export), `"regional"` calls
+  `render_regional_basemap`, `"aerial"` a perspective view from a camera
+  `elevation_km` above Earth, and `"auto"` chooses global for a footprint of
+  25 square degrees or more and regional otherwise. Aerial controls include
+  `look_bearing`, `look_vertical_angle`, `view_twist` and graticule spacing.
+- `render_regional_basemap(raster, *, extent_km=None, relief=False, ...)` — a
+  square Mercator map around the footprint (ten times its diagonal, at least
+  250 km): coastlines, country and state borders, rivers, lakes, optional
+  `earth_relief` shading (downloaded by GMT), scale bar, north arrow.
+- `add_locator_inset(fig, raster, *, mode="global"|"regional", position="TR",
+  width="4c", ...)` — either map in a corner of a map already drawn, via
+  `fig.inset`; also `render.decorations.add_inset`. The map commands expose it
+  as `--locator` (`cli/_common.add_locator_args`).
 
 ### render/relief3d.py
 - `render_relief3d(raster, *, coordinates="local", azimuth=135, elevation=30,
@@ -337,7 +347,6 @@ These stubs raise `NotImplementedError`:
 | `plot_profile` | `charts/__init__.py` | Longitudinal channel profiles. |
 | `make_hillshade` | `io/grids.py` | Hillshades come from lsdtt3 (`write_hillshade_raster`) or `render_hillshade(shade=True)`. |
 | `to_xy` | `io/vector.py` | Vectors are plotted from GeoDataFrames by the render layer instead. |
-| `add_inset` | `render/decorations.py` | Locator insets; `render_orthographic_basemap` draws a separate locator map. |
 
 WCS DEM download is also deferred (decision 7).
 

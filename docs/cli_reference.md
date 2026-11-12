@@ -1,8 +1,8 @@
 # Command reference
 
-Every `lsdviz3-*` command, grouped as in this guide. Run one with
-`pixi run lsdviz3-<name> ...` from the lsdviztools3 checkout, and add `--help`
-for its full list of flags. Each group links to the page that explains its
+Every `lsdviz3-*` command, grouped as in this guide. After a pip install run
+one as `lsdviz3-<name> ...`; from a clone of the repository, as `pixi run
+lsdviz3-<name> ...`. Add `--help` for its full list of flags. Each group links to the page that explains its
 figures.
 
 ## Basic plots
@@ -14,8 +14,14 @@ See [Basic plots](basic_plots.md).
 | `lsdviz3-hillshade` | shaded-relief PNG | `--in --out --input-is-hillshade` + style (incl. `--clean`) |
 | `lsdviz3-drape` | gray hillshade + coloured semi-transparent drape | `--base --drape --out --shade-base --log --transparency --vmin --vmax --percentile-min --percentile-max --out-of-bounds --colorbar --colorbar-label --colorbar-position --classes --n-classes --class-colors --class-color-mode` + style (`--cmap` = drape; GMT or matplotlib maps, or a solid colour). `--classes`: [colouring in classes](basic_plots.md#colouring-in-classes) |
 | `lsdviz3-basins` | hillshade + basin polygons | `--base --basins --out --fill --transparency --label-col --color-by --colorbar --plot-title` + style; `--scaling-scheme --muon-scheme --atmosphere` note cosmogenic settings on the map only when given |
-| `lsdviz3-basemap` | global/aerial locator | `--in --out --mode --elevation-km --view-limit-deg --look-bearing --look-vertical-angle --grid-spacing-deg --no-north-arrow` + style |
+| `lsdviz3-basemap` | locator map: globe, region (borders, rivers, optional relief) or aerial view, with the raster's footprint | `--in --out --mode {auto,global,regional,aerial} --extent-km --relief --no-borders --no-rivers --no-scale-bar --elevation-km --view-limit-deg --look-bearing --look-vertical-angle --grid-spacing-deg --no-north-arrow` + style |
 | `lsdviz3-sti` | hillshade + STI rasters (single file or directory batch) | single mode: `--base --sti --out`; directory mode: `--sti-dir [--base]` (auto-plots all discovered STI rasters); options: `--transparency --colorbar` + style |
+
+**Locator insets.** `lsdviz3-hillshade`, `lsdviz3-drape`, `lsdviz3-basins`,
+`lsdviz3-channels`, `lsdviz3-chi` and `lsdviz3-knickpoints` take `--locator
+global|regional` to put a small locator map in a corner, with
+`--locator-position TR|TL|BR|BL`, `--locator-width`, `--locator-extent-km` and
+`--locator-relief`. See [Locator maps](basic_plots.md#locator-maps-where-is-this-raster).
 
 ## Data and lsdtt3
 

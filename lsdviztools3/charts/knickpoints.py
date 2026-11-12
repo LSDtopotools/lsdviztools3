@@ -339,6 +339,7 @@ def render_knickpoint_map(
     n_classes: int = 5,
     class_colors=None,
     class_color_mode: str = "auto",
+    locator: Optional[dict] = None,
 ):
     """Major knickpoints on the hillshade and the k_sn network: open upward
     triangles where the channel steepens upstream, filled downward ones where
@@ -348,7 +349,8 @@ def render_knickpoint_map(
     ``ksn_classes`` (with ``n_classes``, ``class_colors``, ``class_color_mode``)
     colours the network in k_sn classes, with a class legend outside the right
     edge instead of the colourbar; see
-    :func:`lsdviztools3.workflows.render_chi_ksn_map`.
+    :func:`lsdviztools3.workflows.render_chi_ksn_map`. ``locator`` adds a
+    locator inset, as there.
 
     Returns:
         ``Path`` to the written PNG.
@@ -402,5 +404,8 @@ def render_knickpoint_map(
         fig.legend(spec=_io.StringIO("\n".join(rows)), position=legend_position,
                    box="+gwhite@20+p0.5p,black")
     add_scalebar(fig, extent, crs)
+    if locator:
+        from ..render.basemap import add_locator_inset
+        add_locator_inset(fig, dem_path, **locator)
     save_figure(fig, png_path, style=MapStyle(figure_size=width, transparent=False), high_res=high_res)
     return Path(png_path)

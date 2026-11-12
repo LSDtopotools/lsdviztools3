@@ -120,6 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Colourbar placement relative to the map (default: bottom).",
     )
     _common.add_class_args(parser, what="the drape")
+    _common.add_locator_args(parser)
     _common.add_style_args(parser)
     _common.add_target_dir_arg(parser)
     return parser
@@ -164,6 +165,7 @@ def main(argv=None) -> int:
         colorbar_position=args.colorbar_position,
         style=style,
     )
+    _common.add_locator_from_args(fig, args, args.base_raster)
     _common.save_figure(fig, args.out, style=style, high_res=args.high_res,
                         directory=args.directory)
     return 0

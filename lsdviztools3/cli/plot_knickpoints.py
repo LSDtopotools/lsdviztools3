@@ -55,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cmap", default="viridis", help="k_sn colour map (default viridis).")
     p.add_argument("--coordinates", default="local", help="Map coordinates: local/projected or geographic.")
     p.add_argument("--dpi", type=int, default=300, help="DPI of the charts (default 300).")
+    _common.add_locator_args(p)
     _common.add_class_args(p, flag="--ksn-classes",
                            what="the k_sn network on the map (breaks in k_sn units; schemes work "
                                 "in log10 k_sn)")
@@ -142,7 +143,7 @@ def main(argv=None) -> int:
             args.dem, files["segment_lines"], major, out_dir / f"{stem}_knickpoint_map.png",
             removed=removed, coordinates=args.coordinates, cmap=args.cmap,
             ksn_vmin=args.ksn_vmin, ksn_vmax=args.ksn_vmax, threshold_label=label,
-            **_ksn_class_kwargs(args)))
+            locator=_common.locator_kwargs(args), **_ksn_class_kwargs(args)))
     for w in written:
         print(w)
     return 0

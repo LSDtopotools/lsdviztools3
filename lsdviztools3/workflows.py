@@ -481,6 +481,7 @@ def render_chi_ksn_map(
     n_classes: int = 5,
     class_colors=None,
     class_color_mode: str = "auto",
+    locator: Optional[dict] = None,
 ):
     """Render the chi network coloured by log10 k_sn over a hillshade.
 
@@ -512,6 +513,9 @@ def render_chi_ksn_map(
         n_classes: Number of classes for a scheme (default 5).
         class_colors: One colour per class instead of sampling ``cmap``.
         class_color_mode: ``"gradient"``, ``"distinct"`` or ``"auto"``.
+        locator: Keyword arguments for
+            :func:`lsdviztools3.render.basemap.add_locator_inset` (e.g.
+            ``{"mode": "regional"}``) to add a locator inset; ``None`` for none.
 
     Returns:
         ``Path`` to the written PNG.
@@ -546,6 +550,9 @@ def render_chi_ksn_map(
         class_color_mode=class_color_mode, legend_title="k@-sn@-",
     )
     add_scalebar(fig, extent, crs)
+    if locator:
+        from .render.basemap import add_locator_inset
+        add_locator_inset(fig, dem_path, **locator)
     save_figure(fig, png_path, style=MapStyle(figure_size=width, transparent=False),
                 high_res=high_res)
     return Path(png_path)

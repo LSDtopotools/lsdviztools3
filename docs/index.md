@@ -20,7 +20,8 @@ The [README](https://github.com/LSDtopotools/lsdviztools3#readme) has the other
 routes (GMT from Homebrew or your system, a clone with pixi for development, a
 specific release's wheel) and a quick start. Each page below
 shows its plots both as **command-line** invocations (headless PNG output) and
-as **Python / notebook** code.
+as **Python / notebook** code. The commands are written as run from a clone
+(`pixi run lsdviz3-...`); after a pip install, leave out `pixi run`.
 
 ## Guide
 
