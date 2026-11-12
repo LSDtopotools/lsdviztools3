@@ -388,8 +388,16 @@ def _orient(n: int, orientation: str) -> bool:
     return orientation == "horizontal"
 
 
-def _annotate_units(ax, rows, positions, horizontal, texts):
-    """Write the per-unit sample-size text beside each box."""
+_LOW_QUALIFYING = " (low sample: few qualifying reaches)"
+
+
+def _annotate_units(ax, rows, positions, horizontal, texts) -> str:
+    """Write the per-unit sample-size text beside each box.
+
+    Returns a note for the caption: vertical tick labels carry only
+    "(low sample)", since the long form is wider than a box's slot and
+    collides with its neighbours, so the caption explains it once.
+    """
     for pos, (_, row), txt in zip(positions, rows.iterrows(), texts):
         colour = "0.45" if _is_low(row) else "0.15"
         if horizontal:
@@ -399,12 +407,18 @@ def _annotate_units(ax, rows, positions, horizontal, texts):
     if not horizontal:
         # Vertical boxes: fold the sample sizes into the tick labels (rotated
         # text above the axes collides with the title).
-        labels = [f"{row[NAME_COLUMN]}\n" + txt.replace(", ", "\n").replace(" (low", "\n(low")
+        shortened = any(_LOW_QUALIFYING in txt for txt in texts)
+        labels = [f"{row[NAME_COLUMN]}\n"
+                  + txt.replace(_LOW_QUALIFYING, " (low sample)").replace(", ", "\n")
+                       .replace(" (low", "\n(low")
                   for (_, row), txt in zip(rows.iterrows(), texts)]
         ax.set_xticks(positions, labels, rotation=0, ha="center", fontsize=7)
         for tick, (_, row) in zip(ax.get_xticklabels(), rows.iterrows()):
             if _is_low(row):
                 tick.set_color("0.45")
+        if shortened:
+            return "grey, hatched = low sample (few qualifying reaches)"
+    return ""
 
 
 def _pooled_line(ax, summary, horizontal, column, label):
@@ -503,8 +517,10 @@ def plot_ksn_box_by_lithology(
         ax.set_xticks(positions, names, rotation=25, ha="right", fontsize=8)
         ax.set_ylabel(ksn_label(mn))
         ax.grid(axis="y", alpha=0.3)
-    _annotate_units(ax, rows, positions, horizontal,
-                    [sample_size_text(r) for _, r in rows.iterrows()])
+    low_note = _annotate_units(ax, rows, positions, horizontal,
+                               [sample_size_text(r) for _, r in rows.iterrows()])
+    if low_note:
+        how += f"; {low_note}"
     if show_pooled:
         _pooled_line(ax, summary, horizontal, SUMMARY_COLUMNS["median"],
                      "all units median (lsdtt3 summary)")
@@ -596,7 +612,7 @@ def plot_reach_ksn_by_lithology(
     has_counts = SUMMARY_COLUMNS["n_reaches"] in rows.columns
     texts = [sample_size_text(r, reaches=True) if has_counts else
              f"{len(d)} reaches" for (_, r), d in zip(rows.iterrows(), data)]
-    _annotate_units(ax, rows, positions, horizontal, texts)
+    low_note = _annotate_units(ax, rows, positions, horizontal, texts)
     which = "qualifying reaches" if qualifying_only else "all reaches"
     note = f"per-reach OLS k$_{{sn}}$, {which}; box = IQR, whiskers 1.5 IQR"
     if has_ci:
@@ -610,6 +626,8 @@ def plot_reach_ksn_by_lithology(
         note += f"; diamond = reach median, bar = its CI (lsdtt3 summary: {how})"
     if buffer_note(summary):
         note += f"; {buffer_note(summary)}"
+    if low_note:
+        note += f"; {low_note}"
     ax.set_title(_caption(title, note, 80), fontsize=8)
     fig.tight_layout()
     return fig, ax

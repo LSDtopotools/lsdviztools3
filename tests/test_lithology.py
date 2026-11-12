@@ -319,6 +319,34 @@ def test_reach_box_and_ci_when_present():
     mpl.pyplot.close(fig)
 
 
+@pytest.mark.parametrize("plot", ["nodes", "reaches"])
+def test_low_sample_tick_labels_stay_short(plot):
+    """The long low-sample note goes in the caption, not under every box.
+
+    "(low sample: few qualifying reaches)" is wider than a box's slot, so in
+    vertical tick labels it ran into the neighbouring units' labels.
+    """
+    from lsdviztools3.charts.lithology_ksn import (
+        plot_ksn_box_by_lithology, plot_reach_ksn_by_lithology,
+    )
+
+    s = _summary({"n_reaches": [2, 3, 4, 0, 9], "n_reaches_qualifying": [1, 3, 3, 0, 7]})
+    if plot == "nodes":
+        fig, ax = plot_ksn_box_by_lithology(s, _nodes(), orientation="vertical")
+    else:
+        reaches = pd.DataFrame({
+            "reach_id": range(4), "basin_index": 0, "lith_code": [1, 2, 3, 3],
+            "lith_name": ["fine alluvium", "limestone", "sandstone", "sandstone"],
+            "k_sn_ols": [4.0, 40.0, 60.0, 55.0], "qualifies": 1, "m_over_n": 0.45})
+        fig, ax = plot_reach_ksn_by_lithology(reaches, s, orientation="vertical")
+    ticks = [t.get_text() for t in ax.get_xticklabels()]
+    low = [t for t in ticks if t.startswith("fine alluvium")]
+    assert low and "(low sample)" in low[0]
+    assert not any("qualifying" in t for t in ticks)
+    assert "low sample (few qualifying reaches)" in ax.get_title()
+    mpl.pyplot.close(fig)
+
+
 def test_unit_basin_dot_plot_uses_reach_median():
     from lsdviztools3.charts.lithology_ksn import plot_ksn_by_lithology_and_basin
 

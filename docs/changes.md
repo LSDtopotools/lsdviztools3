@@ -1,5 +1,12 @@
 # What's new
 
+## Unreleased
+
+- Fixed: in the vertical box plots of `lsdviz3-ksn-by-lithology` (node and
+  reach k<sub>sn</sub>), the "(low sample: few qualifying reaches)" note under
+  each low-sample unit ran into its neighbours' labels. The labels now say
+  "(low sample)", and the caption explains it once.
+
 ## 0.4.2
 
 **Colouring in classes.** Rasters, lines and points can be coloured in a few
