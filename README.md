@@ -151,10 +151,10 @@ Each [GitHub release](https://github.com/LSDtopotools/lsdviztools3/releases/late
 Install it into an environment with GMT, as above, by its address:
 
 ```bash
-python -m pip install https://github.com/LSDtopotools/lsdviztools3/releases/download/v0.4.1/lsdviztools3-0.4.1-py3-none-any.whl
+python -m pip install https://github.com/LSDtopotools/lsdviztools3/releases/download/v0.4.2/lsdviztools3-0.4.2-py3-none-any.whl
 ```
 
-Replace `0.4.1` with the version you want (the release page lists the wheel's
+Replace `0.4.2` with the version you want (the release page lists the wheel's
 exact address).
 
 ## lsdtt3 requirement for driver/workflows

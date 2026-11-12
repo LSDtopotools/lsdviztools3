@@ -1,6 +1,6 @@
 # What's new
 
-## Next release (after 0.4.1)
+## 0.4.2
 
 **Colouring in classes.** Rasters, lines and points can be coloured in a few
 classes instead of a continuous scale, with a class legend instead of the
