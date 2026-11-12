@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from . import _common
 from ._chi_common import add_tributary_selection_args, mn_suffix, tributary_selection_from_args
 
 
@@ -54,8 +55,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--cmap", default="viridis", help="k_sn colour map (default viridis).")
     p.add_argument("--coordinates", default="local", help="Map coordinates: local/projected or geographic.")
     p.add_argument("--dpi", type=int, default=300, help="DPI of the charts (default 300).")
+    _common.add_class_args(p, flag="--ksn-classes",
+                           what="the k_sn network on the map (breaks in k_sn units; schemes work "
+                                "in log10 k_sn)")
     add_tributary_selection_args(p)
     return p
+
+
+def _ksn_class_kwargs(args) -> dict:
+    """``--ksn-classes`` and friends as render_knickpoint_map keywords."""
+    kw = _common.class_kwargs(args)
+    kw["ksn_classes"] = kw.pop("classes")
+    return kw
 
 
 def main(argv=None) -> int:
@@ -130,7 +141,8 @@ def main(argv=None) -> int:
         written.append(render_knickpoint_map(
             args.dem, files["segment_lines"], major, out_dir / f"{stem}_knickpoint_map.png",
             removed=removed, coordinates=args.coordinates, cmap=args.cmap,
-            ksn_vmin=args.ksn_vmin, ksn_vmax=args.ksn_vmax, threshold_label=label))
+            ksn_vmin=args.ksn_vmin, ksn_vmax=args.ksn_vmax, threshold_label=label,
+            **_ksn_class_kwargs(args)))
     for w in written:
         print(w)
     return 0

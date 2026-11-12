@@ -488,3 +488,91 @@ def render_binary_drape(
         add_bar_scalebar(fig, extent, crs)
 
     return fig
+
+
+#: Approximate Helvetica character widths, as a fraction of the font size:
+#: regular text (digits are 0.556 em) and bold headers.
+_CHAR_EM = 0.58
+_BOLD_CHAR_EM = 0.64
+_CM_PER_PT = 2.54 / 72.0
+
+
+def class_legend_width(labels, *, font_size: str = "7p", header: Optional[str] = None,
+                       header_size: str = "8p", symbol_width_cm: float = 0.5) -> float:
+    """Width (cm) of a one-column class legend that holds its longest text.
+
+    GMT does not measure text when it sizes a legend box, so the width is
+    estimated from the longest label (and the header) with generous Helvetica
+    character widths, plus the symbol, the gaps and the box padding.
+    """
+    pt = float(str(font_size).rstrip("p"))
+    longest = max((len(str(lbl)) for lbl in labels), default=0)
+    width = 0.15 + symbol_width_cm + 0.2 + longest * _CHAR_EM * pt * _CM_PER_PT + 0.3
+    if header:
+        # GMT escapes such as @- (subscript) take no width.
+        visible = len(str(header).replace("@-", "").replace("@+", "").replace("@@", "@"))
+        hpt = float(str(header_size).rstrip("p"))
+        width = max(width, 0.3 + visible * _BOLD_CHAR_EM * hpt * _CM_PER_PT + 0.3)
+    return round(width, 2)
+
+
+def add_class_legend(
+    fig,
+    colour_classes,
+    *,
+    symbol: str = "square",
+    line_width: str = "2p",
+    title: Optional[str] = None,
+    position: str = "JMR+jML+o0.3c/0c",
+    font_size: str = "7p",
+    box: str = "+gwhite+p0.5p,black",
+):
+    """Legend for colour classes: one entry per class, lowest at the top.
+
+    Drawn instead of a colourbar when a map is coloured in classes (the
+    ``classes`` argument of ``render_drape``, ``render_channels`` and
+    ``render_points``). By default it sits outside the right edge of the map,
+    so it covers no data; the saved figure includes it.
+
+    Args:
+        fig: The ``pygmt.Figure``.
+        colour_classes: A :class:`lsdviztools3.colour_classes.ColourClasses`.
+        symbol: ``"square"`` (rasters, polygons), ``"line"`` (channels) or a
+            GMT point symbol code (``"c"`` circle, ``"t"`` triangle, ...).
+        line_width: Pen width of the ``"line"`` symbol.
+        title: Legend title, in GMT text (``"k@-sn@-"`` gives a subscript).
+        position: GMT legend position. Its width is always set from the text
+            (``+w``), so labels and title stay inside the box.
+        font_size: Entry font size.
+        box: GMT legend box string.
+
+    Returns:
+        The same ``pygmt.Figure``.
+    """
+    import io as _io
+
+    from lsdviztools3._gmt import require_pygmt
+    pygmt = require_pygmt()
+
+    labels = list(colour_classes.labels)
+    colours = list(colour_classes.colors)
+    symbol_width = 0.6 if symbol == "line" else 0.4
+    width = class_legend_width(labels, font_size=font_size, header=title,
+                               symbol_width_cm=symbol_width)
+    rows = []
+    if title:
+        rows.append(f"H 8p,Helvetica-Bold {title}")
+        rows.append("D 0.1c 0p")          # a small gap, no line
+    for label, colour in zip(labels, colours):
+        text = _legend_text(label)
+        if symbol == "line":
+            rows.append(f"S 0.35c - 0.6c - {line_width},{colour} 0.85c {text}")
+        elif symbol == "square":
+            rows.append(f"S 0.2c s 0.3c {colour} 0.25p,black 0.6c {text}")
+        else:
+            rows.append(f"S 0.2c {symbol} 0.25c {colour} 0.25p,black 0.6c {text}")
+    if "+w" not in position:
+        position = f"{position}+w{width}c"
+    with pygmt.config(FONT_ANNOT_PRIMARY=font_size):
+        fig.legend(spec=_io.StringIO("\n".join(rows) + "\n"), position=position, box=box)
+    return fig

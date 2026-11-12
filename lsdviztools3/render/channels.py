@@ -86,6 +86,12 @@ def render_drape(
     out_of_bounds: str = "clamp",
     categorical_gt_breaks=None,
     categorical_colors=None,
+    classes=None,
+    n_classes: int = 5,
+    class_colors=None,
+    class_color_mode: str = "auto",
+    legend: bool = True,
+    legend_title: Optional[str] = None,
     colorbar: bool = False,
     colorbar_label: Optional[str] = None,
     colorbar_position: str = "bottom",
@@ -138,6 +144,21 @@ def render_drape(
             remain nodata/transparent.
         categorical_colors: Optional list of colours matching
             ``categorical_gt_breaks`` (same length).
+        classes: Colour the drape in classes instead of a continuous scale:
+            the breaks (a list, tuple or NumPy array of increasing values), or
+            a scheme that finds them in the data (``"equal_interval"``,
+            ``"quantile"``, ``"natural_breaks"`` / ``"jenks"``). ``vmin`` /
+            ``vmax`` set the ends of the colour gradient and the range the
+            schemes work in; ``log_color`` makes the schemes and the gradient
+            work in log10. A legend of the classes replaces the colourbar. See
+            :mod:`lsdviztools3.colour_classes`.
+        n_classes: Number of classes for a scheme (default 5).
+        class_colors: One colour per class instead of sampling ``cmap``.
+        class_color_mode: ``"gradient"`` (colours along ``cmap`` at each
+            class's value), ``"distinct"`` (a qualitative map's colours in
+            order), or ``"auto"`` (distinct for matplotlib's qualitative maps).
+        legend: Draw the class legend (with ``classes``; default True).
+        legend_title: Class legend title (GMT text; default ``colorbar_label``).
         colorbar: Add a colourbar for the drape CPT.
         colorbar_label: Colourbar label (e.g. ``"log@-10@-curvature"``).
         colorbar_position: Colourbar placement: ``"bottom"`` (default),
@@ -170,6 +191,8 @@ def render_drape(
         )
     style = style or MapStyle()
 
+    if classes is not None and (categorical_gt_breaks is not None or categorical_colors is not None):
+        raise ValueError("Give either classes or categorical_gt_breaks, not both.")
     if categorical_gt_breaks is not None or categorical_colors is not None:
         if not categorical_gt_breaks or not categorical_colors:
             raise ValueError(
@@ -197,67 +220,89 @@ def render_drape(
     crs = _get_crs(grid)
     grid, extent = _grid_to_display(grid, crs)
 
-    if log_color:
-        values = np.asarray(grid.values, dtype=float)
-        grid = grid.copy(data=np.log10(np.where(values > 0, values, np.nan)))
-    _set_gtype(grid, crs)
+    colour_classes = None
+    if classes is not None:
+        from ..colour_classes import make_colour_classes
+        from .categorical import _write_class_cpt
 
-    values = np.asarray(grid.values, dtype=float)
-    finite = values[np.isfinite(values)]
-    if finite.size == 0:
-        clamp = " (after clamping values <= 0 for log scale)" if log_color else ""
-        raise ValueError(f"Drape raster has no finite values to render{clamp}.")
-
-    if categorical_gt_breaks is not None:
-        breaks = [float(v) for v in categorical_gt_breaks]
-        pairs = sorted(zip(breaks, categorical_colors), key=lambda p: p[0])
-        sorted_breaks = [p[0] for p in pairs]
-        sorted_colors = [p[1] for p in pairs]
-
-        values = np.asarray(grid.values, dtype=float)
-        classes = np.full(values.shape, np.nan, dtype=float)
-        for idx, threshold in enumerate(sorted_breaks, start=1):
-            classes[values > threshold] = float(idx)
-        grid = grid.copy(data=classes)
-
-        cpt_lines = ["# COLOR_MODEL = RGB", "# Discrete categories for > threshold classes"]
-        for idx, color in enumerate(sorted_colors, start=1):
-            lo = idx - 0.5
-            hi = idx + 0.5
-            cpt_lines.append(f"{lo:.1f} {color} {hi:.1f} {color}")
-        cpt_lines.append(f"B {sorted_colors[0]}")
-        cpt_lines.append(f"F {sorted_colors[-1]}")
-        cpt_lines.append("N 255/255/255")
-
-        with tempfile.NamedTemporaryFile("w", suffix=".cpt", delete=False) as tf:
-            tf.write("\n".join(cpt_lines) + "\n")
-            cpt_path = tf.name
-
-        pygmt.makecpt(
-            cmap=cpt_path,
-            series=[0.5, len(sorted_colors) + 0.5],
-            continuous=False,
-        )
+        raw = np.asarray(grid.values, dtype=float)
+        if not np.isfinite(raw).any():
+            raise ValueError("Drape raster has no finite values to render.")
+        colour_classes = make_colour_classes(
+            raw, classes, n_classes=n_classes, cmap=cmap or style.cmap,
+            class_colors=class_colors, vmin=vmin, vmax=vmax, log_scale=log_color,
+            color_mode=class_color_mode)
+        # Class 1 .. n through a discrete CPT; cells with no class stay NaN
+        # (transparent). On a log scale values <= 0 have no class.
+        index = colour_classes.classify(raw) + 1.0
+        if log_color:
+            index[~(raw > 0)] = np.nan
+        grid = grid.copy(data=index)
+        _set_gtype(grid, crs)
+        pygmt.makecpt(cmap=_write_class_cpt(colour_classes.colors),
+                      series=[0.5, colour_classes.n_classes + 0.5], continuous=False)
     else:
-        # Colour-scale bounds: data extent, overridden by percentile, then by vmin/vmax.
-        lo, hi = float(finite.min()), float(finite.max())
-        if percentile_min is not None:
-            lo = float(np.percentile(finite, percentile_min))
-        if percentile_max is not None:
-            hi = float(np.percentile(finite, percentile_max))
-        if vmin is not None:
-            lo = float(vmin)
-        if vmax is not None:
-            hi = float(vmax)
-        if lo == hi:
-            hi = lo + 1.0
+        if log_color:
+            values = np.asarray(grid.values, dtype=float)
+            grid = grid.copy(data=np.log10(np.where(values > 0, values, np.nan)))
+        _set_gtype(grid, crs)
 
-        # "clip": drop out-of-range values so they render transparent (hillshade
-        # shows through). "clamp": keep them — GMT paints them the end colours.
-        if out_of_bounds == "clip":
-            grid = grid.where((grid >= lo) & (grid <= hi))
+        values = np.asarray(grid.values, dtype=float)
+        finite = values[np.isfinite(values)]
+        if finite.size == 0:
+            clamp = " (after clamping values <= 0 for log scale)" if log_color else ""
+            raise ValueError(f"Drape raster has no finite values to render{clamp}.")
 
-        pygmt.makecpt(cmap=resolve_cmap(cmap or style.cmap), series=[lo, hi])
+        if categorical_gt_breaks is not None:
+            breaks = [float(v) for v in categorical_gt_breaks]
+            pairs = sorted(zip(breaks, categorical_colors), key=lambda p: p[0])
+            sorted_breaks = [p[0] for p in pairs]
+            sorted_colors = [p[1] for p in pairs]
+
+            values = np.asarray(grid.values, dtype=float)
+            classes = np.full(values.shape, np.nan, dtype=float)
+            for idx, threshold in enumerate(sorted_breaks, start=1):
+                classes[values > threshold] = float(idx)
+            grid = grid.copy(data=classes)
+
+            cpt_lines = ["# COLOR_MODEL = RGB", "# Discrete categories for > threshold classes"]
+            for idx, color in enumerate(sorted_colors, start=1):
+                lo = idx - 0.5
+                hi = idx + 0.5
+                cpt_lines.append(f"{lo:.1f} {color} {hi:.1f} {color}")
+            cpt_lines.append(f"B {sorted_colors[0]}")
+            cpt_lines.append(f"F {sorted_colors[-1]}")
+            cpt_lines.append("N 255/255/255")
+
+            with tempfile.NamedTemporaryFile("w", suffix=".cpt", delete=False) as tf:
+                tf.write("\n".join(cpt_lines) + "\n")
+                cpt_path = tf.name
+
+            pygmt.makecpt(
+                cmap=cpt_path,
+                series=[0.5, len(sorted_colors) + 0.5],
+                continuous=False,
+            )
+        else:
+            # Colour-scale bounds: data extent, overridden by percentile, then by vmin/vmax.
+            lo, hi = float(finite.min()), float(finite.max())
+            if percentile_min is not None:
+                lo = float(np.percentile(finite, percentile_min))
+            if percentile_max is not None:
+                hi = float(np.percentile(finite, percentile_max))
+            if vmin is not None:
+                lo = float(vmin)
+            if vmax is not None:
+                hi = float(vmax)
+            if lo == hi:
+                hi = lo + 1.0
+
+            # "clip": drop out-of-range values so they render transparent (hillshade
+            # shows through). "clamp": keep them — GMT paints them the end colours.
+            if out_of_bounds == "clip":
+                grid = grid.where((grid >= lo) & (grid <= hi))
+
+            pygmt.makecpt(cmap=resolve_cmap(cmap or style.cmap), series=[lo, hi])
 
     projection = style.projection or auto_projection(extent, crs, style.figure_size)
     fig.grdimage(
@@ -272,7 +317,13 @@ def render_drape(
         from .decorations import add_bar_scalebar
 
         add_bar_scalebar(fig, extent, crs)
-    elif colorbar:
+    if colour_classes is not None:
+        if legend:
+            from .categorical import add_class_legend
+
+            add_class_legend(fig, colour_classes, symbol="square",
+                             title=legend_title if legend_title is not None else colorbar_label)
+    elif colorbar and not style.clean:
         add_colourbar(fig, label=colorbar_label, placement=colorbar_position)
     return fig
 
@@ -290,6 +341,12 @@ def render_channels(
     fig=None,
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
+    classes=None,
+    n_classes: int = 5,
+    class_colors=None,
+    class_color_mode: str = "auto",
+    legend: bool = True,
+    legend_title: Optional[str] = None,
 ):
     """Render a channel network as lines, typically over a hillshade.
 
@@ -312,7 +369,22 @@ def render_channels(
             ``render_hillshade``). If ``None``, a new framed figure is created.
         vmin, vmax: Colour-scale limits in DATA units (e.g. k_sn, not log10
             k_sn); ``None`` for the data's range. Lines beyond them take the
-            end colours, and the colourbar shows an extend triangle.
+            end colours, and the colourbar shows an extend triangle. With
+            ``classes`` they are the ends of the colour gradient and the range
+            the schemes work in.
+        classes: Colour the lines in classes of ``color_by`` instead of a
+            continuous scale: the breaks (a list, tuple or NumPy array of
+            increasing values), or a scheme (``"equal_interval"``,
+            ``"quantile"``, ``"natural_breaks"`` / ``"jenks"``). ``log_color``
+            makes the schemes and the gradient work in log10. A legend of the
+            classes replaces the colourbar. See
+            :mod:`lsdviztools3.colour_classes`.
+        n_classes: Number of classes for a scheme (default 5).
+        class_colors: One colour per class instead of sampling ``cmap``.
+        class_color_mode: ``"gradient"``, ``"distinct"`` or ``"auto"`` (see
+            :func:`render_drape`).
+        legend: Draw the class legend (with ``classes``; default True).
+        legend_title: Class legend title (GMT text; default ``colorbar_label``).
 
     Returns:
         The ``pygmt.Figure``.
@@ -337,6 +409,31 @@ def render_channels(
             f"color_by={color_by!r} not in channel attributes: "
             f"{[c for c in gdf_display.columns if c != gdf_display.geometry.name]}"
         )
+
+    if classes is not None:
+        from ..colour_classes import make_colour_classes
+
+        raw = np.asarray(gdf_display[color_by].to_numpy(), dtype=float)
+        if not np.isfinite(raw).any():
+            raise ValueError(f"No finite values to colour by in {color_by!r}.")
+        colour_classes = make_colour_classes(
+            raw, classes, n_classes=n_classes, cmap=cmap or style.cmap,
+            class_colors=class_colors, vmin=vmin, vmax=vmax, log_scale=log_color,
+            color_mode=class_color_mode)
+        index = colour_classes.classify(raw)
+        if log_color:
+            index[~(raw > 0)] = np.nan
+        # One plot call per class: every line of the class in its colour.
+        for k, colour in enumerate(colour_classes.colors):
+            part = gdf_display[index == k]
+            if not part.empty:
+                fig.plot(data=part, pen=f"{style.line_width},{colour}")
+        if legend:
+            from .categorical import add_class_legend
+
+            add_class_legend(fig, colour_classes, symbol="line",
+                             title=legend_title if legend_title is not None else colorbar_label)
+        return fig
 
     z = _colour_z(gdf_display[color_by].to_numpy(), log_color)
     finite = z[np.isfinite(z)]

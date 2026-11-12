@@ -282,9 +282,16 @@ def test_plot_basins_main_smoke(monkeypatch):
     assert code == 0
     assert calls["basins"][0] == "basins.fgb"
     assert calls["save"][1] == "basins.png"
-    # The CLI writes one title line carrying the cosmo-scheme metadata.
+    # No title and no cosmogenic labels by default: the map has no text on it
+    # (the labels used to default to stone / BraucherBorchers / ERA40).
+    assert calls["save"][0].texts == []
+
+    plot_basins.main(["--base", "dem.tif", "--basins", "basins.fgb", "--out", "basins.png",
+                      "--plot-title", "Erosion rates", "--scaling-scheme", "stone",
+                      "--atmosphere", "ERA40"])
     texts = calls["save"][0].texts
-    assert len(texts) == 1 and "scaling=" in texts[0]["text"]
+    assert len(texts) == 1
+    assert texts[0]["text"] == "Erosion rates | scaling=stone, atmosphere=ERA40"
 
 
 def test_plot_basemap_main_smoke(monkeypatch):

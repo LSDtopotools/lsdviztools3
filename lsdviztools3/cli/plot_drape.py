@@ -119,6 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["bottom", "top", "left", "right"],
         help="Colourbar placement relative to the map (default: bottom).",
     )
+    _common.add_class_args(parser, what="the drape")
     _common.add_style_args(parser)
     _common.add_target_dir_arg(parser)
     return parser
@@ -157,6 +158,7 @@ def main(argv=None) -> int:
         out_of_bounds=args.out_of_bounds,
         categorical_gt_breaks=cat_breaks,
         categorical_colors=cat_colors,
+        **_common.class_kwargs(args),
         colorbar=args.colorbar,
         colorbar_label=args.colorbar_label,
         colorbar_position=args.colorbar_position,

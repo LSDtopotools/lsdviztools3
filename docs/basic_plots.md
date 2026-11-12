@@ -149,6 +149,94 @@ Notes:
   `render_hillshade(dem, shade=True, style=MapStyle(cmap="geo"))` colours by
   height *and* illuminates. `render_drape` is for draping a **different** raster
   than the one providing the shading.
+
+## Colouring in classes
+
+Instead of a continuous colour scale, a map can be coloured in a few classes,
+as in a GIS: every value between two breaks gets the same colour, and a legend
+listing the classes replaces the colourbar. It works the same way for rasters
+(`render_drape`, `lsdviz3-drape`), lines (`render_channels`,
+`lsdviz3-channels`, and the k_sn maps of [`lsdviz3-chi` and
+`lsdviz3-knickpoints`](chi_analysis.md#colouring-k_sn-in-classes)) and points
+(`render_points`).
+
+**Choosing the classes.** Give the breaks yourself, or name a scheme that finds
+them in the data:
+
+| `classes` (CLI `--classes`) | Classes |
+|---|---|
+| a list, tuple or NumPy array of breaks, e.g. `[50, 100, 200]` (CLI `50,100,200`) | `n` breaks make `n + 1` classes: `below 50`, `50 to 100`, `100 to 200`, `200 and above` |
+| `"equal_interval"` | `n_classes` equal steps from the lower to the upper limit |
+| `"quantile"` | the same number of values in every class (breaks at data values) |
+| `"natural_breaks"` (or `"jenks"`) | the Fisher-Jenks optimum: the classes that are each as uniform as possible (least sum of squared deviations from the class means) |
+
+`n_classes` (CLI `--n-classes`, default 5) sets the number of classes for a
+scheme. A value equal to a break goes in the class above it; nodata gets no
+class and stays transparent. Natural breaks on more than 2000 values use an
+even sample of the sorted data, as GIS packages do.
+
+**Limits.** `vmin` and `vmax` (CLI `--vmin`, `--vmax`; `--ksn-vmin`,
+`--ksn-vmax` on the chi maps) are the ends of the colour gradient, and bound the
+schemes: `equal_interval` runs from `vmin` to `vmax`, and `quantile` and
+`natural_breaks` use only the values between them. Values beyond the limits
+still fall in the end classes. Without limits the data's minimum and maximum
+are used.
+
+**Log scale.** With `log_color=True` (CLI `--log`; always on for k_sn), the
+schemes and the colours work in log10: equal intervals become equal ratios.
+Breaks you give are in data units. Values <= 0 get no class.
+
+**Colours.** By default each class takes the colour of the colour map at the
+**centre of the class**, on the gradient from `vmin` to `vmax`: the colour a
+continuous map with the same limits would give it there. Unevenly spaced
+breaks therefore give unevenly spaced colours, and a classed map matches its
+continuous version. Two other choices:
+
+- `class_color_mode="distinct"` (CLI `--class-color-mode distinct`) takes the
+  colours of a qualitative map in order, one per class, for classes that should
+  look different rather than ordered. This is automatic for matplotlib's
+  qualitative maps (`tab10`, `tab20`, `Set1`, `Set2`, `Set3`, `Dark2`,
+  `Paired`, `Accent`, `Pastel1`, `Pastel2`); a map with fewer colours than
+  classes is refused.
+- `class_colors` (CLI `--class-colors red,orange,#2c7fb8`) gives one colour per
+  class yourself.
+
+The colour map can be a matplotlib one (`viridis`, `magma_r`, ...) or a GMT one
+(`geo`, `roma`, ...).
+
+**Legend.** The class legend sits outside the right edge of the map, so it
+covers no data, with its width set from the longest label and title so the text
+stays inside the box. Its title is `legend_title` (CLI `--legend-title` on
+`lsdviz3-channels`, `--colorbar-label` on `lsdviz3-drape`), in GMT text:
+`"k@-sn@-"` gives a subscript. `legend=False` leaves it off.
+
+```bash
+# Gradient (m/m) in 6 natural-breaks classes
+pixi run lsdviz3-drape --base eigg_hillshade.tif --drape eigg_gradient.tif \
+  --out eigg_gradient_classes.png --classes natural_breaks --n-classes 6 \
+  --cmap viridis --colorbar-label "Gradient (m/m)"
+
+# Channels by k_sn, breaks given
+pixi run lsdviz3-channels --base eigg_hillshade.tif --lines eigg_chi_fit_segment_lines_mn_0p450.fgb \
+  --out eigg_ksn_classes.png --color-by k_sn --classes 20,50,100,200 \
+  --cmap magma --legend-title "k@-sn@-"
+```
+
+```python
+from lsdviztools3.render.channels import render_drape, render_channels
+
+fig = render_drape("eigg_hillshade.tif", "eigg_gradient.tif",
+                   classes="quantile", n_classes=5, vmin=0, vmax=1.2,
+                   cmap="viridis", legend_title="Gradient (m/m)")
+fig = render_channels(segments, color_by="k_sn", classes=[20, 50, 100, 200],
+                      cmap="magma", legend_title="k@-sn@-", fig=fig)
+```
+
+The classification itself is in `lsdviztools3.colour_classes`:
+`make_colour_classes(values, classes, ...)` returns the breaks, a colour and
+a label per class, and `classify(values)` gives each value's class, for use in
+your own plots.
+
 ## Basins
 
 **CLI**

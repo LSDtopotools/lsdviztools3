@@ -152,3 +152,53 @@ def save_figure(
 
     out_path = resolve_in_dir(directory, out_path)
     _save_figure(fig, out_path, style=style, high_res=high_res)
+
+
+def add_class_args(parser: argparse.ArgumentParser, *, flag: str = "--classes",
+                   what: str = "the values") -> None:
+    """Add the colour-class options shared by the map commands.
+
+    ``flag`` is the main option (``--classes``, or ``--ksn-classes`` for the
+    k_sn maps); the others are ``--n-classes``, ``--class-colors`` and
+    ``--class-color-mode``. Read them back with :func:`class_kwargs`.
+    """
+    parser.add_argument(
+        flag, default=None, dest="classes",
+        help=(f"Colour {what} in classes, with a class legend instead of a colourbar: "
+              "comma-separated breaks (e.g. '50,100,200,400': 4 breaks make 5 classes), or a "
+              "scheme that finds the breaks in the data: equal_interval, quantile, "
+              "natural_breaks (or jenks). The colour limits (vmin/vmax) set the ends of the "
+              "colour gradient and the range the schemes use."))
+    parser.add_argument(
+        "--n-classes", type=int, default=5,
+        help="Number of classes for a scheme (default 5). Ignored with breaks.")
+    parser.add_argument(
+        "--class-colors", default=None,
+        help="Comma-separated colours, one per class, instead of sampling the colour map "
+             "(names, hex such as '#1b9e77', or r/g/b).")
+    parser.add_argument(
+        "--class-color-mode", default="auto", choices=["auto", "gradient", "distinct"],
+        help="gradient: class colours along the colour map at each class's values; distinct: "
+             "a qualitative map's colours in order (tab10, Set1, Dark2, ...); auto (default): "
+             "distinct for matplotlib's qualitative maps, else gradient.")
+
+
+def class_kwargs(args: argparse.Namespace) -> dict:
+    """The ``classes``, ``n_classes``, ``class_colors``, ``class_color_mode``
+    keyword arguments from :func:`add_class_args` options.
+
+    Raises:
+        SystemExit: a ``--classes`` value that is neither a scheme nor numbers.
+    """
+    from ..colour_classes import parse_classes_arg
+
+    try:
+        classes = parse_classes_arg(args.classes)
+    except ValueError as err:
+        raise SystemExit(str(err)) from None
+    colours = None
+    if args.class_colors:
+        colours = [c.strip() for c in args.class_colors.split(",") if c.strip()]
+    return dict(classes=classes, n_classes=args.n_classes, class_colors=colours,
+                class_color_mode=args.class_color_mode)
+
