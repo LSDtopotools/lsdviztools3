@@ -61,6 +61,14 @@ def render_points(
     coordinates: str = "local",
     style: Optional[MapStyle] = None,
     fig=None,
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
+    classes=None,
+    n_classes: int = 5,
+    class_colors=None,
+    class_color_mode: str = "auto",
+    legend: bool = True,
+    legend_title: Optional[str] = None,
 ):
     """Render point data, optionally coloured and/or size-scaled by a column.
 
@@ -86,6 +94,22 @@ def render_points(
             ``"geographic"`` / explicit CRS).
         style: Styling options (``point_size``, ``line_color``, ``cmap``).
         fig: Existing ``pygmt.Figure`` to compose onto, or ``None`` for a new one.
+        vmin, vmax: Colour-scale limits in data units (``None``: the data's
+            range). With ``classes`` they are the ends of the colour gradient
+            and the range the schemes work in.
+        classes: Colour the points in classes of ``color_by`` instead of a
+            continuous scale: the breaks (a list, tuple or NumPy array of
+            increasing values), or a scheme (``"equal_interval"``,
+            ``"quantile"``, ``"natural_breaks"`` / ``"jenks"``). ``log_color``
+            makes the schemes and the gradient work in log10. A legend of the
+            classes replaces the colourbar. See
+            :mod:`lsdviztools3.colour_classes`.
+        n_classes: Number of classes for a scheme (default 5).
+        class_colors: One colour per class instead of sampling ``cmap``.
+        class_color_mode: ``"gradient"``, ``"distinct"`` or ``"auto"`` (see
+            :func:`lsdviztools3.render.channels.render_drape`).
+        legend: Draw the class legend (with ``classes``; default True).
+        legend_title: Class legend title (GMT text; default ``colorbar_label``).
 
     Returns:
         The ``pygmt.Figure``.
@@ -97,6 +121,8 @@ def render_points(
     gdf_display, crs = _prepare_overlay(df, coordinates, style)
     if gdf_display.empty:
         raise ValueError("Cannot render points: input has no features.")
+    if classes is not None and color_by is None:
+        raise ValueError("classes needs color_by: the column whose values are classified.")
     fig = _ensure_overlay_figure(gdf_display, crs, style, fig)
 
     xs = gdf_display.geometry.x.to_numpy()
@@ -120,6 +146,40 @@ def render_points(
         f"{style.line_width},{style.line_color}" if outline_only else None
     )
 
+    if classes is not None:
+        from ..colour_classes import make_colour_classes
+
+        if color_by not in gdf_display.columns:
+            raise KeyError(f"color_by={color_by!r} not in point attributes.")
+        raw = np.asarray(gdf_display[color_by].to_numpy(), dtype=float)
+        if not np.isfinite(raw).any():
+            raise ValueError(f"No finite values to colour by in {color_by!r}.")
+        colour_classes = make_colour_classes(
+            raw, classes, n_classes=n_classes, cmap=cmap or style.cmap,
+            class_colors=class_colors, vmin=vmin, vmax=vmax, log_scale=log_color,
+            color_mode=class_color_mode)
+        index = colour_classes.classify(raw)
+        if log_color:
+            index[~(raw > 0)] = np.nan
+        for k, colour in enumerate(colour_classes.colors):
+            sel = index == k
+            if not sel.any():
+                continue
+            kw = dict(plot_kwargs, x=xs[sel], y=ys[sel])
+            if "size" in kw:
+                kw["size"] = np.asarray(kw["size"])[sel]
+            if outline_only:
+                fig.plot(pen=f"{style.line_width},{colour}", **kw)
+            else:
+                fig.plot(fill=colour, pen=pen, **kw)
+        if legend:
+            from .categorical import add_class_legend
+
+            add_class_legend(fig, colour_classes,
+                             symbol="square" if outline_only else symbol,
+                             title=legend_title if legend_title is not None else colorbar_label)
+        return fig
+
     if color_by is not None:
         if color_by not in gdf_display.columns:
             raise KeyError(f"color_by={color_by!r} not in point attributes.")
@@ -131,16 +191,17 @@ def render_points(
         finite = z[np.isfinite(z)]
         if finite.size == 0:
             raise ValueError(f"No finite values to colour by in {color_by!r}.")
-        vmin, vmax = float(finite.min()), float(finite.max())
-        if vmin == vmax:
-            vmax = vmin + 1.0
-        pygmt.makecpt(cmap=cmap or style.cmap, series=[vmin, vmax])
+        from ..colour_limits import colour_limits
+
+        lo, hi, extend = colour_limits(z, vmin, vmax, log_scale=log_color)
+        # background=True: values beyond the limits take the end colours.
+        pygmt.makecpt(cmap=cmap or style.cmap, series=[lo, hi], background=True)
         if outline_only:
             fig.plot(cmap=True, pen=outline_pen, **plot_kwargs)
         else:
             fig.plot(fill=z, cmap=True, **plot_kwargs)
         if colorbar:
-            add_colourbar(fig, label=colorbar_label)
+            add_colourbar(fig, label=colorbar_label, extend=extend)
     elif outline_only:
         fig.plot(pen=outline_pen, **plot_kwargs)
     else:

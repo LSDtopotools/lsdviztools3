@@ -1,8 +1,8 @@
 # Command reference
 
-Every `lsdviz3-*` command, grouped as in this guide. Run one with
-`pixi run lsdviz3-<name> ...` from the lsdviztools3 checkout, and add `--help`
-for its full list of flags. Each group links to the page that explains its
+Every `lsdviz3-*` command, grouped as in this guide. After a pip install run
+one as `lsdviz3-<name> ...`; from a clone of the repository, as `pixi run
+lsdviz3-<name> ...`. Add `--help` for its full list of flags. Each group links to the page that explains its
 figures.
 
 ## Basic plots
@@ -12,10 +12,16 @@ See [Basic plots](basic_plots.md).
 | Command | Purpose | Key flags |
 |---------|---------|-----------|
 | `lsdviz3-hillshade` | shaded-relief PNG | `--in --out --input-is-hillshade` + style (incl. `--clean`) |
-| `lsdviz3-drape` | gray hillshade + coloured semi-transparent drape | `--base --drape --out --shade-base --log --transparency --vmin --vmax --percentile-min --percentile-max --out-of-bounds --colorbar --colorbar-label --colorbar-position` + style (`--cmap` = drape; GMT or matplotlib maps, or a solid colour) |
-| `lsdviz3-basins` | hillshade + basin polygons | `--base --basins --out --fill --transparency` + style |
-| `lsdviz3-basemap` | global/aerial locator | `--in --out --mode --elevation-km --view-limit-deg --look-bearing --look-vertical-angle --grid-spacing-deg --no-north-arrow` + style |
+| `lsdviz3-drape` | gray hillshade + coloured semi-transparent drape | `--base --drape --out --shade-base --log --transparency --vmin --vmax --percentile-min --percentile-max --out-of-bounds --colorbar --colorbar-label --colorbar-position --classes --n-classes --class-colors --class-color-mode` + style (`--cmap` = drape; GMT or matplotlib maps, or a solid colour). `--classes`: [colouring in classes](basic_plots.md#colouring-in-classes) |
+| `lsdviz3-basins` | hillshade + basin polygons | `--base --basins --out --fill --transparency --label-col --color-by --colorbar --plot-title` + style; `--scaling-scheme --muon-scheme --atmosphere` note cosmogenic settings on the map only when given |
+| `lsdviz3-basemap` | locator map: globe, region (borders, rivers, optional relief) or aerial view, with the raster's footprint | `--in --out --mode {auto,global,regional,aerial} --extent-km --relief --no-borders --no-rivers --no-scale-bar --elevation-km --view-limit-deg --look-bearing --look-vertical-angle --grid-spacing-deg --no-north-arrow` + style |
 | `lsdviz3-sti` | hillshade + STI rasters (single file or directory batch) | single mode: `--base --sti --out`; directory mode: `--sti-dir [--base]` (auto-plots all discovered STI rasters); options: `--transparency --colorbar` + style |
+
+**Locator insets.** `lsdviz3-hillshade`, `lsdviz3-drape`, `lsdviz3-basins`,
+`lsdviz3-channels`, `lsdviz3-chi` and `lsdviz3-knickpoints` take `--locator
+global|regional` to put a small locator map in a corner, with
+`--locator-position TR|TL|BR|BL`, `--locator-width`, `--locator-extent-km` and
+`--locator-relief`. See [Locator maps](basic_plots.md#locator-maps-where-is-this-raster).
 
 ## Data and lsdtt3
 
@@ -32,8 +38,8 @@ See [Chi analysis](chi_analysis.md).
 
 | Command | Purpose | Key flags |
 |---------|---------|-----------|
-| `lsdviz3-chi` | an lsdtt-chi-analysis run (`fit_chi_networks: true`): k_sn map of the fitted segments over a hillshade, stacked chi-elevation plot, optional per-basin profiles | `--data-dir --prefix --m-over-n --out-dir [--dem --out-prefix --per-basin --no-stacked --cmap --ksn-vmin --ksn-vmax --remove-ksn-above --min-tributary-area-m2 --min-tributary-area-fraction --top-tributaries --keep-descendants --show-removed --coordinates --dpi]` |
-| `lsdviz3-knickpoints` | knickpoints of an lsdtt-chi-analysis fit: distribution of k_sn changes with suggested thresholds, and the major knickpoints on the profile, along chi and on a map | `--data-dir --prefix --m-over-n --out-dir [--out-prefix --dem --measure --threshold --direction --include-junctions --along --basin --ksn-vmin --ksn-vmax --cmap --coordinates --dpi]` + tributary selection flags |
+| `lsdviz3-chi` | an lsdtt-chi-analysis run (`fit_chi_networks: true`): k_sn map of the fitted segments over a hillshade, stacked chi-elevation plot, optional per-basin profiles | `--data-dir --prefix --m-over-n --out-dir [--dem --out-prefix --per-basin --no-stacked --cmap --ksn-vmin --ksn-vmax --ksn-classes --n-classes --class-colors --class-color-mode --remove-ksn-above --min-tributary-area-m2 --min-tributary-area-fraction --top-tributaries --keep-descendants --show-removed --coordinates --dpi]` |
+| `lsdviz3-knickpoints` | knickpoints of an lsdtt-chi-analysis fit: distribution of k_sn changes with suggested thresholds, and the major knickpoints on the profile, along chi and on a map | `--data-dir --prefix --m-over-n --out-dir [--out-prefix --dem --measure --threshold --direction --include-junctions --along --basin --ksn-vmin --ksn-vmax --ksn-classes --n-classes --class-colors --class-color-mode --cmap --coordinates --dpi]` + tributary selection flags |
 
 ## Channel networks
 
@@ -41,7 +47,7 @@ See [Channel networks](channel_networks.md).
 
 | Command | Purpose | Key flags |
 |---------|---------|-----------|
-| `lsdviz3-channels` | hillshade + channel lines | `--base --lines --out` + style |
+| `lsdviz3-channels` | hillshade + channel lines, optionally coloured by an attribute, continuously or in classes | `--base --lines --out --color-by --linear --vmin --vmax --colorbar --legend-title --classes --n-classes --class-colors --class-color-mode` + style |
 | `lsdviz3-channel-bearings` | channel-link bearing roses, junction-angle summaries and comparison tables by group, from lsdtt-channel-network-analysis | `--data-dir --prefix --out-dir [--group-key --stratum-key --plots --pdf-weight --measurands --compare-prefix --compare-label --map-dem --regions --region-field --region-title --label --title --dpi]` |
 | `lsdviz3-burned-profiles` | long profiles of channels burned by lsdtt-stream-burning `burn_to_corridor`, one panel per run: input DEM, burned channel, minima, filled pits, cuts and raises | `--csv (repeat) --out [--labels --name \| --path-rank \| --path-id --x --mark --max-join-labels --title --dpi]` |
 | `lsdviz3-channel-slopes` | smoothed long profiles and along-channel slopes from lsdtt-channel-extraction `write_channel_slope_points`: profiles, slope against distance and against area, and a map coloured by log₁₀ slope, with optional field points | `--slope-points --out-dir [--field-points --field-color-by --min-area-m2 --dem --slope-vmin --slope-vmax --cmap --coordinates --out-prefix --dpi]` |

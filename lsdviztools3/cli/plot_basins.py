@@ -49,20 +49,23 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="Optional title text drawn at the top-left.",
     )
+    # Cosmogenic labels, for erosion-rate maps. Off unless given: they used to
+    # default to stone / BraucherBorchers / ERA40 and were written over every
+    # basin map, cosmogenic or not.
     parser.add_argument(
         "--scaling-scheme",
-        default="stone",
-        help="Metadata label for scaling scheme (default: stone).",
+        default=None,
+        help="Cosmogenic scaling scheme to note on the map (e.g. stone). Not shown unless given.",
     )
     parser.add_argument(
         "--muon-scheme",
-        default="BraucherBorchers",
-        help="Metadata label for muon scheme (default: BraucherBorchers).",
+        default=None,
+        help="Cosmogenic muon scheme to note on the map (e.g. BraucherBorchers). Not shown unless given.",
     )
     parser.add_argument(
         "--atmosphere",
-        default="ERA40",
-        help="Metadata label for atmosphere dataset (default: ERA40).",
+        default=None,
+        help="Atmosphere model to note on the map (e.g. ERA40). Not shown unless given.",
     )
     parser.add_argument("--fill", default="orange", help="Polygon fill colour.")
     parser.add_argument(
@@ -71,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=65.0,
         help="Fill transparency percent (0 opaque, 100 invisible).",
     )
+    _common.add_locator_args(parser)
     _common.add_style_args(parser)
     _common.add_target_dir_arg(parser)
     return parser
@@ -110,23 +114,26 @@ def main(argv=None) -> int:
     )
 
     title_prefix = args.plot_title.strip()
-    metadata = (
-        f"scaling={args.scaling_scheme}, "
-        f"muon={args.muon_scheme}, atmosphere={args.atmosphere}"
+    metadata = ", ".join(
+        f"{name}={value}"
+        for name, value in (("scaling", args.scaling_scheme), ("muon", args.muon_scheme),
+                            ("atmosphere", args.atmosphere))
+        if value
     )
-    title_text = metadata if not title_prefix else f"{title_prefix} | {metadata}"
+    title_text = " | ".join(t for t in (title_prefix, metadata) if t)
     if title_text:
+        # In the map's top-left corner, on a white box so it reads over the relief.
         fig.text(
-            x=0.01,
-            y=0.99,
+            position="TL",
             text=title_text,
-            font="14p,Helvetica-Bold,black",
-            region="0/1/0/1",
-            projection="X1c",
+            font="9p,Helvetica-Bold,black",
             justify="TL",
-            no_clip=True,
+            offset="0.15c/-0.15c",
+            fill="white@15",
+            clearance="0.1c/0.1c",
         )
 
+    _common.add_locator_from_args(fig, args, args.base)
     _common.save_figure(fig, args.out, style=style, high_res=args.high_res,
                         directory=args.directory)
     return 0

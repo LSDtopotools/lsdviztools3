@@ -11,7 +11,7 @@ conventions they share (coordinate modes, `MapStyle`, saving) are in
 **CLI**
 
 ```bash
-pixi run python -m lsdviztools3.cli.plot_hillshade \
+pixi run lsdviz3-hillshade \
   --in demo_output/eigg_glo30.tif --out demo_output/hillshade.png \
   --coordinates local --cmap gray --opaque
 ```
@@ -62,7 +62,7 @@ already do); reproject/resample the drape onto the hillshade grid first if not.
 **CLI**
 
 ```bash
-pixi run python -m lsdviztools3.cli.plot_drape \
+pixi run lsdviz3-drape \
   --base /data/lsdtt3_runs/eigg/eigg_hs.tif \
   --drape /data/lsdtt3_runs/eigg/eigg_curvature.tif \
   --out demo_output/eigg_curvature_drape.png \
@@ -96,7 +96,7 @@ mask, e.g. "paint everything above the 90th percentile black, show bare hillshad
 elsewhere":
 
 ```bash
-pixi run python -m lsdviztools3.cli.plot_drape \
+pixi run lsdviz3-drape \
   --base /data/rio_tucuy/rt_hillshade.tif \
   --drape /data/rio_tucuy/rt_surf_direct_polyfit_curvedness.tif \
   --out figures/curvedness_p90_black.png \
@@ -149,12 +149,100 @@ Notes:
   `render_hillshade(dem, shade=True, style=MapStyle(cmap="geo"))` colours by
   height *and* illuminates. `render_drape` is for draping a **different** raster
   than the one providing the shading.
+
+## Colouring in classes
+
+Instead of a continuous colour scale, a map can be coloured in a few classes,
+as in a GIS: every value between two breaks gets the same colour, and a legend
+listing the classes replaces the colourbar. It works the same way for rasters
+(`render_drape`, `lsdviz3-drape`), lines (`render_channels`,
+`lsdviz3-channels`, and the k_sn maps of [`lsdviz3-chi` and
+`lsdviz3-knickpoints`](chi_analysis.md#colouring-k_sn-in-classes)) and points
+(`render_points`).
+
+**Choosing the classes.** Give the breaks yourself, or name a scheme that finds
+them in the data:
+
+| `classes` (CLI `--classes`) | Classes |
+|---|---|
+| a list, tuple or NumPy array of breaks, e.g. `[50, 100, 200]` (CLI `50,100,200`) | `n` breaks make `n + 1` classes: `below 50`, `50 to 100`, `100 to 200`, `200 and above` |
+| `"equal_interval"` | `n_classes` equal steps from the lower to the upper limit |
+| `"quantile"` | the same number of values in every class (breaks at data values) |
+| `"natural_breaks"` (or `"jenks"`) | the Fisher-Jenks optimum: the classes that are each as uniform as possible (least sum of squared deviations from the class means) |
+
+`n_classes` (CLI `--n-classes`, default 5) sets the number of classes for a
+scheme. A value equal to a break goes in the class above it; nodata gets no
+class and stays transparent. Natural breaks on more than 2000 values use an
+even sample of the sorted data, as GIS packages do.
+
+**Limits.** `vmin` and `vmax` (CLI `--vmin`, `--vmax`; `--ksn-vmin`,
+`--ksn-vmax` on the chi maps) are the ends of the colour gradient, and bound the
+schemes: `equal_interval` runs from `vmin` to `vmax`, and `quantile` and
+`natural_breaks` use only the values between them. Values beyond the limits
+still fall in the end classes. Without limits the data's minimum and maximum
+are used.
+
+**Log scale.** With `log_color=True` (CLI `--log`; always on for k_sn), the
+schemes and the colours work in log10: equal intervals become equal ratios.
+Breaks you give are in data units. Values <= 0 get no class.
+
+**Colours.** By default each class takes the colour of the colour map at the
+**centre of the class**, on the gradient from `vmin` to `vmax`: the colour a
+continuous map with the same limits would give it there. Unevenly spaced
+breaks therefore give unevenly spaced colours, and a classed map matches its
+continuous version. Two other choices:
+
+- `class_color_mode="distinct"` (CLI `--class-color-mode distinct`) takes the
+  colours of a qualitative map in order, one per class, for classes that should
+  look different rather than ordered. This is automatic for matplotlib's
+  qualitative maps (`tab10`, `tab20`, `Set1`, `Set2`, `Set3`, `Dark2`,
+  `Paired`, `Accent`, `Pastel1`, `Pastel2`); a map with fewer colours than
+  classes is refused.
+- `class_colors` (CLI `--class-colors red,orange,#2c7fb8`) gives one colour per
+  class yourself.
+
+The colour map can be a matplotlib one (`viridis`, `magma_r`, ...) or a GMT one
+(`geo`, `roma`, ...).
+
+**Legend.** The class legend sits outside the right edge of the map, so it
+covers no data, with its width set from the longest label and title so the text
+stays inside the box. Its title is `legend_title` (CLI `--legend-title` on
+`lsdviz3-channels`, `--colorbar-label` on `lsdviz3-drape`), in GMT text:
+`"k@-sn@-"` gives a subscript. `legend=False` leaves it off.
+
+```bash
+# Gradient (m/m) in 6 natural-breaks classes
+pixi run lsdviz3-drape --base eigg_hillshade.tif --drape eigg_gradient.tif \
+  --out eigg_gradient_classes.png --classes natural_breaks --n-classes 6 \
+  --cmap viridis --colorbar-label "Gradient (m/m)"
+
+# Channels by k_sn, breaks given
+pixi run lsdviz3-channels --base eigg_hillshade.tif --lines eigg_chi_fit_segment_lines_mn_0p450.fgb \
+  --out eigg_ksn_classes.png --color-by k_sn --classes 20,50,100,200 \
+  --cmap magma --legend-title "k@-sn@-"
+```
+
+```python
+from lsdviztools3.render.channels import render_drape, render_channels
+
+fig = render_drape("eigg_hillshade.tif", "eigg_gradient.tif",
+                   classes="quantile", n_classes=5, vmin=0, vmax=1.2,
+                   cmap="viridis", legend_title="Gradient (m/m)")
+fig = render_channels(segments, color_by="k_sn", classes=[20, 50, 100, 200],
+                      cmap="magma", legend_title="k@-sn@-", fig=fig)
+```
+
+The classification itself is in `lsdviztools3.colour_classes`:
+`make_colour_classes(values, classes, ...)` returns the breaks, a colour and
+a label per class, and `classify(values)` gives each value's class, for use in
+your own plots.
+
 ## Basins
 
 **CLI**
 
 ```bash
-pixi run python -m lsdviztools3.cli.plot_basins \
+pixi run lsdviz3-basins \
   --base demo_output/eigg_glo30.tif \
   --basins work/eigg/eigg_junction_basin_polygons.fgb \
   --out demo_output/basins.png \
@@ -210,38 +298,80 @@ size_range=(1,3), cmap=None, colorbar=False, colorbar_label=None,
 coordinates="local", style=None, fig=None)`. Input may be a GeoDataFrame or a
 path to a point vector. Drop `size_by` for a constant `style.point_size`; drop
 `color_by` for a solid colour.
-## Locator / orthographic basemap
+## Locator maps: where is this raster?
 
-A globe / aerial locator outlining the DEM footprint.
+A locator map shows where a raster sits in the wider world, with the raster's
+footprint outlined in red. There are three kinds:
 
-**CLI**
+| Mode | Map | Good for |
+|---|---|---|
+| `global` | a hemisphere centred on the raster, with coastlines and a graticule | which continent, which country |
+| `regional` | a flat (Mercator) map of the region around the raster: coastlines, country borders (solid), state and province borders (dashed), rivers, lakes, optionally shaded relief, a scale bar and a north arrow | where in the country: the nearest big rivers and borders |
+| `aerial` | a perspective view from a height above the raster | large areas seen at an angle |
+
+`auto` (the default) chooses `global` for a footprint of 25 square degrees or
+more, and `regional` otherwise. The regional map is square, ten times the
+footprint's diagonal across (at least 250 km), or `extent_km` across. Its
+shaded relief (`relief=True`, CLI `--relief`) comes from GMT's global relief
+grid, downloaded from the GMT server and cached the first time; everything else
+needs no network.
+
+A locator map can be its own figure, or an **inset** in a corner of a map you
+have already drawn.
+
+**As its own figure**
 
 ```bash
-pixi run python -m lsdviztools3.cli.plot_basemap \
-  --in demo_output/eigg_glo30.tif --out demo_output/basemap.png \
-  --mode aerial --elevation-km 50 --look-bearing 0 --look-vertical-angle 0 --opaque
+pixi run lsdviz3-basemap --in salmon_DEM.tif --out salmon_locator.png --mode regional --relief
+pixi run lsdviz3-basemap --in salmon_DEM.tif --out salmon_globe.png --mode global
 ```
 
-Flags: `--in`, `--out`, `--mode {auto,global,aerial}`, `--elevation-km`,
-`--view-limit-deg`, `--look-bearing`, `--look-vertical-angle`,
-`--grid-spacing-deg`, `--no-north-arrow`, shared style.
-
-**Python**
+Flags: `--in`, `--out`, `--mode {auto,global,regional,aerial}`; regional:
+`--extent-km`, `--relief`, `--no-borders`, `--no-rivers`, `--no-scale-bar`;
+aerial: `--elevation-km`, `--view-limit-deg`, `--look-bearing`,
+`--look-vertical-angle`; `--grid-spacing-deg`, `--no-north-arrow` (a globe
+never has one: north points a different way at every place on it), and the
+shared style flags (`--figure-size` sets the width).
 
 ```python
-from lsdviztools3.render.basemap import render_orthographic_basemap
+from lsdviztools3.render.basemap import render_orthographic_basemap, render_regional_basemap
 from lsdviztools3.render.base import save_figure
 from lsdviztools3.render.style import MapStyle
 
 style = MapStyle(figure_size="10c", transparent=False)
-fig = render_orthographic_basemap("demo_output/eigg_glo30.tif", mode="global", style=style)
-save_figure(fig, "demo_output/basemap_global.png", style=style)
+fig = render_regional_basemap("salmon_DEM.tif", relief=True, style=style)
+save_figure(fig, "salmon_locator.png", style=style)
 
-fig = render_orthographic_basemap("demo_output/eigg_glo30.tif", mode="aerial",
-                                  elevation_km=50, look_bearing=0,
-                                  look_vertical_angle=0, style=style)
-save_figure(fig, "demo_output/basemap_aerial.png", style=style)
+fig = render_orthographic_basemap("salmon_DEM.tif", mode="global", style=style)
+save_figure(fig, "salmon_globe.png", style=style)
 ```
+
+**As an inset**
+
+The map commands `lsdviz3-hillshade`, `lsdviz3-drape`, `lsdviz3-basins`,
+`lsdviz3-channels`, `lsdviz3-chi` and `lsdviz3-knickpoints` take `--locator
+global` or `--locator regional`, with `--locator-position TR|TL|BR|BL`
+(default `TR`), `--locator-width` (default `4c`), `--locator-extent-km` and
+`--locator-relief`:
+
+```bash
+pixi run lsdviz3-drape --base salmon_hillshade.tif --drape salmon_gradient.tif \
+  --out salmon_gradient.png --locator regional --locator-position BR
+```
+
+In Python, draw the main map, then add the inset:
+
+```python
+from lsdviztools3.render.basemap import add_locator_inset
+
+fig = render_hillshade("salmon_DEM.tif", coordinates="local", shade=True,
+                       style=MapStyle(cmap="gray", transparent=False))
+add_locator_inset(fig, "salmon_DEM.tif", mode="global", position="TR", width="3.5c")
+```
+
+An inset covers that corner of the map; choose the corner with the least to
+see, or make the locator a separate figure.
+
 ## Decorations: scale bar and colourbar
 
 ```python

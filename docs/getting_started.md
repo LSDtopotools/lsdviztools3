@@ -4,9 +4,12 @@ This explains how lsdviztools3 draws maps and charts (coordinates, styles, savin
 get a DEM, and how to run lsdtt3 from Python. Every plot page assumes these
 conventions.
 
-Run Python via the project environment (`pixi run python …`) so PyGMT/GDAL are
-on the path. In a notebook started from the pixi env, use `fig.show()` instead
-of `save_figure(...)`.
+**Commands in this guide** are shown as run from a clone of the repository,
+with `pixi run` in front (`pixi run lsdviz3-hillshade ...`). After a pip
+install, leave `pixi run` out: `lsdviz3-hillshade ...`. Likewise run Python
+with `pixi run python` in a clone, or the Python of the environment you
+installed into. In a notebook, use `fig.show()` instead of
+`save_figure(...)`.
 ## Conventions
 
 ### Coordinate modes (`coordinates=`)
@@ -65,9 +68,9 @@ created). For `lsdviz3-lsdtt`, `--dir` is also the default `--data-path` and
 
 ```bash
 # download, run lsdtt3, and plot all into ./tucuy (made on first use)
-pixi run python -m lsdviztools3.cli.grab_dem --bbox -71.5 -13.6 -71.2 -13.3 \
+pixi run lsdviz3-grabdem --bbox -71.5 -13.6 -71.2 -13.3 \
   --out rt.tif --dir tucuy
-pixi run python -m lsdviztools3.cli.plot_hillshade --in rt.tif --out hs.png --dir tucuy
+pixi run lsdviz3-hillshade --in rt.tif --out hs.png --dir tucuy
 ```
 
 In Python the same is `download_dem(..., directory="tucuy")`,
@@ -82,7 +85,7 @@ Keyless Copernicus GLO-30 via the Microsoft Planetary Computer (no credentials).
 **CLI**
 
 ```bash
-pixi run python -m lsdviztools3.cli.grab_dem \
+pixi run lsdviz3-grabdem \
   --bbox -6.20 56.85 -6.06 56.95 \
   --source planetary_computer \
   --out demo_output/eigg_glo30.tif
@@ -140,7 +143,7 @@ products come from lsdtt3 tools, driven via `lsdviztools3.driver` /
 ```bash
 export LSDTT3_DIR=/path/to/lsdtt3/bin
 # or persist it:
-pixi run python -m lsdviztools3.cli.run_lsdtt --set-lsdtt-dir /path/to/lsdtt3/bin
+pixi run lsdviz3-lsdtt --set-lsdtt-dir /path/to/lsdtt3/bin
 ```
 
 Run any tool with a parameter dict:

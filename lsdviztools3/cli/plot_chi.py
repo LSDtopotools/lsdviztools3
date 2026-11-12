@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 from ..workflows import render_chi_ksn_map, render_chi_profiles, render_chi_removed_map
+from . import _common
 from ._chi_common import add_tributary_selection_args, mn_suffix, tributary_selection_from_args
 
 
@@ -49,7 +50,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--coordinates", default="local",
                         help="Map coordinates: local/projected (default) or geographic.")
     parser.add_argument("--dpi", type=int, default=300, help="DPI of the profile plots (default 300).")
+    _common.add_locator_args(parser)
+    _common.add_class_args(parser, flag="--ksn-classes",
+                           what="k_sn on the map (breaks in k_sn units; schemes work in log10 k_sn)")
     return parser
+
+
+def _ksn_class_kwargs(args) -> dict:
+    """``--ksn-classes`` and friends as render_chi_ksn_map keywords."""
+    kw = _common.class_kwargs(args)
+    kw["ksn_classes"] = kw.pop("classes")
+    return kw
 
 
 def main(argv=None) -> int:
@@ -91,7 +102,8 @@ def main(argv=None) -> int:
         written.append(render_chi_ksn_map(
             args.dem, outputs["segment_lines"], out_dir / f"{stem}_ksn_map.png",
             coordinates=args.coordinates, cmap=args.cmap,
-            ksn_vmin=args.ksn_vmin, ksn_vmax=args.ksn_vmax, removed=removed))
+            ksn_vmin=args.ksn_vmin, ksn_vmax=args.ksn_vmax, removed=removed,
+            locator=_common.locator_kwargs(args), **_ksn_class_kwargs(args)))
         if removed is not None:
             written.append(render_chi_removed_map(
                 args.dem, outputs["segment_lines"], removed,

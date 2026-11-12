@@ -26,6 +26,7 @@ pixi run lsdviz3-chi --data-dir work/eigg --prefix eigg --m-over-n 0.45 \
 | `--no-stacked` | Skip the stacked plot. |
 | `--cmap`, `--coordinates`, `--dpi` | k_sn colour map (default `viridis`), map coordinates, profile DPI. |
 | `--ksn-vmin`, `--ksn-vmax` | The k_sn colour range, **in k_sn units** (see below). Default: the data's range. |
+| `--ksn-classes`, `--n-classes`, `--class-colors`, `--class-color-mode` | Colour the map's k_sn in classes, with a class legend instead of the colourbar (see [Colouring k_sn in classes](#colouring-k_sn-in-classes)). |
 
 It writes `<prefix>_ksn_map.png`, `<prefix>_chi_stacked.png` and
 `<prefix>_chi_profile_basin<N>.png`. The sections below describe the plots
@@ -57,6 +58,24 @@ In Python the same limits are `vmin=` / `vmax=` on `plot_chi_profile`,
 `plot_chi_stacked` and `render_channels`. On the workflows
 `render_chi_ksn_map`, `render_chi_ksn_relief3d` and `render_chi_profiles`
 they are `ksn_vmin=` / `ksn_vmax=`. All of them take k_sn units.
+
+### Colouring k_sn in classes
+
+`--ksn-classes` colours the k_sn map in classes, with a legend of the classes
+instead of the colourbar: give the breaks in k_sn units (`--ksn-classes
+20,50,100,200` makes five classes), or a scheme, `equal_interval`, `quantile`
+or `natural_breaks` (`jenks`), with `--n-classes`. The schemes work in log10
+k_sn, so `equal_interval` gives classes of equal ratio. `--ksn-vmin` and
+`--ksn-vmax` set the ends of the colour gradient (each class takes the colour
+at its centre) and the range the schemes use. `--class-colors` gives one
+colour per class, and a qualitative `--cmap` (`tab10`, `Set1`, ...) gives
+distinct colours. The same options work on the map of `lsdviz3-knickpoints`.
+The details are in [Colouring in classes](basic_plots.md#colouring-in-classes).
+
+```bash
+pixi run lsdviz3-chi --data-dir . --prefix salmon_ksn --m-over-n 0.45 \
+  --dem salmon_DEM.tif --out-dir . --ksn-classes natural_breaks --n-classes 5
+```
 
 ### Removing tributaries
 
@@ -152,6 +171,7 @@ pixi run lsdviz3-knickpoints --data-dir work/eigg --prefix eigg --m-over-n 0.45 
 | `--along chi\|chi_normalised\|elevation` | x axis of the along-chi plot. |
 | `--basin N` | One basin's profile instead of the stacked plot. |
 | `--ksn-vmin`, `--ksn-vmax`, `--cmap` | The k_sn colours of the profile and map, as `lsdviz3-chi`. |
+| `--ksn-classes`, `--n-classes`, `--class-colors`, `--class-color-mode` | The map's k_sn network in classes, as `lsdviz3-chi`. |
 | tributary flags | `--remove-ksn-above`, `--min-tributary-area-m2`, `--min-tributary-area-fraction`, `--top-tributaries`, `--keep-descendants`, `--show-removed` as in [Removing tributaries](#removing-tributaries). The knickpoints of removed tributaries are dropped. |
 
 It writes:

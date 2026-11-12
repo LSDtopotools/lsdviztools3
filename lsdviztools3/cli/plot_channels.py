@@ -27,8 +27,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--color-by",
         default=None,
-        help="Optional attribute used to colour channels (API placeholder).",
+        help="Attribute to colour the channels by (e.g. k_sn). Without it the lines are one colour.",
     )
+    parser.add_argument("--linear", action="store_true",
+                        help="Colour by the value itself rather than its log10 (the default, "
+                             "suited to k_sn and drainage area).")
+    parser.add_argument("--vmin", type=float, default=None,
+                        help="Lower colour limit, in data units.")
+    parser.add_argument("--vmax", type=float, default=None,
+                        help="Upper colour limit, in data units.")
+    parser.add_argument("--colorbar", action="store_true",
+                        help="Add a colourbar (continuous colours only; classes get a legend).")
+    parser.add_argument("--legend-title", default=None,
+                        help="Title of the colourbar or class legend (GMT text).")
+    _common.add_class_args(parser, what="the channels (by --color-by)")
+    _common.add_locator_args(parser)
     _common.add_style_args(parser)
     _common.add_target_dir_arg(parser)
     return parser
@@ -53,13 +66,23 @@ def main(argv=None) -> int:
         shade=False,
         style=base_style,
     )
+    class_kw = _common.class_kwargs(args)
+    if class_kw["classes"] is not None and args.color_by is None:
+        raise SystemExit("--classes needs --color-by: the attribute whose values are classified.")
     fig = render_channels(
         args.lines,
         color_by=args.color_by,
+        log_color=not args.linear,
+        colorbar=args.colorbar,
+        colorbar_label=args.legend_title,
+        vmin=args.vmin,
+        vmax=args.vmax,
         coordinates=args.coordinates,
         style=style,
         fig=fig,
+        **class_kw,
     )
+    _common.add_locator_from_args(fig, args, args.base)
     _common.save_figure(fig, args.out, style=style, high_res=args.high_res,
                         directory=args.directory)
     return 0

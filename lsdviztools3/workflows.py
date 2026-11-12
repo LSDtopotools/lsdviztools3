@@ -477,6 +477,11 @@ def render_chi_ksn_map(
     ksn_vmin: Optional[float] = None,
     ksn_vmax: Optional[float] = None,
     removed=None,
+    ksn_classes=None,
+    n_classes: int = 5,
+    class_colors=None,
+    class_color_mode: str = "auto",
+    locator: Optional[dict] = None,
 ):
     """Render the chi network coloured by log10 k_sn over a hillshade.
 
@@ -499,6 +504,18 @@ def render_chi_ksn_map(
         removed: Tributaries to leave off the map (the ``removed`` frame of
             :func:`lsdviztools3.io.chi.select_tributaries`); the colour range is
             then that of the kept ones. :func:`render_chi_removed_map` shows them.
+        ksn_classes: Colour k_sn in classes instead of a continuous scale: the
+            breaks in k_sn units (a list, tuple or array), or a scheme
+            (``"equal_interval"``, ``"quantile"``, ``"natural_breaks"`` /
+            ``"jenks"``) worked out in log10 k_sn. ``ksn_vmin`` / ``ksn_vmax``
+            set the ends of the colour gradient. A class legend replaces the
+            colourbar. See :mod:`lsdviztools3.colour_classes`.
+        n_classes: Number of classes for a scheme (default 5).
+        class_colors: One colour per class instead of sampling ``cmap``.
+        class_color_mode: ``"gradient"``, ``"distinct"`` or ``"auto"``.
+        locator: Keyword arguments for
+            :func:`lsdviztools3.render.basemap.add_locator_inset` (e.g.
+            ``{"mode": "regional"}``) to add a locator inset; ``None`` for none.
 
     Returns:
         ``Path`` to the written PNG.
@@ -529,8 +546,13 @@ def render_chi_ksn_map(
         coordinates=coordinates,
         style=MapStyle(line_width="1.2p", cmap=cmap, figure_size=width),
         fig=fig, vmin=ksn_vmin, vmax=ksn_vmax,
+        classes=ksn_classes, n_classes=n_classes, class_colors=class_colors,
+        class_color_mode=class_color_mode, legend_title="k@-sn@-",
     )
     add_scalebar(fig, extent, crs)
+    if locator:
+        from .render.basemap import add_locator_inset
+        add_locator_inset(fig, dem_path, **locator)
     save_figure(fig, png_path, style=MapStyle(figure_size=width, transparent=False),
                 high_res=high_res)
     return Path(png_path)

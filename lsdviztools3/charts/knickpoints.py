@@ -335,11 +335,22 @@ def render_knickpoint_map(
     threshold_label: str = "",
     high_res: bool = False,
     legend_position: str = "JTR+jTR+o0.2c",
+    ksn_classes=None,
+    n_classes: int = 5,
+    class_colors=None,
+    class_color_mode: str = "auto",
+    locator: Optional[dict] = None,
 ):
     """Major knickpoints on the hillshade and the k_sn network: open upward
     triangles where the channel steepens upstream, filled downward ones where
     it shallows, sized by the size of the change (log-scaled). Removed
     tributaries are left off the network and their knickpoints are not shown.
+
+    ``ksn_classes`` (with ``n_classes``, ``class_colors``, ``class_color_mode``)
+    colours the network in k_sn classes, with a class legend outside the right
+    edge instead of the colourbar; see
+    :func:`lsdviztools3.workflows.render_chi_ksn_map`. ``locator`` adds a
+    locator inset, as there.
 
     Returns:
         ``Path`` to the written PNG.
@@ -370,7 +381,9 @@ def render_knickpoint_map(
     fig = render_channels(gdf, color_by="k_sn", log_color=True, cmap=cmap, colorbar=True,
                           colorbar_label="log@-10@-k@-sn@-", coordinates=coordinates,
                           style=MapStyle(line_width="0.9p", cmap=cmap, figure_size=width),
-                          fig=fig, vmin=ksn_vmin, vmax=ksn_vmax)
+                          fig=fig, vmin=ksn_vmin, vmax=ksn_vmax,
+                          classes=ksn_classes, n_classes=n_classes, class_colors=class_colors,
+                          class_color_mode=class_color_mode, legend_title="k@-sn@-")
     rows = []
     m = major.dropna(subset=["x", "y"]).copy()
     m["abs_value"] = np.abs(m["measure_value"].to_numpy(dtype=float))
@@ -391,5 +404,8 @@ def render_knickpoint_map(
         fig.legend(spec=_io.StringIO("\n".join(rows)), position=legend_position,
                    box="+gwhite@20+p0.5p,black")
     add_scalebar(fig, extent, crs)
+    if locator:
+        from ..render.basemap import add_locator_inset
+        add_locator_inset(fig, dem_path, **locator)
     save_figure(fig, png_path, style=MapStyle(figure_size=width, transparent=False), high_res=high_res)
     return Path(png_path)

@@ -16,11 +16,6 @@ from typing import Optional
 
 from .base import is_projected
 
-_DEFERRED_MSG = (
-    "lsdviztools3.render.decorations.add_inset is deferred in v1 and not "
-    "implemented yet."
-)
-
 #: GMT symbol size: centimetres per point.
 _CM_PER_PT = 0.0352778
 
@@ -500,6 +495,13 @@ def add_scalebar(
     return fig
 
 
-def add_inset(fig, **kwargs):
-    """Add a locator inset map to a figure. Deferred in v1."""
-    raise NotImplementedError(_DEFERRED_MSG)
+def add_inset(fig, raster, **kwargs):
+    """Add a locator inset map to a figure.
+
+    The same as :func:`lsdviztools3.render.basemap.add_locator_inset`: a globe
+    or a regional map in a corner of the map, with ``raster``'s footprint
+    outlined.
+    """
+    from .basemap import add_locator_inset
+
+    return add_locator_inset(fig, raster, **kwargs)

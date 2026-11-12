@@ -152,3 +152,87 @@ def save_figure(
 
     out_path = resolve_in_dir(directory, out_path)
     _save_figure(fig, out_path, style=style, high_res=high_res)
+
+
+def add_class_args(parser: argparse.ArgumentParser, *, flag: str = "--classes",
+                   what: str = "the values") -> None:
+    """Add the colour-class options shared by the map commands.
+
+    ``flag`` is the main option (``--classes``, or ``--ksn-classes`` for the
+    k_sn maps); the others are ``--n-classes``, ``--class-colors`` and
+    ``--class-color-mode``. Read them back with :func:`class_kwargs`.
+    """
+    parser.add_argument(
+        flag, default=None, dest="classes",
+        help=(f"Colour {what} in classes, with a class legend instead of a colourbar: "
+              "comma-separated breaks (e.g. '50,100,200,400': 4 breaks make 5 classes), or a "
+              "scheme that finds the breaks in the data: equal_interval, quantile, "
+              "natural_breaks (or jenks). The colour limits (vmin/vmax) set the ends of the "
+              "colour gradient and the range the schemes use."))
+    parser.add_argument(
+        "--n-classes", type=int, default=5,
+        help="Number of classes for a scheme (default 5). Ignored with breaks.")
+    parser.add_argument(
+        "--class-colors", default=None,
+        help="Comma-separated colours, one per class, instead of sampling the colour map "
+             "(names, hex such as '#1b9e77', or r/g/b).")
+    parser.add_argument(
+        "--class-color-mode", default="auto", choices=["auto", "gradient", "distinct"],
+        help="gradient: class colours along the colour map at each class's values; distinct: "
+             "a qualitative map's colours in order (tab10, Set1, Dark2, ...); auto (default): "
+             "distinct for matplotlib's qualitative maps, else gradient.")
+
+
+def class_kwargs(args: argparse.Namespace) -> dict:
+    """The ``classes``, ``n_classes``, ``class_colors``, ``class_color_mode``
+    keyword arguments from :func:`add_class_args` options.
+
+    Raises:
+        SystemExit: a ``--classes`` value that is neither a scheme nor numbers.
+    """
+    from ..colour_classes import parse_classes_arg
+
+    try:
+        classes = parse_classes_arg(args.classes)
+    except ValueError as err:
+        raise SystemExit(str(err)) from None
+    colours = None
+    if args.class_colors:
+        colours = [c.strip() for c in args.class_colors.split(",") if c.strip()]
+    return dict(classes=classes, n_classes=args.n_classes, class_colors=colours,
+                class_color_mode=args.class_color_mode)
+
+
+def add_locator_args(parser: argparse.ArgumentParser) -> None:
+    """Add the locator-inset options: ``--locator`` and its settings."""
+    g = parser.add_argument_group("locator inset")
+    g.add_argument("--locator", choices=["global", "regional"], default=None,
+                   help="Add a small locator map in a corner of the map: a globe, or the region "
+                        "(borders, rivers) with the raster's footprint outlined.")
+    g.add_argument("--locator-position", default="TR", choices=["TR", "TL", "BR", "BL"],
+                   help="Corner for the locator inset (default TR).")
+    g.add_argument("--locator-width", default="4c",
+                   help="Width of the locator inset (default 4c).")
+    g.add_argument("--locator-extent-km", type=float, default=None,
+                   help="Regional locator: width of the region shown, km (default: ten times "
+                        "the raster's diagonal, at least 250 km).")
+    g.add_argument("--locator-relief", action="store_true",
+                   help="Regional locator: shaded relief (downloads GMT relief data).")
+
+
+def locator_kwargs(args: argparse.Namespace):
+    """Keyword arguments for ``add_locator_inset`` from :func:`add_locator_args`, or ``None``."""
+    if getattr(args, "locator", None) is None:
+        return None
+    return dict(mode=args.locator, position=args.locator_position, width=args.locator_width,
+                extent_km=args.locator_extent_km, relief=args.locator_relief)
+
+
+def add_locator_from_args(fig, args: argparse.Namespace, raster) -> None:
+    """Draw the locator inset onto ``fig`` if ``--locator`` was given."""
+    kw = locator_kwargs(args)
+    if kw is not None:
+        from ..render.basemap import add_locator_inset
+
+        add_locator_inset(fig, raster, **kw)
+

@@ -9,10 +9,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/LSDtopotools/lsdviztools3/blob/main/LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24113499.svg)](https://doi.org/10.5281/zenodo.24113499)
 
-Welcome to `lsdviztools3`, the visualisation package for [`lsdtt3`](https://github.com/LSDtopotools/lsdtt3) ([documentation](https://lsdtopotools.github.io/lsdtt3/)). `lsdtt3` is a software package for topographic analysis, landscape evolution modelling, and hydrology, which runs in a command line environment, or in python with our python bindings. Outputs from `lsdtt3` can be visualised in any GIS software package, but `lsdviztools3` has been built to:
+Welcome to `lsdviztools3`, the visualisation package for [`lsdtt3`](https://github.com/LSDtopotools/lsdtt3) ([documentation](https://lsdtopotools.github.io/lsdtt3/)). `lsdtt3` is a software package for topographic analysis, landscape evolution modelling, and hydrology, which runs from the command line, or in Python through its Python bindings. Outputs from `lsdtt3` can be visualised in any GIS software package, but `lsdviztools3` has been built to:
 
 * Enable production of publication-ready figures from `lsdtt3` outputs. It can also work with other standard geographic outputs generated from alternative topographic analysis packages. 
-* Provide python based wrappers around `lsdtt3` command line programs so analysis can be run in python notebooks (although this is better suited to the `lsdtt3` python bindings). 
+* Provide Python wrappers around the `lsdtt3` command-line programs, so an analysis can be run from a Python notebook (the `lsdtt3` Python bindings are often the better route for this). 
 
 `lsdviztools3` is a ground-up rewrite of the `lsdviztools` plotting stack around
 [PyGMT](https://www.pygmt.org/) (maps) and matplotlib (x–y charts). It covers
@@ -137,6 +137,8 @@ driver/workflow path requires a separate installation of **lsdtt3** executables
 - If you only use plotting/downloading, you do not need lsdtt3.
 - If you use `lsdviz3-lsdtt` or `lsdviztools3.workflows`, install lsdtt3 first:
   see the [lsdtt3 installation guide](https://lsdtopotools.github.io/lsdtt3/what_is_lsdtt3/install_lsdtt3.html).
+  `pip install lsdtt3` (Python 3.12 or later) puts its command-line programs on
+  your `PATH`, and then nothing more needs setting.
 
 Point `lsdviztools3` at your lsdtt3 `bin` directory using one of:
 
@@ -145,7 +147,7 @@ Point `lsdviztools3` at your lsdtt3 `bin` directory using one of:
 export LSDTT3_DIR=/path/to/lsdtt3/bin
 
 # or persist in lsdviztools3 config
-pixi run lsdviz3-lsdtt --set-lsdtt-dir /path/to/lsdtt3/bin
+lsdviz3-lsdtt --set-lsdtt-dir /path/to/lsdtt3/bin
 ```
 
 ## WSL2 notes (Ubuntu 22.04 default)
@@ -172,7 +174,7 @@ Then use pixi-run commands from the repo root, for example:
 
 ```bash
 pixi run test
-pixi run python -m lsdviztools3.cli.plot_hillshade --help
+pixi run lsdviz3-hillshade --help
 ```
 
 If you need to call pixi without relying on shell startup files, use the
@@ -188,17 +190,19 @@ absolute path:
   - Add `~/.pixi/bin` to `PATH` (see WSL2 section), or run
     `"$HOME/.pixi/bin/pixi" ...` directly.
 - `ModuleNotFoundError` for `rioxarray`, `pygmt`, etc.:
-  - You are likely running outside the pixi environment. Use `pixi run ...`.
+  - You are running a Python that lsdviztools3 is not installed in. Activate
+    the environment you installed it into (`conda activate lsdviz`), or, in a
+    clone, use `pixi run ...`.
 - `FileNotFoundError` for `lsdtt-*` tools:
   - lsdtt3 is not installed/configured. Set `LSDTT3_DIR` or run
-    `pixi run lsdviz3-lsdtt --set-lsdtt-dir /path/to/lsdtt3/bin`.
+    `lsdviz3-lsdtt --set-lsdtt-dir /path/to/lsdtt3/bin`.
 - Sea appears coloured (for example red) instead of transparent:
   - Copernicus GLO-30 encodes sea as valid elevation near 0 m, not nodata.
-    Use the lsdtt3 preprocessing workflow (`minimum_elevation=0`) or mask sea
-    values before rendering.
+    Mask the sea before rendering: `lsdtt-raster-preprocessing` with
+    `min_elevation: 0`.
 - Transparent output looks wrong in a viewer/printer:
   - Save opaque output instead (white background): use CLI flag `--opaque`.
-    Example: `pixi run python -m lsdviztools3.cli.plot_hillshade --in dem.tif --out map.png --opaque`.
+    Example: `lsdviz3-hillshade --in dem.tif --out map.png --opaque`.
 - Network tests skip/fail while offline:
   - Some tests download DEM data (Planetary Computer). Re-run when online, or
     filter tests to local-only subsets.
@@ -216,15 +220,18 @@ the module each one runs and its main options.
 
 ## Basic usage
 
+The commands below are as you type them after a pip install. From a clone,
+put `pixi run` in front of each.
+
 Download a small DEM and render a hillshade — CLI:
 
 ```bash
-# 1) grab a keyless GLO-30 DEM
-pixi run python -m lsdviztools3.cli.grab_dem \
+# 1) grab a keyless GLO-30 DEM (needs the download extra: pip install "lsdviztools3[download]")
+lsdviz3-grabdem \
   --bbox -6.20 56.85 -6.06 56.95 --out demo_output/eigg_glo30.tif
 
 # 2) shaded-relief PNG
-pixi run python -m lsdviztools3.cli.plot_hillshade \
+lsdviz3-hillshade \
   --in demo_output/eigg_glo30.tif --out demo_output/eigg_hillshade.png \
   --coordinates local --opaque
 ```
@@ -243,8 +250,9 @@ fig = render_hillshade(load_raster("demo_output/eigg_glo30.tif"),
 save_figure(fig, "demo_output/eigg_hillshade.png", style=style)  # or fig.show() in a notebook
 ```
 
-For every other plot — channels coloured by log₁₀ k_sn, points sized by drainage
-area, basins, locator basemaps, chi profiles, swath profiles — and the full list
+For every other plot — channels coloured by log₁₀ k_sn, rasters and lines in
+colour classes, points sized by drainage area, basins, locator maps, chi
+profiles, swath profiles — and the full list
 of options for each (CLI flags and Python keyword arguments), see
 the guide at **<https://lsdtopotools.github.io/lsdviztools3/>**; [the command reference](https://lsdtopotools.github.io/lsdviztools3/cli_reference/) lists every command.
 
@@ -254,12 +262,12 @@ Cosmogenic comparison CLIs:
 # Sweep-based lsdtt3 vs CRONUS/cronuscalc figures (the scan CSV is generated by
 # lsdtt3's tests/scripts/run_cosmo_single_point_scaling_scan.py; see
 # docs/cosmogenic_nuclides.md)
-pixi run lsdviz3-cosmo-compare \
+lsdviz3-cosmo-compare \
   --scan-csv scan_out/single_point_scan_comparison.csv \
   --outdir demo_output/cosmo
 
 # Dataset summary residual figures from published summaries
-pixi run lsdviz3-cosmo-published \
+lsdviz3-cosmo-published \
   --published-dir ../lsdtt3/tests/expected/cosmo/published \
   --datasets dethier2014,clapp2002,dibiase2010 \
   --mode auto \
@@ -267,7 +275,7 @@ pixi run lsdviz3-cosmo-published \
 
 # Standard basin map: join cosmo CSV to basin polygons and color by inferred rate
 # (fails by default if plotted basins are clipped/incomplete)
-pixi run lsdviz3-cosmo-basins \
+lsdviz3-cosmo-basins \
   --base path/to/run_group_0001_DEM.tif \
   --hillshade path/to/run_group_0001_hs_hillshade.tif \
   --basins path/to/run_group_0001_basin_outlines.fgb \
@@ -277,7 +285,7 @@ pixi run lsdviz3-cosmo-basins \
   --colorbar
 
 # Chi + basin products (one profile PNG per basin + optional ksn-vs-erate)
-pixi run lsdviz3-chi-cosmo \
+lsdviz3-chi-cosmo \
   --fit-nodes-csv path/to/work/run_chi_fit_nodes_mn_0p45.csv \
   --fit-segments-csv path/to/work/run_chi_fit_segments_mn_0p45.csv \
   --base path/to/work/run_final_DEM.tif \
@@ -291,7 +299,9 @@ pixi run lsdviz3-chi-cosmo \
 
 Maps (`render.*`, PyGMT): hillshade, channels (incl. colour-by log₁₀ k_sn),
 points (incl. size-by drainage area), basins, raster drapes (incl. binary masks
-and STI), divide migration, orthographic/aerial basemap, 3D perspective relief
+and STI), colouring in classes with class legends (given breaks, equal
+interval, quantile, natural breaks), divide migration, locator maps (globe,
+region or aerial view, separately or as an inset), 3D perspective relief
 (`render.relief3d`, `grdview`), scale bar + colourbar, and GIF animations of
 `lsdtt-lem` runs (transient, incision pulse, channelization-index ladder) and of
 paired hillslope solvers.
@@ -307,15 +317,14 @@ geometry, synthetic-network and snapping sweeps, and valley spacing.
 Plus IO (`io.*`), DEM download (`download.*`), the lsdtt3 driver (`driver.*`),
 and chained `workflows`.
 Deferred (raise `NotImplementedError`): `charts.plot_profile`,
-`io.grids.make_hillshade`,
-`render.decorations.add_inset`, `io.vector.to_xy`. The matplotlib chart
+`io.grids.make_hillshade`, `io.vector.to_xy`. The matplotlib chart
 plots need matplotlib, which is a core dependency, so a plain install has it.
 
 For a quick cosmogenic end-to-end example, see
 `examples/cosmo_comparison_workflow.py` and 
 [the cosmogenic nuclides page](https://lsdtopotools.github.io/lsdviztools3/cosmogenic_nuclides/).
 
-For chi + basin summaries, the workflow helpers can now:
+For chi + basin summaries, the workflow helpers also:
 - compute basin-median `k_sn` (+ 25th/75th percentile bounds) from
   `*_chi_fit_nodes_mn_*.csv` + `*_chi_fit_segments_mn_*.csv`,
 - render a basin map colored by median `k_sn`,
