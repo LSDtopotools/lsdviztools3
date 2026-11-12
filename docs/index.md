@@ -7,8 +7,8 @@ the `lsdviztools` plotting stack around [PyGMT](https://www.pygmt.org/) (maps)
 and matplotlib (x–y charts). lsdviztools3 only draws: every map and chart is a
 view of a file lsdtt3 wrote.
 
-**Install** with pip into an environment that has GMT (pip installs PyGMT and
-everything else, but not the GMT library PyGMT wraps):
+**Install** with pip (Python 3.12 or later) into an environment that has GMT
+(pip installs PyGMT and everything else, but not the GMT library PyGMT wraps):
 
 ```bash
 conda create -n lsdviz -c conda-forge python=3.12 gmt pygmt
@@ -17,8 +17,9 @@ python -m pip install lsdviztools3
 ```
 
 The [README](https://github.com/LSDtopotools/lsdviztools3#readme) has the other
-routes (GMT from Homebrew or your system, a clone with pixi for development, a
-specific release's wheel) and a quick start. Each page below
+routes (Google Colab, GMT from Homebrew or your system, a clone with pixi for
+development, a specific release's wheel) and a quick start. [What's
+new](changes.md) lists the changes in each release. Each page below
 shows its plots both as **command-line** invocations (headless PNG output) and
 as **Python / notebook** code. The commands are written as run from a clone
 (`pixi run lsdviz3-...`); after a pip install, leave out `pixi run`.
@@ -28,7 +29,7 @@ as **Python / notebook** code. The commands are written as run from a clone
 | Page | What it covers |
 |---|---|
 | [Getting started](getting_started.md) | Coordinate modes, `MapStyle`, saving, target directories; downloading a DEM; running lsdtt3 from Python; the workflow helpers and example scripts |
-| [Basic plots](basic_plots.md) | Hillshades, raster drapes, basins, points, locator maps, decorations, 3D relief, vector overlays, swath profiles |
+| [Basic plots](basic_plots.md) | Hillshades, raster drapes, colouring in classes, basins, points, locator maps and insets, decorations, 3D relief, vector overlays, swath profiles |
 | [Chi analysis](chi_analysis.md) | k_sn maps, stacked chi plots and single-basin profiles (`lsdviz3-chi`) |
 | [Channel networks](channel_networks.md) | Channel maps, bearing roses and circular comparisons, junction angles (`lsdviz3-channel-bearings`), network geometry, divide migration, stream-burning QC, worked examples |
 | [Lithology](lithology.md) | Geologic unit maps, k_sn by lithologic unit, erodibility calibration |
@@ -39,6 +40,7 @@ as **Python / notebook** code. The commands are written as run from a clone
 | [Spectral analysis](spectral_analysis.md) | 2D and radial spectra, significant frequencies, valley spacing |
 | [Command reference](cli_reference.md) | Every `lsdviz3-*` command and its flags, by topic |
 | [lsdtt3 outputs](lsdtt3_outputs.md) | Which lsdtt3 switch writes each file, and which function plots it |
+| [What's new](changes.md) | Changes in each release |
 | [Design](design.md) | For developers: the package's architecture and design decisions |
 
 ## Layout
