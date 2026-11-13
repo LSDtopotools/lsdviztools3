@@ -9,18 +9,18 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/LSDtopotools/lsdviztools3/blob/main/LICENSE)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24113499.svg)](https://doi.org/10.5281/zenodo.24113499)
 
-Welcome to `lsdviztools3`, the visualisation package for [`lsdtt3`](https://github.com/LSDtopotools/lsdtt3) ([documentation](https://lsdtopotools.github.io/lsdtt3/)). `lsdtt3` is a software package for topographic analysis, landscape evolution modelling, and hydrology, which runs from the command line, or in Python through its Python bindings. Outputs from `lsdtt3` can be visualised in any GIS software package, but `lsdviztools3` has been built to:
+Welcome to `lsdviztools3` ([full documentation](https://lsdtopotools.github.io/lsdviztools3)), the visualisation package for [`lsdtt3`](https://github.com/LSDtopotools/lsdtt3) ([documentation](https://lsdtopotools.github.io/lsdtt3/)). `lsdtt3` is a software package for topographic analysis, landscape evolution modelling, and hydrology, which runs from the command line, or in Python through its Python bindings. Outputs from `lsdtt3` can be visualised in any GIS software package, but `lsdviztools3` has been built to:
 
 * Enable production of publication-ready figures from `lsdtt3` outputs. It can also work with other standard geographic outputs generated from alternative topographic analysis packages. 
 * Provide Python wrappers around the `lsdtt3` command-line programs, so an analysis can be run from a Python notebook (the `lsdtt3` Python bindings are often the better route for this). 
 
 `lsdviztools3` is a ground-up rewrite of the `lsdviztools` plotting stack around
 [PyGMT](https://www.pygmt.org/) (maps) and matplotlib (x–y charts). It covers
-hillshades, channel networks coloured by log₁₀ k_sn, points size-scaled by
+hillshades, channel networks coloured by channel attributes like steepness and drainage area, points size-scaled by
 drainage area, basins, locator basemaps, general multi-layer vector overlays on
 a hillshade (lines/points/polygons), chi profiles (individual + stacked), swath
 profiles, rose diagrams and circular comparison of bearings, and many other
-options.
+options. Basically, this is where the developers of `lsdtt3` create figures for their papers, and it might be useful for other users as well. 
 
 **Full usage guide with examples for every plot (CLI and notebook):
 <https://lsdtopotools.github.io/lsdviztools3/>** (the source is
@@ -38,8 +38,7 @@ and the most basic usage only.
 - **Headless CLIs** (`lsdviztools3.cli`): render straight to PNG, suitable for
   WSL2 / headless servers.
 
-See [the design page](https://lsdtopotools.github.io/lsdviztools3/design/) for the full design, the data-ingestion mapping,
-the secure key-handling spec, and the design decisions made so far.
+See [the design page](https://lsdtopotools.github.io/lsdviztools3/design/) for the full design, the data-ingestion mapping, the secure key-handling instructions, and the design decisions made so far. This component was written by an LLM, for LLM ingestion, before editing the code, so expect fewer jokes or references to Hibernian FC in that document. 
 
 ## Install
 
@@ -47,7 +46,7 @@ the secure key-handling spec, and the design decisions made so far.
 with every Python package it needs, including PyGMT and matplotlib, **except
 GMT itself**. PyGMT is a
 wrapper around the GMT C library (version 6.5 or later), which pip cannot
-install, so install GMT first. The simplest way is a conda-forge environment:
+install, so install GMT first. We apologise in advance that this takes some time and can be annoying. GMT resist simple `pip install` commands. The simplest way is a conda-forge environment:
 
 ```bash
 conda create -n lsdviz -c conda-forge python=3.12 gmt pygmt
@@ -55,7 +54,7 @@ conda activate lsdviz
 python -m pip install lsdviztools3
 ```
 
-GMT can also come from Homebrew (`brew install gmt`) or your system package
+GMT can also come from Homebrew (`brew install gmt`) on fruit-based operating systems, or your system package
 manager, if it is GMT 6.5 or later. Without GMT, `lsdviztools3` still installs
 and its matplotlib charts work, but every map command stops with
 `error: PyGMT is installed but cannot load the GMT library`, followed by
@@ -68,7 +67,7 @@ DEMs from Planetary Computer.
 
 ### In Google Colab
 
-Colab has no GMT, so install it with conda through
+Colab has no GMT (sigh), so install it with conda through
 [condacolab](https://github.com/conda-incubator/condacolab), then
 lsdviztools3 with pip. Run these in separate cells:
 
@@ -99,7 +98,7 @@ setup throughout.
 For development, the tests and the demos, use a clone of the repository and
 the `pixi` package manager (it mixes conda and PyPI packages). Testing of this
 package and its pixi environment has been done in a WSL2 instance running
-Ubuntu 22.04. pixi works on a server even if you do not have install
+Ubuntu 22.04. `pixi` works on a server even if you do not have install
 permissions: it only needs a writable file system.
 
 #### Installing pixi itself
@@ -147,7 +146,7 @@ The pixi environment includes GMT, so nothing else needs installing.
 ### A specific release from GitHub
 
 Each [GitHub release](https://github.com/LSDtopotools/lsdviztools3/releases/latest) also has the wheel,
-`lsdviztools3-<version>-py3-none-any.whl`, which works on every platform.
+`lsdviztools3-<version>-py3-none-any.whl`, which works on every platform (but again, you need to be on Python 3.12 or later).
 Install it into an environment with GMT, as above, by its address:
 
 ```bash
