@@ -100,6 +100,7 @@ never removed:
 | `--min-tributary-area-m2 A` | its drainage area where it joins is below A. |
 | `--min-tributary-area-fraction F` | that area is below F of its basin's. |
 | `--top-tributaries N` | it is not among the N largest tributaries of its basin. |
+| `--longest-channels X` | it is not among the X longest channels of its basin, counting the main stem: `1` keeps only the main stem, `3` the main stem and its two longest tributaries. Length is `length_m` (flow length, head to junction). Applied after the other rules, and a tributary is only picked once the branch it drains into has been, so the kept channels are one connected network. |
 | `--keep-descendants` | (turns off) removing the tributaries that drain into a removed one, which is the default. |
 | `--show-removed ghost\|hide` | how removed tributaries appear on the profiles: thin and light grey (default), or not at all. |
 
@@ -112,7 +113,7 @@ pixi run lsdviz3-chi --data-dir work/eigg --prefix eigg --m-over-n 0.45 \
 With any of these flags the command also writes:
 - `<prefix>_removed_tributaries.csv`: the removed rows of the tributary
   table, with a `reason` column (`ksn_outlier`, `small_area`,
-  `small_fraction`, `rank` or `drains_to_removed`; the first rule that
+  `small_fraction`, `rank`, `length_rank` or `drains_to_removed`; the first rule that
   applied, in that order);
 - with `--dem`, `<prefix>_removed_tributaries_map.png`: the kept network
   coloured by k_sn, each removed tributary dashed in its reason's style,
@@ -172,7 +173,7 @@ pixi run lsdviz3-knickpoints --data-dir work/eigg --prefix eigg --m-over-n 0.45 
 | `--basin N` | One basin's profile instead of the stacked plot. |
 | `--ksn-vmin`, `--ksn-vmax`, `--cmap` | The k_sn colours of the profile and map, as `lsdviz3-chi`. |
 | `--ksn-classes`, `--n-classes`, `--class-colors`, `--class-color-mode` | The map's k_sn network in classes, as `lsdviz3-chi`. |
-| tributary flags | `--remove-ksn-above`, `--min-tributary-area-m2`, `--min-tributary-area-fraction`, `--top-tributaries`, `--keep-descendants`, `--show-removed` as in [Removing tributaries](#removing-tributaries). The knickpoints of removed tributaries are dropped. |
+| tributary flags | `--remove-ksn-above`, `--min-tributary-area-m2`, `--min-tributary-area-fraction`, `--top-tributaries`, `--longest-channels`, `--keep-descendants`, `--show-removed` as in [Removing tributaries](#removing-tributaries). The knickpoints of removed tributaries are dropped. |
 
 It writes:
 

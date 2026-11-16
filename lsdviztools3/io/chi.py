@@ -243,7 +243,31 @@ def load_chi_points(path) -> pd.DataFrame:
 
 #: Removal reasons, in the order they are tested (the first that applies is
 #: recorded).
-REMOVAL_REASONS = ("ksn_outlier", "small_area", "small_fraction", "rank", "drains_to_removed")
+REMOVAL_REASONS = ("ksn_outlier", "small_area", "small_fraction", "rank", "length_rank",
+                   "drains_to_removed")
+
+
+def _longest_channels(t: pd.DataFrame, eligible: pd.Series, n_channels: int) -> set:
+    """``(basin_index, branch_id)`` of the main stem plus the ``n_channels - 1``
+    longest tributaries of each basin (``length_m``, head to junction), chosen
+    greedily among ``eligible`` rows so that every pick drains into a branch
+    already picked: the chosen set is always one connected network."""
+    chosen = set()
+    length = pd.to_numeric(t["length_m"], errors="coerce").fillna(-np.inf)
+    for b, g in t.groupby("basin_index", sort=False):
+        picked = {0}
+        cand = {int(br): (float(length[i]), int(p))
+                for i, br, p in zip(g.index, g["branch_id"], g["parent_branch_id"])
+                if br != 0 and eligible[i]}
+        while len(picked) < n_channels:
+            ready = [(ln, -br, br) for br, (ln, p) in cand.items() if p in picked]
+            if not ready:
+                break
+            _, _, br = max(ready)
+            picked.add(br)
+            del cand[br]
+        chosen.update((b, br) for br in picked)
+    return chosen
 
 
 def select_tributaries(
@@ -253,6 +277,7 @@ def select_tributaries(
     min_junction_area_m2=None,
     min_area_fraction=None,
     top_n=None,
+    longest_channels=None,
     remove_descendants: bool = True,
     thresholds: pd.DataFrame = None,
 ):
@@ -273,6 +298,13 @@ def select_tributaries(
       this fraction of its basin's;
     * ``top_n``: keep only the ``top_n`` largest tributaries of each basin by
       area at the junction (``area_rank_in_basin``);
+    * ``longest_channels``: keep only the main stem plus the
+      ``longest_channels - 1`` longest tributaries of each basin (``length_m``,
+      head to junction), so ``1`` keeps just the main stem. Applied after the
+      rules above, to the tributaries they kept (a k_sn outlier does not use
+      up a place), and greedily so that a tributary is only picked once the
+      branch it drains into has been: the kept set is always connected
+      (reason ``length_rank``);
     * ``remove_descendants``: also remove every tributary that drains into a
       removed one, at any depth (reason ``drains_to_removed``).
 
@@ -306,6 +338,12 @@ def select_tributaries(
         mark(t["area_fraction"] < float(min_area_fraction), "small_fraction")
     if top_n is not None:
         mark(t["area_rank_in_basin"] > int(top_n), "rank")
+    if longest_channels is not None:
+        if int(longest_channels) < 1:
+            raise ValueError("longest_channels counts the main stem: it must be >= 1")
+        keep = _longest_channels(t, reason == "", int(longest_channels))
+        mark(pd.Series([(b, br) not in keep for b, br in zip(t["basin_index"], t["branch_id"])],
+                       index=t.index), "length_rank")
     if remove_descendants:
         parent = {(b, br): p for b, br, p in zip(t["basin_index"], t["branch_id"], t["parent_branch_id"])}
         removed_keys = {(b, br) for b, br, r in zip(t["basin_index"], t["branch_id"], reason) if r}

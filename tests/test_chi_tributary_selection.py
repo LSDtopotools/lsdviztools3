@@ -180,3 +180,48 @@ def test_cli_selection_writes_removed_csv(tmp_path):
     with pytest.raises(SystemExit):
         plot_chi.main(["--data-dir", str(d), "--prefix", "x", "--m-over-n", "0.45",
                        "--out-dir", str(out), "--remove-ksn-above", "q3_plus_3iqr"])
+
+
+def _with_lengths(t, lengths):
+    t = t.copy()
+    for (b, br), ln in lengths.items():
+        t.loc[(t.basin_index == b) & (t.branch_id == br), "length_m"] = ln
+    return t
+
+
+def test_longest_channels_counts_main_stem():
+    t = _with_lengths(_tributaries(), {(0, 0): 9000, (0, 1): 3000, (0, 2): 1000, (0, 3): 500,
+                                       (0, 4): 2000, (1, 0): 5000, (1, 1): 800})
+    kept, removed = select_tributaries(t, longest_channels=1)
+    assert _ids(kept) == {(0, 0), (1, 0)}
+    kept, _ = select_tributaries(t, longest_channels=3)
+    assert _ids(kept) == {(0, 0), (0, 1), (0, 4), (1, 0), (1, 1)}
+    kept, removed = select_tributaries(t, longest_channels=3)
+    assert set(removed["reason"]) == {"length_rank"}
+    with pytest.raises(ValueError, match=">= 1"):
+        select_tributaries(t, longest_channels=0)
+
+
+def test_longest_channels_stay_connected_and_skip_removed():
+    # (0,3) is longer than everything else but drains into the short (0,2):
+    # it can only be picked after (0,2)
+    t = _with_lengths(_tributaries(), {(0, 1): 3000, (0, 2): 100, (0, 3): 8000, (0, 4): 2000})
+    kept, _ = select_tributaries(t, longest_channels=3)
+    assert _ids(kept) - {(1, 0), (1, 1)} == {(0, 0), (0, 1), (0, 4)}
+    kept, _ = select_tributaries(t, longest_channels=5)
+    assert {(0, 2), (0, 3)} <= _ids(kept)
+    # (0,1) is a k_sn outlier: it does not use up a place, the next longest moves up
+    kept, removed = select_tributaries(t, longest_channels=2, ksn_max=1000.0)
+    assert _ids(kept) - {(1, 0), (1, 1)} == {(0, 0), (0, 4)}
+    r = dict(zip(zip(removed["basin_index"], removed["branch_id"]), removed["reason"]))
+    assert r[(0, 1)] == "ksn_outlier"
+
+
+def test_longest_channels_feeds_knickpoint_selection():
+    from lsdviztools3.charts.knickpoints import select_major_knickpoints
+    t = _with_lengths(_tributaries(), {(0, 1): 3000, (0, 2): 100, (0, 4): 2000})
+    _, removed = select_tributaries(t, longest_channels=2)
+    kp = pd.DataFrame({"basin_index": [0, 0, 0, 0], "branch_id": [0, 1, 2, 4],
+                       "delta_ksn": [500.0, 600.0, 700.0, 800.0], "at_junction": [0, 0, 0, 0]})
+    rows, _, _ = select_major_knickpoints(kp, 100, removed=removed)
+    assert sorted(zip(rows["basin_index"], rows["branch_id"])) == [(0, 0), (0, 1)]

@@ -30,6 +30,10 @@ def add_tributary_selection_args(parser: argparse.ArgumentParser) -> None:
                      help="Remove tributaries whose area where they join is below this fraction of the basin's.")
     sel.add_argument("--top-tributaries", type=int, default=None,
                      help="Keep only this many tributaries per basin, the largest by area where they join.")
+    sel.add_argument("--longest-channels", type=int, default=None,
+                     help="Keep only the main stem plus the N-1 longest tributaries per basin (flow "
+                          "length head to junction), so 1 keeps just the main stem. Applied after the "
+                          "other rules; the kept channels always form one connected network.")
     sel.add_argument("--keep-descendants", action="store_true",
                      help="Keep tributaries that drain into a removed one (default: remove them too).")
     sel.add_argument("--show-removed", choices=["ghost", "hide"], default="ghost",
@@ -40,7 +44,7 @@ def tributary_selection_from_args(args, base: Path, mn: str, out_dir: Path, stem
     """Apply the selection flags. Returns the ``removed`` frame, or ``None``
     when no selection flag was given. Writes ``<stem>_removed_tributaries.csv``."""
     filters = (args.remove_ksn_above, args.min_tributary_area_m2,
-               args.min_tributary_area_fraction, args.top_tributaries)
+               args.min_tributary_area_fraction, args.top_tributaries, args.longest_channels)
     if all(v is None for v in filters):
         return None
     from ..io.chi import load_chi_knickpoint_thresholds, load_chi_tributaries, select_tributaries
@@ -63,7 +67,8 @@ def tributary_selection_from_args(args, base: Path, mn: str, out_dir: Path, stem
             load_chi_tributaries(tpath), ksn_max=ksn_max,
             min_junction_area_m2=args.min_tributary_area_m2,
             min_area_fraction=args.min_tributary_area_fraction,
-            top_n=args.top_tributaries, remove_descendants=not args.keep_descendants,
+            top_n=args.top_tributaries, longest_channels=args.longest_channels,
+            remove_descendants=not args.keep_descendants,
             thresholds=thresholds)
     except ValueError as exc:
         raise SystemExit(str(exc))
