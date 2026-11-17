@@ -21,7 +21,8 @@ import argparse
 from pathlib import Path
 
 from . import _common
-from ._chi_common import add_tributary_selection_args, mn_suffix, tributary_selection_from_args
+from ._chi_common import (add_ksn_class_basis_arg, add_tributary_selection_args, ksn_classes_from_args,
+                          mn_suffix, tributary_selection_from_args)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -57,17 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dpi", type=int, default=300, help="DPI of the charts (default 300).")
     _common.add_locator_args(p)
     _common.add_class_args(p, flag="--ksn-classes",
-                           what="the k_sn network on the map (breaks in k_sn units; schemes work "
-                                "in log10 k_sn)")
+                           what="k_sn on the map and the profile (breaks in k_sn units; schemes "
+                                "work in log10 k_sn)")
+    add_ksn_class_basis_arg(p)
     add_tributary_selection_args(p)
     return p
-
-
-def _ksn_class_kwargs(args) -> dict:
-    """``--ksn-classes`` and friends as render_knickpoint_map keywords."""
-    kw = _common.class_kwargs(args)
-    kw["ksn_classes"] = kw.pop("classes")
-    return kw
 
 
 def main(argv=None) -> int:
@@ -121,9 +116,19 @@ def main(argv=None) -> int:
     plt.close(fig)
 
     segments = load_chi_fit_segments(files["segments"])
+    nodes_path = Path(f"{base}_fit_nodes_mn_{mn}.csv")
+
+    def load_nodes():
+        if not nodes_path.exists():
+            raise SystemExit(f"{nodes_path} not found: --ksn-class-basis pixels needs the fit nodes.")
+        from ..io.chi import load_chi_fit
+        return load_chi_fit(nodes_path, files["segments"])
+
+    ksn_classes = ksn_classes_from_args(args, segments, load_nodes, removed)
     fig, _ = plot_knickpoints_on_profile(segments, major, basin=args.basin, removed=removed,
                                          show_removed=args.show_removed, vmin=args.ksn_vmin,
-                                         vmax=args.ksn_vmax, threshold_label=label)
+                                         vmax=args.ksn_vmax, threshold_label=label,
+                                         classes=ksn_classes)
     written.append(out_dir / (f"{stem}_knickpoint_profile_basin{args.basin}.png" if args.basin is not None
                               else f"{stem}_knickpoint_profile.png"))
     fig.savefig(written[-1], dpi=args.dpi, bbox_inches="tight")
@@ -143,7 +148,7 @@ def main(argv=None) -> int:
             args.dem, files["segment_lines"], major, out_dir / f"{stem}_knickpoint_map.png",
             removed=removed, coordinates=args.coordinates, cmap=args.cmap,
             ksn_vmin=args.ksn_vmin, ksn_vmax=args.ksn_vmax, threshold_label=label,
-            locator=_common.locator_kwargs(args), **_ksn_class_kwargs(args)))
+            locator=_common.locator_kwargs(args), ksn_classes=ksn_classes))
     for w in written:
         print(w)
     return 0

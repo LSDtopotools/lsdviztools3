@@ -81,6 +81,33 @@ def _colour_values(values: np.ndarray, log_scale: bool) -> np.ndarray:
     return out
 
 
+def _colour_mapping(rows, color_by, log_color, cmap, vmin, vmax, classes):
+    """``(values, cmap, norm, extend)`` for colouring ``rows``: continuous
+    (log10) k_sn, or the class index when ``classes`` (a
+    :class:`~lsdviztools3.colour_classes.ColourClasses`) is given."""
+    from matplotlib import colors
+
+    if classes is not None:
+        from .ksn_distribution import mpl_colour
+        n = classes.n_classes
+        return (classes.classify(rows[color_by].to_numpy(dtype=float)),
+                colors.ListedColormap([mpl_colour(c) for c in classes.colors]),
+                colors.BoundaryNorm(np.arange(n + 1) - 0.5, n), "neither")
+    cvals = _colour_values(rows[color_by].to_numpy(), log_color)
+    lo, hi, extend = colour_limits(cvals, vmin, vmax, log_scale=log_color)
+    return cvals, cmap, colors.Normalize(vmin=lo, vmax=hi), extend
+
+
+def _add_colorbar(fig, ax, mappable, color_by, log_color, extend, classes):
+    if classes is None:
+        fig.colorbar(mappable, ax=ax, label=_colour_label(color_by, log_color), extend=extend)
+        return
+    cb = fig.colorbar(mappable, ax=ax, label=r"$k_{sn}$ class" if color_by == "k_sn" else color_by,
+                      ticks=np.arange(classes.n_classes))
+    cb.ax.set_yticklabels(list(classes.labels), fontsize=8)
+    cb.ax.tick_params(length=0)
+
+
 def _colour_label(color_by: str, log_scale: bool) -> str:
     if color_by == "k_sn":
         return r"$\log_{10}\,k_{sn}$" if log_scale else r"$k_{sn}$"
@@ -187,6 +214,7 @@ def plot_chi_profile(
     vmax: Optional[float] = None,
     removed: Optional[pd.DataFrame] = None,
     show_removed: str = "ghost",
+    classes=None,
 ):
     """Plot a single basin's chi-elevation profile.
 
@@ -221,6 +249,11 @@ def plot_chi_profile(
             the kept tributaries only.
         show_removed: ``"ghost"`` (default) draws removed tributaries thin and
             light grey under the kept ones; ``"hide"`` leaves them out.
+        classes: Colour k_sn in classes instead of a continuous scale: a
+            :class:`~lsdviztools3.colour_classes.ColourClasses` (e.g. from
+            :func:`lsdviztools3.charts.ksn_distribution.ksn_colour_classes`,
+            so the profiles match a classed map). ``vmin`` / ``vmax`` and
+            ``log_color`` are then unused; the colourbar shows the classes.
 
     Returns:
         ``(fig, ax)``.
@@ -245,9 +278,7 @@ def plot_chi_profile(
 
     mappable = None
     rows, ghost = _split_removed(rows, removed, show_removed)
-    cvals = _colour_values(rows[color_by].to_numpy(), log_color)
-    lo, hi, extend = colour_limits(cvals, vmin, vmax, log_scale=log_color)
-    norm = colors.Normalize(vmin=lo, vmax=hi)
+    cvals, cmap, norm, extend = _colour_mapping(rows, color_by, log_color, cmap, vmin, vmax, classes)
     if segments and len(ghost):
         ax.add_collection(LineCollection(_segment_lines(ghost, 0.0), colors=GHOST_COLOUR,
                                          linewidths=0.7, zorder=0))
@@ -276,7 +307,7 @@ def plot_chi_profile(
     ax.set_ylabel("Elevation (m)")
     ax.set_title(f"Basin {basin}")
     if colorbar and mappable is not None:
-        fig.colorbar(mappable, ax=ax, label=_colour_label(color_by, log_color), extend=extend)
+        _add_colorbar(fig, ax, mappable, color_by, log_color, extend, classes)
     return fig, ax
 
 
@@ -300,6 +331,7 @@ def plot_chi_stacked(
     vmax: Optional[float] = None,
     removed: Optional[pd.DataFrame] = None,
     show_removed: str = "ghost",
+    classes=None,
 ):
     """Stacked chi-elevation plot: basins normalised to chi=0 and offset right.
 
@@ -334,6 +366,11 @@ def plot_chi_stacked(
         removed, show_removed: Tributaries to leave out, and whether to ghost
             them; as :func:`plot_chi_profile`. Basin positions on the stack do
             not change.
+        classes: Colour k_sn in classes instead of a continuous scale: a
+            :class:`~lsdviztools3.colour_classes.ColourClasses` (e.g. from
+            :func:`lsdviztools3.charts.ksn_distribution.ksn_colour_classes`,
+            so the profiles match a classed map). ``vmin`` / ``vmax`` and
+            ``log_color`` are then unused; the colourbar shows the classes.
 
     Returns:
         ``(fig, ax)``.
@@ -349,9 +386,12 @@ def plot_chi_stacked(
     # Global colour normalisation across all selected basins.
     sel = data[data["basin_index"].isin(basins)]
     sel, _ = _split_removed(sel, removed, show_removed)
-    all_c = _colour_values(sel[color_by].to_numpy(), log_color)
-    lo, hi, extend = colour_limits(all_c, vmin, vmax, log_scale=log_color)
-    norm = colors.Normalize(vmin=lo, vmax=hi)
+    _, cmap, norm, extend = _colour_mapping(sel, color_by, log_color, cmap, vmin, vmax, classes)
+
+    def cvalues(r):
+        if classes is not None:
+            return classes.classify(r[color_by].to_numpy(dtype=float))
+        return _colour_values(r[color_by].to_numpy(), log_color)
 
     shifts = stack_offsets(data, basins, x_offset)
 
@@ -384,10 +424,10 @@ def plot_chi_stacked(
 
         if segments:
             all_lines.extend(_segment_lines(rows, shift))
-            all_cvals.append(_colour_values(rows[color_by].to_numpy(), log_color))
+            all_cvals.append(cvalues(rows))
             zmin = float(rows["downstream_elevation"].min())
         else:
-            cvals = _colour_values(rows[color_by].to_numpy(), log_color)
+            cvals = cvalues(rows)
             mappable = ax.scatter(
                 rows["chi"].to_numpy() + shift, rows["observed_elevation"],
                 c=cvals, cmap=cmap, norm=norm, s=point_size,
@@ -415,7 +455,7 @@ def plot_chi_stacked(
     ax.set_xlabel(r"$\chi$ (m, offset per basin)")
     ax.set_ylabel("Elevation (m)")
     if colorbar and mappable is not None:
-        fig.colorbar(mappable, ax=ax, label=_colour_label(color_by, log_color), extend=extend)
+        _add_colorbar(fig, ax, mappable, color_by, log_color, extend, classes)
     return fig, ax
 
 

@@ -1,4 +1,5 @@
-"""CLI: lsdviz3-chi — k_sn map and stacked chi profiles from an lsdtt-chi-analysis run."""
+"""CLI: lsdviz3-chi — k_sn map, stacked chi profiles and k_sn distributions from an
+lsdtt-chi-analysis run."""
 
 from __future__ import annotations
 
@@ -7,7 +8,8 @@ from pathlib import Path
 
 from ..workflows import render_chi_ksn_map, render_chi_profiles, render_chi_removed_map
 from . import _common
-from ._chi_common import add_tributary_selection_args, mn_suffix, tributary_selection_from_args
+from ._chi_common import (add_ksn_class_basis_arg, add_tributary_selection_args, ksn_classes_from_args,
+                          mn_suffix, tributary_selection_from_args)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,15 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dpi", type=int, default=300, help="DPI of the profile plots (default 300).")
     _common.add_locator_args(parser)
     _common.add_class_args(parser, flag="--ksn-classes",
-                           what="k_sn on the map (breaks in k_sn units; schemes work in log10 k_sn)")
+                           what="k_sn on the map and the chi profiles (breaks in k_sn units; "
+                                "schemes work in log10 k_sn)")
+    add_ksn_class_basis_arg(parser)
+    parser.add_argument("--no-ksn-distribution", action="store_true",
+                        help="Skip the k_sn distribution plot (per channel pixel and per segment).")
     return parser
-
-
-def _ksn_class_kwargs(args) -> dict:
-    """``--ksn-classes`` and friends as render_chi_ksn_map keywords."""
-    kw = _common.class_kwargs(args)
-    kw["ksn_classes"] = kw.pop("classes")
-    return kw
 
 
 def main(argv=None) -> int:
@@ -94,7 +93,23 @@ def main(argv=None) -> int:
 
     removed = tributary_selection_from_args(args, base, mn, out_dir, stem)
 
+    from ..io.chi import load_chi_fit, load_chi_fit_segments
+    segments = load_chi_fit_segments(outputs["fit_segments"])
+    nodes = load_chi_fit(outputs["fit_nodes"], outputs["fit_segments"])
+    ksn_classes = ksn_classes_from_args(args, segments, nodes, removed)
+
     written = []
+    if not args.no_ksn_distribution:
+        import matplotlib.pyplot as plt
+
+        from ..charts.ksn_distribution import plot_ksn_distributions
+        fig, _ = plot_ksn_distributions(
+            segments, nodes, removed=removed, classes=ksn_classes,
+            class_basis=args.ksn_class_basis if ksn_classes is not None and ksn_classes.scheme != "manual" else None,
+            cmap=args.cmap, vmin=args.ksn_vmin, vmax=args.ksn_vmax)
+        written.append(out_dir / f"{stem}_ksn_distribution.png")
+        fig.savefig(written[-1], dpi=args.dpi, bbox_inches="tight")
+        plt.close(fig)
     if args.dem:
         if not outputs["segment_lines"].exists():
             raise SystemExit(f"{outputs['segment_lines']} not found: the k_sn map needs "
@@ -103,7 +118,7 @@ def main(argv=None) -> int:
             args.dem, outputs["segment_lines"], out_dir / f"{stem}_ksn_map.png",
             coordinates=args.coordinates, cmap=args.cmap,
             ksn_vmin=args.ksn_vmin, ksn_vmax=args.ksn_vmax, removed=removed,
-            locator=_common.locator_kwargs(args), **_ksn_class_kwargs(args)))
+            locator=_common.locator_kwargs(args), ksn_classes=ksn_classes))
         if removed is not None:
             written.append(render_chi_removed_map(
                 args.dem, outputs["segment_lines"], removed,
@@ -114,7 +129,7 @@ def main(argv=None) -> int:
         outputs, out_dir, stem=f"{stem}_chi", dpi=args.dpi,
         stacked=not args.no_stacked, per_basin=args.per_basin,
         ksn_vmin=args.ksn_vmin, ksn_vmax=args.ksn_vmax,
-        removed=removed, show_removed=args.show_removed)
+        removed=removed, show_removed=args.show_removed, ksn_classes=ksn_classes)
     for path in written:
         print(path)
     return 0

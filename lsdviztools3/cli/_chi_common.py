@@ -77,3 +77,38 @@ def tributary_selection_from_args(args, base: Path, mn: str, out_dir: Path, stem
     removed.to_csv(rpath, index=False)
     print(f"removed {len(removed)} tributaries {removed['reason'].value_counts().to_dict()} -> {rpath}")
     return removed
+
+
+def add_ksn_class_basis_arg(parser: argparse.ArgumentParser) -> None:
+    """``--ksn-class-basis``: which k_sn distribution a class scheme is found in."""
+    parser.add_argument(
+        "--ksn-class-basis", choices=["segments", "pixels"], default="segments",
+        help="Which k_sn distribution a --ksn-classes scheme (natural_breaks, quantile, "
+             "equal_interval) is found in: segments (each fitted segment one sample, default) or "
+             "pixels (each channel node one sample, so length-weighted). The same classes colour "
+             "the map and the chi profiles, and are drawn on the k_sn distribution plot.")
+
+
+def ksn_classes_from_args(args, segments, nodes, removed):
+    """The k_sn :class:`~lsdviztools3.colour_classes.ColourClasses` from
+    ``--ksn-classes`` and friends, found on the kept tributaries in the
+    ``--ksn-class-basis`` distribution; ``None`` without ``--ksn-classes``.
+    ``nodes`` may be a callable that loads them (only called for pixels)."""
+    from ..charts.ksn_distribution import ksn_colour_classes
+    from . import _common
+
+    kw = _common.class_kwargs(args)
+    if kw["classes"] is None:
+        return None
+    if args.ksn_class_basis == "pixels" and callable(nodes):
+        nodes = nodes()
+    try:
+        cc = ksn_colour_classes(kw["classes"], segments=segments, nodes=nodes,
+                                basis=args.ksn_class_basis, n_classes=kw["n_classes"],
+                                cmap=args.cmap, class_colors=kw["class_colors"],
+                                color_mode=kw["class_color_mode"], vmin=args.ksn_vmin,
+                                vmax=args.ksn_vmax, removed=removed)
+    except ValueError as exc:
+        raise SystemExit(str(exc))
+    print(f"k_sn classes ({cc.scheme}): breaks " + ", ".join(f"{b:.4g}" for b in cc.breaks))
+    return cc

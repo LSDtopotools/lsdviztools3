@@ -236,11 +236,13 @@ def plot_knickpoints_on_profile(
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
     threshold_label: str = "",
+    classes=None,
 ):
     """Major knickpoints on the chi profile: one basin (``basin=``) or the
     stacked plot of ``basins`` (default all). Markers: open upward triangles
     where the channel steepens upstream, filled downward where it shallows,
-    sized by the size of the change.
+    sized by the size of the change. ``classes`` colours k_sn in classes, as
+    :func:`lsdviztools3.charts.chi.plot_chi_profile`.
 
     Returns:
         ``(fig, ax)``.
@@ -249,13 +251,14 @@ def plot_knickpoints_on_profile(
 
     if basin is not None:
         fig, ax = plot_chi_profile(segments, basin=basin, removed=removed, show_removed=show_removed,
-                                   vmin=vmin, vmax=vmax)
+                                   vmin=vmin, vmax=vmax, classes=classes)
         m = major[major["basin_index"] == basin]
         kinds = _draw_markers(ax, m["chi"], m["elevation"], m["measure_value"])
     else:
         sel_basins = sorted(segments["basin_index"].unique()) if basins is None else list(basins)
         fig, ax = plot_chi_stacked(segments, basins=sel_basins, removed=removed,
-                                   show_removed=show_removed, vmin=vmin, vmax=vmax)
+                                   show_removed=show_removed, vmin=vmin, vmax=vmax,
+                                   classes=classes)
         shifts = stack_offsets(segments, sel_basins)
         m = major[major["basin_index"].isin(list(shifts))]
         x = m["chi"].to_numpy(dtype=float) + m["basin_index"].map(shifts).to_numpy(dtype=float)

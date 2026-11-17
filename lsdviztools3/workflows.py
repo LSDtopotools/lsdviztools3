@@ -410,6 +410,7 @@ def render_chi_profiles(
     ksn_vmax: Optional[float] = None,
     removed=None,
     show_removed: str = "ghost",
+    ksn_classes=None,
 ):
     """Plot fitted chi profiles from :func:`lsdtt3_chi_analysis` outputs.
 
@@ -432,6 +433,11 @@ def render_chi_profiles(
         removed, show_removed: Tributaries to leave out (the ``removed`` frame
             of :func:`lsdviztools3.io.chi.select_tributaries`) and whether to
             ghost them (``"ghost"``) or hide them (``"hide"``).
+        ksn_classes: A :class:`~lsdviztools3.colour_classes.ColourClasses`
+            to colour k_sn in classes (e.g. from
+            :func:`lsdviztools3.charts.ksn_distribution.ksn_colour_classes`,
+            the same object as passed to :func:`render_chi_ksn_map` so the
+            profiles and map match); ``None`` for the continuous scale.
 
     Returns:
         List of written PNG Paths.
@@ -449,7 +455,7 @@ def render_chi_profiles(
 
     if stacked:
         fig, _ = plot_chi_stacked(nodes, basins=selected_basins, vmin=ksn_vmin, vmax=ksn_vmax,
-                                  removed=removed, show_removed=show_removed)
+                                  removed=removed, show_removed=show_removed, classes=ksn_classes)
         path = out_dir / f"{stem}_stacked.png"
         fig.savefig(path, dpi=dpi, bbox_inches="tight")
         written.append(path)
@@ -457,7 +463,8 @@ def render_chi_profiles(
     if per_basin:
         for b in selected_basins:
             fig, _ = plot_chi_profile(nodes, basin=int(b), vmin=ksn_vmin, vmax=ksn_vmax,
-                                      removed=removed, show_removed=show_removed)
+                                      removed=removed, show_removed=show_removed,
+                                      classes=ksn_classes)
             path = out_dir / f"{stem}_profile_basin{int(b)}.png"
             fig.savefig(path, dpi=dpi, bbox_inches="tight")
             written.append(path)
@@ -566,6 +573,7 @@ REMOVED_STYLES = {
     "small_area": ("1.0p,black,-", "removed: small drainage area"),
     "small_fraction": ("1.0p,black,.", "removed: small fraction of basin"),
     "rank": ("1.0p,#5a5a5a,-.", "removed: outside the top tributaries"),
+    "length_rank": ("0.9p,#5a5a5a,-", "removed: outside the longest channels"),
     "drains_to_removed": ("0.7p,#5a5a5a,.", "removed: drains into a removed one"),
 }
 
