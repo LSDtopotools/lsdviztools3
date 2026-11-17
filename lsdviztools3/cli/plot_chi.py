@@ -8,8 +8,9 @@ from pathlib import Path
 
 from ..workflows import render_chi_ksn_map, render_chi_profiles, render_chi_removed_map
 from . import _common
-from ._chi_common import (add_ksn_class_basis_arg, add_tributary_selection_args, ksn_classes_from_args,
-                          mn_suffix, tributary_selection_from_args)
+from ._chi_common import (add_ksn_class_basis_arg, add_profile_layout_args, add_tributary_selection_args,
+                          ksn_classes_from_args, mn_suffix, parse_basins, parse_gradient_inset,
+                          tributary_selection_from_args)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -57,6 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
                            what="k_sn on the map and the chi profiles (breaks in k_sn units; "
                                 "schemes work in log10 k_sn)")
     add_ksn_class_basis_arg(parser)
+    add_profile_layout_args(parser)
     parser.add_argument("--no-ksn-distribution", action="store_true",
                         help="Skip the k_sn distribution plot (per channel pixel and per segment).")
     return parser
@@ -129,7 +131,10 @@ def main(argv=None) -> int:
         outputs, out_dir, stem=f"{stem}_chi", dpi=args.dpi,
         stacked=not args.no_stacked, per_basin=args.per_basin,
         ksn_vmin=args.ksn_vmin, ksn_vmax=args.ksn_vmax,
-        removed=removed, show_removed=args.show_removed, ksn_classes=ksn_classes)
+        removed=removed, show_removed=args.show_removed, ksn_classes=ksn_classes,
+        basins=parse_basins(args.basins), basins_per_row=args.basins_per_row,
+        gradient_inset=parse_gradient_inset(args.ksn_gradient_inset),
+        gradient_inset_loc=args.gradient_inset_loc)
     for path in written:
         print(path)
     return 0

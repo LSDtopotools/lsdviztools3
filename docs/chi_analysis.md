@@ -27,7 +27,12 @@ pixi run lsdviz3-chi --data-dir work/eigg --prefix eigg --m-over-n 0.45 \
 | `--cmap`, `--coordinates`, `--dpi` | k_sn colour map (default `viridis`), map coordinates, profile DPI. |
 | `--ksn-vmin`, `--ksn-vmax` | The k_sn colour range, **in k_sn units** (see below). Default: the data's range. |
 | `--ksn-classes`, `--n-classes`, `--class-colors`, `--class-color-mode` | Colour k_sn on the map and the chi profiles in classes, with a class legend instead of the colourbar (see [Colouring k_sn in classes](#colouring-k_sn-in-classes)). |
-| `--ksn-class-basis segments\|pixels` | Which k_sn distribution a class scheme is found in (see [k_sn distributions](#k_sn-distributions)). Default `segments`. |
+| `--ksn-class-basis pixels\|segments` | Which k_sn distribution a class scheme is found in (see [k_sn distributions](#k_sn-distributions)). Default `pixels`. |
+| `--ksn-class-min`, `--ksn-class-max` | A class scheme finds its breaks only between these k_sn (defaults 5 and 250); see [Colouring k_sn in classes](#colouring-k_sn-in-classes). `none` for no limit. |
+| `--basins 37,2,5` | Plot only these basins (by `basin_index`), in this order. |
+| `--basins-per-row N` | Wrap the stacked plot onto rows of at most N basins (see [Stacked plot layout](#stacked-plot-layout)). |
+| `--ksn-gradient-inset [K1,K2,K3]` | Add a key of chi–elevation gradients for a few k_sn values, at the plot's scale. |
+| `--gradient-inset-loc` | Its corner: `auto` (default, the emptiest corner of any row), `upper left`, ... |
 | `--no-ksn-distribution` | Skip the k_sn distribution plot. |
 
 It writes `<prefix>_ksn_distribution.png`, `<prefix>_ksn_map.png`,
@@ -75,6 +80,16 @@ colour per class, and a qualitative `--cmap` (`tab10`, `Set1`, ...) gives
 distinct colours. The same options work on the map and profile of `lsdviz3-knickpoints`.
 The details are in [Colouring in classes](basic_plots.md#colouring-in-classes).
 
+A scheme finds its `--n-classes` classes only between `--ksn-class-min` and
+`--ksn-class-max` (k_sn 5 and 250 by default), so a few very low or very high
+values cannot pull the breaks. Each limit is also a break: values below 5 and
+values of 250 and above are classes of their own (so up to `--n-classes` + 2
+classes), but only when at least 0.1% of the samples fall there; otherwise
+they join the class next to them. `none` turns a limit off. Breaks given by
+hand are used as they are. In Python: `ksn_colour_classes(...,
+class_min=5, class_max=250)`, or `make_colour_classes(..., class_min=,
+class_max=, min_end_fraction=0.001)` for any values.
+
 ```bash
 pixi run lsdviz3-chi --data-dir . --prefix salmon_ksn --m-over-n 0.45 \
   --dem salmon_DEM.tif --out-dir . --ksn-classes natural_breaks --n-classes 5
@@ -95,9 +110,9 @@ log10 k_sn axis:
 Each is a histogram (probability density per log10 unit) with its median.
 Bars take the map's colours. With `--ksn-classes` the bars take their class
 colour, the breaks are drawn on both panels, and the panel the classes were
-found in is marked. `--ksn-class-basis pixels` finds the scheme's breaks in
-the pixel distribution, `segments` (the default) in the segment one; breaks
-given by hand are used as they are.
+found in is marked. `--ksn-class-basis pixels` (the default) finds the
+scheme's breaks in the pixel distribution, `segments` in the segment one;
+breaks given by hand are used as they are.
 
 ```bash
 pixi run lsdviz3-chi --data-dir . --prefix wvvr --m-over-n 0.45 --dem wvfront_DEM.tif \
@@ -120,6 +135,35 @@ plot_chi_stacked(segments, removed=removed, classes=cc)
 render_chi_ksn_map("wvfront_DEM.tif", "wvvr_chi_fit_segment_lines_mn_0p450.fgb", "ksn_map.png",
                    removed=removed, ksn_classes=cc)
 ```
+
+### Stacked plot layout
+
+With many basins the stacked plot becomes one very long row. `--basins`
+picks the basins (and their order), and `--basins-per-row N` wraps them onto
+rows of at most N: 9 basins at 5 per row give rows of 5 and 4. All rows share
+the same chi and elevation scales (so slopes compare across rows) and one
+colourbar, kept to about one row's height at the top.
+
+`--ksn-gradient-inset` adds a small key of chi–elevation gradients. In chi–
+elevation space a segment's slope is its k_sn, so the key draws a line of
+slope k_sn for each of three values, at exactly the plot's scale: a segment
+parallel to the "50" line has k_sn 50. Without values it uses the 10th, 50th
+and 90th percentiles of the plotted k_sn (rounded); or give them,
+`--ksn-gradient-inset 10,50,150`. It goes in the corner, of any row, with the
+least drawn in it, or the corner set by `--gradient-inset-loc`. The same
+options work on the `lsdviz3-knickpoints` profile (its marker legend then
+moves below the plot).
+
+```bash
+pixi run lsdviz3-chi --data-dir . --prefix wvvr --m-over-n 0.45 --out-dir . \
+  --longest-channels 3 --basins 37,2,5,10,14,20,25,30,41 --basins-per-row 5 \
+  --ksn-gradient-inset
+```
+
+In Python: `plot_chi_stacked(segments, basins=[...], basins_per_row=5,
+gradient_inset=True)` (or `gradient_inset=[10, 50, 150]`); with more than one
+row it returns the array of row axes. `add_gradient_inset(ax, [10, 50, 150])`
+adds the key to any chi–elevation axes.
 
 ### Removing tributaries
 

@@ -82,11 +82,33 @@ def tributary_selection_from_args(args, base: Path, mn: str, out_dir: Path, stem
 def add_ksn_class_basis_arg(parser: argparse.ArgumentParser) -> None:
     """``--ksn-class-basis``: which k_sn distribution a class scheme is found in."""
     parser.add_argument(
-        "--ksn-class-basis", choices=["segments", "pixels"], default="segments",
+        "--ksn-class-basis", choices=["pixels", "segments"], default="pixels",
         help="Which k_sn distribution a --ksn-classes scheme (natural_breaks, quantile, "
-             "equal_interval) is found in: segments (each fitted segment one sample, default) or "
-             "pixels (each channel node one sample, so length-weighted). The same classes colour "
+             "equal_interval) is found in: pixels (each channel node one sample, so length-weighted; "
+             "default) or segments (each fitted segment one sample).")
+    parser.add_argument(
+        "--ksn-class-min", default="5", type=_limit,
+        help="A --ksn-classes scheme finds its classes only between --ksn-class-min and "
+             "--ksn-class-max (k_sn; defaults 5 and 250). Values below the minimum and at or above "
+             "the maximum are classes of their own, each made only when at least 0.1%% of the "
+             "samples fall in it. 'none' for no limit.")
+    parser.add_argument(
+        "--ksn-class-max", default="250", type=_limit,
+        help="Upper k_sn limit for a --ksn-classes scheme (default 250); see --ksn-class-min. The same classes colour "
              "the map and the chi profiles, and are drawn on the k_sn distribution plot.")
+
+
+def _limit(text):
+    """A class limit: a positive number, or ``none``."""
+    if str(text).strip().lower() in ("none", ""):
+        return None
+    try:
+        v = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a number or 'none'")
+    if not v > 0:
+        raise argparse.ArgumentTypeError("k_sn class limits must be > 0")
+    return v
 
 
 def ksn_classes_from_args(args, segments, nodes, removed):
@@ -107,8 +129,52 @@ def ksn_classes_from_args(args, segments, nodes, removed):
                                 basis=args.ksn_class_basis, n_classes=kw["n_classes"],
                                 cmap=args.cmap, class_colors=kw["class_colors"],
                                 color_mode=kw["class_color_mode"], vmin=args.ksn_vmin,
-                                vmax=args.ksn_vmax, removed=removed)
+                                vmax=args.ksn_vmax, removed=removed,
+                                class_min=args.ksn_class_min, class_max=args.ksn_class_max)
     except ValueError as exc:
         raise SystemExit(str(exc))
     print(f"k_sn classes ({cc.scheme}): breaks " + ", ".join(f"{b:.4g}" for b in cc.breaks))
     return cc
+
+
+def parse_basins(text):
+    """``--basins`` value: ``"3,7,12"`` -> ``[3, 7, 12]`` (in that order); ``None`` -> ``None``."""
+    if text is None or not str(text).strip():
+        return None
+    try:
+        return [int(x) for x in str(text).split(",") if x.strip()]
+    except ValueError:
+        raise SystemExit(f"--basins {text!r}: give comma-separated basin_index values, e.g. 3,7,12")
+
+
+def parse_gradient_inset(text):
+    """``--ksn-gradient-inset`` value: ``"auto"`` or ``"20,50,150"`` (k_sn)."""
+    if text is None:
+        return None
+    if str(text).strip().lower() == "auto":
+        return "auto"
+    try:
+        ks = [float(x) for x in str(text).split(",") if x.strip()]
+    except ValueError:
+        ks = []
+    if not ks or any(k <= 0 for k in ks):
+        raise SystemExit(f"--ksn-gradient-inset {text!r}: give auto or positive k_sn values, e.g. 20,50,150")
+    return ks
+
+
+def add_profile_layout_args(parser: argparse.ArgumentParser, *, basins: bool = True) -> None:
+    """``--basins``, ``--basins-per-row``, ``--ksn-gradient-inset`` and its corner."""
+    g = parser.add_argument_group("chi profile layout")
+    if basins:
+        g.add_argument("--basins", default=None,
+                       help="Comma-separated basin_index values to plot, in this order (default all).")
+    g.add_argument("--basins-per-row", type=int, default=None,
+                   help="Wrap the stacked chi plot onto rows of at most this many basins (e.g. 5 with "
+                        "9 basins: rows of 5 and 4). Rows share the chi and elevation scales.")
+    g.add_argument("--ksn-gradient-inset", nargs="?", const="auto", default=None, metavar="K1,K2,K3",
+                   help="Add a key showing the chi-elevation gradient of a few k_sn values at the plot's "
+                        "scale. Without values: the 10th, 50th and 90th percentiles of the plotted k_sn.")
+    g.add_argument("--gradient-inset-loc", default="auto",
+                   choices=["auto", "upper left", "upper right", "lower left", "lower right"],
+                   help="Corner of the gradient key: auto (default) picks the corner, of any row, "
+                        "with the least drawn in it.")

@@ -28,6 +28,9 @@ import pandas as pd
 BASES = {"pixels": "Channel pixels (length-weighted)",
          "segments": "Fitted segments (one sample each)"}
 INK = "#3d3d3a"
+#: Default k_sn class limits: schemes find their breaks between these.
+KSN_CLASS_MIN = 5.0
+KSN_CLASS_MAX = 250.0
 _RGB = re.compile(r"^(\d{1,3})/(\d{1,3})/(\d{1,3})$")
 
 
@@ -61,7 +64,7 @@ def ksn_colour_classes(
     *,
     segments: Optional[pd.DataFrame] = None,
     nodes: Optional[pd.DataFrame] = None,
-    basis: str = "segments",
+    basis: str = "pixels",
     n_classes: int = 5,
     cmap: str = "viridis",
     class_colors=None,
@@ -69,6 +72,9 @@ def ksn_colour_classes(
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
     removed: Optional[pd.DataFrame] = None,
+    class_min: Optional[float] = KSN_CLASS_MIN,
+    class_max: Optional[float] = KSN_CLASS_MAX,
+    min_end_fraction: float = 0.001,
 ):
     """k_sn classes for the maps and profiles, found in one of the two
     distributions.
@@ -79,12 +85,18 @@ def ksn_colour_classes(
         segments: The fit-segments table (for ``basis="segments"``).
         nodes: The fit nodes with ``k_sn`` (:func:`lsdviztools3.io.chi.load_chi_fit`;
             for ``basis="pixels"``).
-        basis: ``"segments"`` (each fitted segment one sample) or ``"pixels"``
-            (each channel node one sample, so length-weighted). Only matters
+        basis: ``"pixels"`` (default: each channel node one sample, so
+            length-weighted) or ``"segments"`` (each fitted segment one sample). Only matters
             for a scheme: given breaks are used as they are.
         n_classes, cmap, class_colors, color_mode, vmin, vmax: as
             :func:`lsdviztools3.colour_classes.make_colour_classes`.
         removed: Tributaries left out of the plots; they are not sampled.
+        class_min, class_max: The scheme finds its ``n_classes`` classes only
+            between these k_sn (default 5 and 250); below ``class_min`` and at
+            or above ``class_max`` are end classes, each made only when at
+            least ``min_end_fraction`` (default 0.1%) of the samples fall in
+            it. ``None`` for no limit. See
+            :func:`lsdviztools3.colour_classes.make_colour_classes`.
 
     Returns:
         A :class:`lsdviztools3.colour_classes.ColourClasses` (``scheme`` is
@@ -99,7 +111,8 @@ def ksn_colour_classes(
         raise ValueError(f"basis={basis!r} needs the {'nodes' if basis == 'pixels' else 'segments'} table")
     cc = make_colour_classes(ksn_values(frame, removed), classes, n_classes=n_classes, cmap=cmap,
                              class_colors=class_colors, vmin=vmin, vmax=vmax, log_scale=True,
-                             color_mode=color_mode)
+                             color_mode=color_mode, class_min=class_min, class_max=class_max,
+                             min_end_fraction=min_end_fraction)
     if cc.scheme != "manual":
         cc = replace(cc, scheme=f"{cc.scheme} ({basis})")
     return cc

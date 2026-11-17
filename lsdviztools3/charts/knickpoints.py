@@ -217,12 +217,14 @@ def _draw_markers(ax, x, y, values, zorder=6):
     return h
 
 
-def _marker_legend(ax, kinds, label_extra=""):
+def _marker_legend(ax, kinds, label_extra="", loc="upper left"):
+    """Marker legend; ``loc`` a legend location or a dict of legend keywords."""
     import matplotlib.pyplot as plt
     hs = [plt.Line2D([], [], marker=m, ls="none", markerfacecolor=("white" if m == "^" else "0.25"),
                      markeredgecolor="black", markersize=7, label=lab + label_extra) for m, lab in kinds]
     if hs:
-        ax.legend(handles=hs, fontsize=8, frameon=False, loc="upper left")
+        kw = loc if isinstance(loc, dict) else {"loc": loc}
+        ax.legend(handles=hs, fontsize=8, frameon=False, **kw)
 
 
 def plot_knickpoints_on_profile(
@@ -237,36 +239,55 @@ def plot_knickpoints_on_profile(
     vmax: Optional[float] = None,
     threshold_label: str = "",
     classes=None,
+    basins_per_row: Optional[int] = None,
+    gradient_inset=None,
+    gradient_inset_loc: str = "auto",
 ):
     """Major knickpoints on the chi profile: one basin (``basin=``) or the
     stacked plot of ``basins`` (default all). Markers: open upward triangles
     where the channel steepens upstream, filled downward where it shallows,
     sized by the size of the change. ``classes`` colours k_sn in classes, as
-    :func:`lsdviztools3.charts.chi.plot_chi_profile`.
+    :func:`lsdviztools3.charts.chi.plot_chi_profile`; ``basins_per_row``,
+    ``gradient_inset`` and ``gradient_inset_loc`` as
+    :func:`lsdviztools3.charts.chi.plot_chi_stacked`.
 
     Returns:
-        ``(fig, ax)``.
+        ``(fig, ax)``; ``ax`` is an array of row axes for a multi-row stack.
     """
-    from .chi import plot_chi_profile, plot_chi_stacked, stack_offsets
+    from .chi import plot_chi_profile, plot_chi_stacked, stack_rows
 
+    # without an inset, inside (upper left) as before; with one, below the
+    # plot, clear of the data and of the inset wherever it went
+    legend_loc = "upper left"
+    if gradient_inset is not None and gradient_inset is not False:
+        legend_loc = dict(loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=2)
     if basin is not None:
         fig, ax = plot_chi_profile(segments, basin=basin, removed=removed, show_removed=show_removed,
-                                   vmin=vmin, vmax=vmax, classes=classes)
+                                   vmin=vmin, vmax=vmax, classes=classes,
+                                   gradient_inset=gradient_inset, gradient_inset_loc=gradient_inset_loc)
         m = major[major["basin_index"] == basin]
         kinds = _draw_markers(ax, m["chi"], m["elevation"], m["measure_value"])
+        _marker_legend(ax, kinds, loc=legend_loc)
+        title_ax, title, n_drawn = ax, ax.get_title() + "  ", len(m)
     else:
         sel_basins = sorted(segments["basin_index"].unique()) if basins is None else list(basins)
         fig, ax = plot_chi_stacked(segments, basins=sel_basins, removed=removed,
                                    show_removed=show_removed, vmin=vmin, vmax=vmax,
-                                   classes=classes)
-        shifts = stack_offsets(segments, sel_basins)
-        m = major[major["basin_index"].isin(list(shifts))]
-        x = m["chi"].to_numpy(dtype=float) + m["basin_index"].map(shifts).to_numpy(dtype=float)
-        kinds = _draw_markers(ax, x, m["elevation"], m["measure_value"])
-    _marker_legend(ax, kinds)
-    ax.set_title((ax.get_title() + "  " if basin is not None else "")
-                 + f"{len(m)} major knickpoints" + (f", threshold {threshold_label}" if threshold_label else ""),
-                 fontsize=9)
+                                   classes=classes, basins_per_row=basins_per_row,
+                                   gradient_inset=gradient_inset,
+                                   gradient_inset_loc=gradient_inset_loc)
+        axes = list(np.atleast_1d(ax))
+        n_drawn, kinds = 0, set()
+        for row_ax, shifts in zip(axes, stack_rows(segments, sel_basins, None, basins_per_row)):
+            mr = major[major["basin_index"].isin(list(shifts))]
+            x = mr["chi"].to_numpy(dtype=float) + mr["basin_index"].map(shifts).to_numpy(dtype=float)
+            kinds |= set(_draw_markers(row_ax, x, mr["elevation"], mr["measure_value"]))
+            n_drawn += len(mr)
+        _marker_legend(axes[-1] if isinstance(legend_loc, dict) else axes[0], sorted(kinds),
+                       loc=legend_loc)
+        title_ax, title = axes[0], ""
+    title_ax.set_title(title + f"{n_drawn} major knickpoints"
+                       + (f", threshold {threshold_label}" if threshold_label else ""), fontsize=9)
     return fig, ax
 
 

@@ -411,6 +411,9 @@ def render_chi_profiles(
     removed=None,
     show_removed: str = "ghost",
     ksn_classes=None,
+    basins_per_row: Optional[int] = None,
+    gradient_inset=None,
+    gradient_inset_loc: str = "auto",
 ):
     """Plot fitted chi profiles from :func:`lsdtt3_chi_analysis` outputs.
 
@@ -438,6 +441,12 @@ def render_chi_profiles(
             :func:`lsdviztools3.charts.ksn_distribution.ksn_colour_classes`,
             the same object as passed to :func:`render_chi_ksn_map` so the
             profiles and map match); ``None`` for the continuous scale.
+        basins_per_row: Wrap the stacked plot onto rows of at most this many
+            basins (see :func:`lsdviztools3.charts.chi.plot_chi_stacked`).
+        gradient_inset, gradient_inset_loc: A key of chi-elevation gradients
+            for a few k_sn values on every plot (``True`` for automatic
+            values, or a list of k_sn); see
+            :func:`lsdviztools3.charts.chi.add_gradient_inset`.
 
     Returns:
         List of written PNG Paths.
@@ -455,7 +464,9 @@ def render_chi_profiles(
 
     if stacked:
         fig, _ = plot_chi_stacked(nodes, basins=selected_basins, vmin=ksn_vmin, vmax=ksn_vmax,
-                                  removed=removed, show_removed=show_removed, classes=ksn_classes)
+                                  removed=removed, show_removed=show_removed, classes=ksn_classes,
+                                  basins_per_row=basins_per_row, gradient_inset=gradient_inset,
+                                  gradient_inset_loc=gradient_inset_loc)
         path = out_dir / f"{stem}_stacked.png"
         fig.savefig(path, dpi=dpi, bbox_inches="tight")
         written.append(path)
@@ -464,7 +475,8 @@ def render_chi_profiles(
         for b in selected_basins:
             fig, _ = plot_chi_profile(nodes, basin=int(b), vmin=ksn_vmin, vmax=ksn_vmax,
                                       removed=removed, show_removed=show_removed,
-                                      classes=ksn_classes)
+                                      classes=ksn_classes, gradient_inset=gradient_inset,
+                                      gradient_inset_loc=gradient_inset_loc)
             path = out_dir / f"{stem}_profile_basin{int(b)}.png"
             fig.savefig(path, dpi=dpi, bbox_inches="tight")
             written.append(path)

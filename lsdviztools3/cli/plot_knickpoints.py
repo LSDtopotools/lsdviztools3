@@ -21,8 +21,9 @@ import argparse
 from pathlib import Path
 
 from . import _common
-from ._chi_common import (add_ksn_class_basis_arg, add_tributary_selection_args, ksn_classes_from_args,
-                          mn_suffix, tributary_selection_from_args)
+from ._chi_common import (add_ksn_class_basis_arg, add_profile_layout_args, add_tributary_selection_args,
+                          ksn_classes_from_args, mn_suffix, parse_basins, parse_gradient_inset,
+                          tributary_selection_from_args)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -61,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
                            what="k_sn on the map and the profile (breaks in k_sn units; schemes "
                                 "work in log10 k_sn)")
     add_ksn_class_basis_arg(p)
+    add_profile_layout_args(p)
     add_tributary_selection_args(p)
     return p
 
@@ -128,7 +130,10 @@ def main(argv=None) -> int:
     fig, _ = plot_knickpoints_on_profile(segments, major, basin=args.basin, removed=removed,
                                          show_removed=args.show_removed, vmin=args.ksn_vmin,
                                          vmax=args.ksn_vmax, threshold_label=label,
-                                         classes=ksn_classes)
+                                         classes=ksn_classes, basins=parse_basins(args.basins),
+                                         basins_per_row=args.basins_per_row,
+                                         gradient_inset=parse_gradient_inset(args.ksn_gradient_inset),
+                                         gradient_inset_loc=args.gradient_inset_loc)
     written.append(out_dir / (f"{stem}_knickpoint_profile_basin{args.basin}.png" if args.basin is not None
                               else f"{stem}_knickpoint_profile.png"))
     fig.savefig(written[-1], dpi=args.dpi, bbox_inches="tight")
