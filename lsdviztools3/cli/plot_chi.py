@@ -9,7 +9,7 @@ from pathlib import Path
 from ..workflows import render_chi_ksn_map, render_chi_profiles, render_chi_removed_map
 from . import _common
 from ._chi_common import (add_ksn_class_basis_arg, add_profile_layout_args, add_tributary_selection_args,
-                          ksn_classes_from_args, mn_suffix, parse_basins, parse_gradient_inset,
+                          ksn_classes_from_args, mn_suffix, parse_basins, parse_gradient_key,
                           tributary_selection_from_args)
 
 
@@ -133,8 +133,7 @@ def main(argv=None) -> int:
         ksn_vmin=args.ksn_vmin, ksn_vmax=args.ksn_vmax,
         removed=removed, show_removed=args.show_removed, ksn_classes=ksn_classes,
         basins=parse_basins(args.basins), basins_per_row=args.basins_per_row,
-        gradient_inset=parse_gradient_inset(args.ksn_gradient_inset),
-        gradient_inset_loc=args.gradient_inset_loc)
+        gradient_key=parse_gradient_key(args.ksn_gradient_key))
     for path in written:
         print(path)
     return 0

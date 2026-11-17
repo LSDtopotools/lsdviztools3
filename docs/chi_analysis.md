@@ -31,8 +31,7 @@ pixi run lsdviz3-chi --data-dir work/eigg --prefix eigg --m-over-n 0.45 \
 | `--ksn-class-min`, `--ksn-class-max` | A class scheme finds its breaks only between these k_sn (defaults 5 and 250); see [Colouring k_sn in classes](#colouring-k_sn-in-classes). `none` for no limit. |
 | `--basins 37,2,5` | Plot only these basins (by `basin_index`), in this order. |
 | `--basins-per-row N` | Wrap the stacked plot onto rows of at most N basins (see [Stacked plot layout](#stacked-plot-layout)). |
-| `--ksn-gradient-inset [K1,K2,K3]` | Add a key of chi–elevation gradients for a few k_sn values, at the plot's scale. |
-| `--gradient-inset-loc` | Its corner: `auto` (default, the emptiest corner of any row), `upper left`, ... |
+| `--ksn-gradient-key [K1,K2,K3]` | Add a key of chi–elevation gradients for a few k_sn values, drawn as an extra profile after the last basin, at the plot's scale. |
 | `--no-ksn-distribution` | Skip the k_sn distribution plot. |
 
 It writes `<prefix>_ksn_distribution.png`, `<prefix>_ksn_map.png`,
@@ -144,26 +143,26 @@ rows of at most N: 9 basins at 5 per row give rows of 5 and 4. All rows share
 the same chi and elevation scales (so slopes compare across rows) and one
 colourbar, kept to about one row's height at the top.
 
-`--ksn-gradient-inset` adds a small key of chi–elevation gradients. In chi–
-elevation space a segment's slope is its k_sn, so the key draws a line of
-slope k_sn for each of three values, at exactly the plot's scale: a segment
-parallel to the "50" line has k_sn 50. Without values it uses the 10th, 50th
-and 90th percentiles of the plotted k_sn (rounded); or give them,
-`--ksn-gradient-inset 10,50,150`. It goes in the corner, of any row, with the
-least drawn in it, or the corner set by `--gradient-inset-loc`. The same
-options work on the `lsdviz3-knickpoints` profile (its marker legend then
-moves below the plot).
+`--ksn-gradient-key` adds a key of chi–elevation gradients. In chi–elevation
+space a segment's slope is its k_sn, so the key draws a line of slope k_sn for
+each of three values. It is drawn as an extra "profile" after the last basin
+(of the last row), in the plot's own coordinates, so it is at exactly the
+plot's scale: a segment parallel to the "50" line has k_sn 50. Without values
+it uses the 10th, 50th and 90th percentiles of the plotted k_sn, rounded to
+one significant figure (13 → 10, 87 → 90, 217 → 200); or give them,
+`--ksn-gradient-key 10,50,200`. The same option works on the
+`lsdviz3-knickpoints` profile.
 
 ```bash
 pixi run lsdviz3-chi --data-dir . --prefix wvvr --m-over-n 0.45 --out-dir . \
   --longest-channels 3 --basins 37,2,5,10,14,20,25,30,41 --basins-per-row 5 \
-  --ksn-gradient-inset
+  --ksn-gradient-key
 ```
 
 In Python: `plot_chi_stacked(segments, basins=[...], basins_per_row=5,
-gradient_inset=True)` (or `gradient_inset=[10, 50, 150]`); with more than one
-row it returns the array of row axes. `add_gradient_inset(ax, [10, 50, 150])`
-adds the key to any chi–elevation axes.
+gradient_key=True)` (or `gradient_key=[10, 50, 200]`); with more than one
+row it returns the array of row axes. `add_gradient_key(ax, [10, 50, 200],
+x0=, width=, y0=, y1=)` draws the key on any chi–elevation axes.
 
 ### Removing tributaries
 
@@ -205,7 +204,7 @@ With any of these flags the command also writes:
   applied, in that order);
 - with `--dem`, `<prefix>_removed_tributaries_map.png`: the kept network
   coloured by k_sn, each removed tributary dashed in its reason's style,
-  junctions of removed tributaries as open circles, and a legend with counts.
+  and a legend with counts.
 
 The k_sn map and the profiles then show only the kept tributaries. Their
 colour range is taken from the kept ones, so removing a few dam-routed links

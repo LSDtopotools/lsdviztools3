@@ -412,8 +412,7 @@ def render_chi_profiles(
     show_removed: str = "ghost",
     ksn_classes=None,
     basins_per_row: Optional[int] = None,
-    gradient_inset=None,
-    gradient_inset_loc: str = "auto",
+    gradient_key=None,
 ):
     """Plot fitted chi profiles from :func:`lsdtt3_chi_analysis` outputs.
 
@@ -443,10 +442,10 @@ def render_chi_profiles(
             profiles and map match); ``None`` for the continuous scale.
         basins_per_row: Wrap the stacked plot onto rows of at most this many
             basins (see :func:`lsdviztools3.charts.chi.plot_chi_stacked`).
-        gradient_inset, gradient_inset_loc: A key of chi-elevation gradients
-            for a few k_sn values on every plot (``True`` for automatic
-            values, or a list of k_sn); see
-            :func:`lsdviztools3.charts.chi.add_gradient_inset`.
+        gradient_key: A key of chi-elevation gradients for a few k_sn
+            values, drawn as an extra profile on every plot (``True`` for
+            automatic rounded values, or a list of k_sn); see
+            :func:`lsdviztools3.charts.chi.add_gradient_key`.
 
     Returns:
         List of written PNG Paths.
@@ -465,8 +464,7 @@ def render_chi_profiles(
     if stacked:
         fig, _ = plot_chi_stacked(nodes, basins=selected_basins, vmin=ksn_vmin, vmax=ksn_vmax,
                                   removed=removed, show_removed=show_removed, classes=ksn_classes,
-                                  basins_per_row=basins_per_row, gradient_inset=gradient_inset,
-                                  gradient_inset_loc=gradient_inset_loc)
+                                  basins_per_row=basins_per_row, gradient_key=gradient_key)
         path = out_dir / f"{stem}_stacked.png"
         fig.savefig(path, dpi=dpi, bbox_inches="tight")
         written.append(path)
@@ -475,8 +473,7 @@ def render_chi_profiles(
         for b in selected_basins:
             fig, _ = plot_chi_profile(nodes, basin=int(b), vmin=ksn_vmin, vmax=ksn_vmax,
                                       removed=removed, show_removed=show_removed,
-                                      classes=ksn_classes, gradient_inset=gradient_inset,
-                                      gradient_inset_loc=gradient_inset_loc)
+                                      classes=ksn_classes, gradient_key=gradient_key)
             path = out_dir / f"{stem}_profile_basin{int(b)}.png"
             fig.savefig(path, dpi=dpi, bbox_inches="tight")
             written.append(path)
@@ -608,8 +605,8 @@ def render_chi_removed_map(
 
     The kept chi network is drawn coloured by log10 k_sn as in
     :func:`render_chi_ksn_map`. Each removed tributary is drawn in its reason's
-    dashed style (:data:`REMOVED_STYLES`), with its junction (where it joins
-    its parent) as an open circle, and a legend of the reasons present.
+    dashed style (:data:`REMOVED_STYLES`), with a legend of the reasons
+    present.
 
     Args:
         dem_path: Projected DEM for the hillshade.
@@ -627,8 +624,6 @@ def render_chi_removed_map(
     """
     import io as _io
 
-    import geopandas as gpd
-
     from .io.chi import removed_mask
     from .io.raster import get_crs, load_raster, to_coordinates, to_gmt_grid
     from .io.vector import load_vector
@@ -636,7 +631,6 @@ def render_chi_removed_map(
     from .render.channels import render_channels
     from .render.decorations import add_scalebar
     from .render.hillshade import render_hillshade
-    from .render.points import render_points
 
     da = to_coordinates(load_raster(dem_path), coordinates)
     crs = get_crs(da)
@@ -667,15 +661,6 @@ def render_chi_removed_map(
                                   style=MapStyle(line_width=width_p, line_color=colour,
                                                  figure_size=width), fig=fig)
             rows.append(f"S 0.3c - 0.6c - {pen} 0.9c {label} ({part[['basin_index', 'branch_id']].drop_duplicates().shape[0]})")
-        j = removed.dropna(subset=["junction_x", "junction_y"])
-        if len(j):
-            pts = gpd.GeoDataFrame(j[["reason"]].copy(),
-                                   geometry=gpd.points_from_xy(j["junction_x"], j["junction_y"]),
-                                   crs=gdf.crs)
-            fig = render_points(pts, coordinates=coordinates, symbol="c", pen="0.8p,black",
-                                style=MapStyle(point_size="0.14c", line_color="white",
-                                               figure_size=width), fig=fig)
-            rows.append("S 0.3c c 0.14c white 0.8p,black 0.9c junction of a removed tributary")
     if rows:
         fig.legend(spec=_io.StringIO("\n".join(rows)), position=legend_position,
                    box="+gwhite@20+p0.5p,black")

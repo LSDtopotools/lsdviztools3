@@ -147,8 +147,8 @@ def parse_basins(text):
         raise SystemExit(f"--basins {text!r}: give comma-separated basin_index values, e.g. 3,7,12")
 
 
-def parse_gradient_inset(text):
-    """``--ksn-gradient-inset`` value: ``"auto"`` or ``"20,50,150"`` (k_sn)."""
+def parse_gradient_key(text):
+    """``--ksn-gradient-key`` value: ``"auto"`` or ``"20,50,150"`` (k_sn)."""
     if text is None:
         return None
     if str(text).strip().lower() == "auto":
@@ -158,12 +158,12 @@ def parse_gradient_inset(text):
     except ValueError:
         ks = []
     if not ks or any(k <= 0 for k in ks):
-        raise SystemExit(f"--ksn-gradient-inset {text!r}: give auto or positive k_sn values, e.g. 20,50,150")
+        raise SystemExit(f"--ksn-gradient-key {text!r}: give auto or positive k_sn values, e.g. 20,50,150")
     return ks
 
 
 def add_profile_layout_args(parser: argparse.ArgumentParser, *, basins: bool = True) -> None:
-    """``--basins``, ``--basins-per-row``, ``--ksn-gradient-inset`` and its corner."""
+    """``--basins``, ``--basins-per-row`` and ``--ksn-gradient-key``."""
     g = parser.add_argument_group("chi profile layout")
     if basins:
         g.add_argument("--basins", default=None,
@@ -171,10 +171,9 @@ def add_profile_layout_args(parser: argparse.ArgumentParser, *, basins: bool = T
     g.add_argument("--basins-per-row", type=int, default=None,
                    help="Wrap the stacked chi plot onto rows of at most this many basins (e.g. 5 with "
                         "9 basins: rows of 5 and 4). Rows share the chi and elevation scales.")
-    g.add_argument("--ksn-gradient-inset", nargs="?", const="auto", default=None, metavar="K1,K2,K3",
-                   help="Add a key showing the chi-elevation gradient of a few k_sn values at the plot's "
-                        "scale. Without values: the 10th, 50th and 90th percentiles of the plotted k_sn.")
-    g.add_argument("--gradient-inset-loc", default="auto",
-                   choices=["auto", "upper left", "upper right", "lower left", "lower right"],
-                   help="Corner of the gradient key: auto (default) picks the corner, of any row, "
-                        "with the least drawn in it.")
+    g.add_argument("--ksn-gradient-key", "--ksn-gradient-inset", dest="ksn_gradient_key",
+                   nargs="?", const="auto", default=None, metavar="K1,K2,K3",
+                   help="Add a key of chi-elevation gradients for a few k_sn values, drawn as an extra "
+                        "profile after the last basin, at the plot's scale. Without values: the 10th, "
+                        "50th and 90th percentiles of the plotted k_sn, rounded to one significant "
+                        "figure (e.g. 10, 90, 200).")

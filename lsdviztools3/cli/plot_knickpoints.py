@@ -22,7 +22,7 @@ from pathlib import Path
 
 from . import _common
 from ._chi_common import (add_ksn_class_basis_arg, add_profile_layout_args, add_tributary_selection_args,
-                          ksn_classes_from_args, mn_suffix, parse_basins, parse_gradient_inset,
+                          ksn_classes_from_args, mn_suffix, parse_basins, parse_gradient_key,
                           tributary_selection_from_args)
 
 
@@ -132,8 +132,7 @@ def main(argv=None) -> int:
                                          vmax=args.ksn_vmax, threshold_label=label,
                                          classes=ksn_classes, basins=parse_basins(args.basins),
                                          basins_per_row=args.basins_per_row,
-                                         gradient_inset=parse_gradient_inset(args.ksn_gradient_inset),
-                                         gradient_inset_loc=args.gradient_inset_loc)
+                                         gradient_key=parse_gradient_key(args.ksn_gradient_key))
     written.append(out_dir / (f"{stem}_knickpoint_profile_basin{args.basin}.png" if args.basin is not None
                               else f"{stem}_knickpoint_profile.png"))
     fig.savefig(written[-1], dpi=args.dpi, bbox_inches="tight")

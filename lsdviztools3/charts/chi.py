@@ -239,142 +239,76 @@ def stack_rows(
 
 
 def reference_ksn(values, n: int = 3) -> list:
-    """``n`` k_sn values spanning the data for a gradient inset: the 10th,
-    50th and 90th percentiles (for ``n = 3``) rounded to 2 significant figures."""
+    """``n`` round k_sn values spanning the data for a gradient key: the 10th,
+    50th and 90th percentiles (for ``n = 3``) to one significant figure
+    (:func:`round_ksn`: 13 -> 10, 87 -> 90, 217 -> 200), repeats dropped."""
     v = np.asarray(values, dtype=float)
     v = v[np.isfinite(v) & (v > 0)]
     if v.size == 0:
         return []
     out = []
     for q in np.linspace(10, 90, n):
-        x = float(np.percentile(v, q))
-        x = float(f"{x:.2g}")
+        x = round_ksn(float(np.percentile(v, q)))
         if x > 0 and x not in out:
             out.append(x)
     return out
 
 
-#: Corners for :func:`add_gradient_inset`; ``"auto"`` picks the emptiest.
-INSET_CORNERS = ("upper left", "upper right", "lower left", "lower right")
+def round_ksn(x: float) -> float:
+    """``x`` to one significant figure: 13 -> 10, 87 -> 90, 217 -> 200."""
+    x = float(x)
+    if not (np.isfinite(x) and x > 0):
+        return x
+    e = 10.0 ** np.floor(np.log10(x))
+    return float(np.round(x / e) * e)
 
 
-def _inset_fractions(ax, size, pad, loc):
-    """(x0, y0, wf, hf) of an inset of ``size`` inches in corner ``loc``, in axes fraction."""
-    bbox = ax.get_position()
-    fw, fh = ax.figure.get_size_inches()
-    wf = min(0.45, size[0] / (bbox.width * fw))
-    hf = min(0.45, size[1] / (bbox.height * fh))
-    x0 = pad if "left" in loc else 1 - pad - wf
-    y0 = 1 - pad - hf if "upper" in loc else pad
-    return x0, y0, wf, hf
+def add_gradient_key(ax, ksn_values, *, x0: float, width: float, y0: float, y1: float,
+                     label_size: float = 7):
+    """A key of chi-elevation gradients drawn as an extra "profile" on ``ax``.
 
-
-def _plotted_points(ax) -> np.ndarray:
-    """Points (axes fraction) of what is drawn on ``ax``: scatter offsets,
-    line vertices, line-collection segments (sampled along them) and texts."""
-    from matplotlib.collections import LineCollection, PathCollection
-
-    pts = []
-    for c in ax.collections:
-        if isinstance(c, LineCollection):
-            for seg in c.get_segments():
-                seg = np.asarray(seg, dtype=float)
-                if len(seg) >= 2:
-                    t = np.linspace(0, 1, 6)[:, None]
-                    pts.append(seg[0] + t * (seg[-1] - seg[0]))
-        elif isinstance(c, PathCollection):
-            pts.append(np.asarray(c.get_offsets(), dtype=float))
-    for ln in ax.lines:
-        pts.append(np.asarray(ln.get_xydata(), dtype=float))
-    for t in ax.texts:
-        pts.append(np.atleast_2d(np.asarray(t.get_position(), dtype=float)))
-    if not pts:
-        return np.empty((0, 2))
-    xy = np.concatenate([p.reshape(-1, 2) for p in pts])
-    return ax.transLimits.transform(xy[np.all(np.isfinite(xy), axis=1)])
-
-
-def best_inset_spot(axes, size=(1.3, 1.0), pad: float = 0.02):
-    """``(ax, corner)``: the corner, over all ``axes`` (e.g. the rows of a
-    stacked plot), whose inset area covers the fewest plotted points (ties go
-    to the first row, then the order of :data:`INSET_CORNERS`)."""
-    best = None
-    for a in axes:
-        xy = _plotted_points(a)
-        for loc in INSET_CORNERS:
-            x0, y0, wf, hf = _inset_fractions(a, size, pad, loc)
-            m = 0.03
-            n = int(np.sum((xy[:, 0] > x0 - m) & (xy[:, 0] < x0 + wf + m)
-                           & (xy[:, 1] > y0 - m) & (xy[:, 1] < y0 + hf + m)))
-            if best is None or n < best[0]:
-                best = (n, a, loc)
-    return best[1], best[2]
-
-
-def add_gradient_inset(ax, ksn_values, *, loc: str = "auto", size=(1.3, 1.0), pad: float = 0.02):
-    """A key of chi-elevation gradients: one line per k_sn value, at the same
-    scale as ``ax``.
-
-    In chi-elevation space a channel's slope is its k_sn (dz/dchi, with the
-    reference area of the chi run), so the key shows how steep a segment with
-    each k_sn looks on this plot. The inset takes ``size`` (inches) in a
-    corner (``loc``: one of :data:`INSET_CORNERS`, or ``"auto"`` for the
-    corner covering the fewest plotted points), and its axis ranges are the
-    same fractions of ``ax``'s ranges, so the scales match. ``ax`` may be a
-    list of axes sharing their scales (the rows of a stacked plot): ``"auto"``
-    then searches every row's corners, a named corner uses the first row.
-    Call it after the limits are final (it freezes them).
+    In chi-elevation space a channel's slope is its k_sn (dz/dchi), so a line
+    of slope k_sn shows how steep a segment with that k_sn looks on the plot.
+    The lines are drawn in ``ax``'s own data coordinates, from
+    ``(x0, y0)``, at most ``width`` long in chi and no higher than ``y1``;
+    they are therefore at exactly the plot's scale whatever its size. The
+    steepest line may rise to 86% of the way to ``y1``, each gentler one stops
+    a little lower, so their labels do not stack; a ``k_sn key`` heading sits
+    above them, and the axes' data limits are widened for the labels.
 
     Returns:
-        The inset ``Axes``.
+        The list of drawn ``Line2D``.
     """
-    ksn = [float(k) for k in ksn_values if np.isfinite(k) and k > 0]
-    if not ksn:
-        raise ValueError("give at least one positive k_sn for the gradient inset")
-    for a in np.atleast_1d(ax):
-        a.set_autoscale_on(False)
-    if loc == "auto":
-        ax, loc = best_inset_spot(list(np.atleast_1d(ax)), size, pad)
-    elif loc not in INSET_CORNERS:
-        raise ValueError(f"loc must be 'auto' or one of {INSET_CORNERS}, got {loc!r}")
-    else:
-        ax = np.atleast_1d(ax)[0]
-    x0, y0, wf, hf = _inset_fractions(ax, size, pad, loc)
-    (xa, xb), (ya, yb) = ax.get_xlim(), ax.get_ylim()
-    w, h = wf * (xb - xa), hf * (yb - ya)
-    ins = ax.inset_axes([x0, y0, wf, hf])
-    ins.set_xlim(0, w)
-    ins.set_ylim(0, h)
-    ins.set_xticks([])
-    ins.set_yticks([])
-    ins.set_facecolor("white")
-    for sp in ins.spines.values():
-        sp.set_linewidth(0.6)
-        sp.set_color("0.4")
-    # origin inset a little so the labels fit; lines run to the right/top edge
-    ox, oy = 0.08 * w, 0.08 * h
-    for k in sorted(ksn):
-        run = 0.58 * w
-        if oy + k * run > 0.76 * h:
-            run = (0.76 * h - oy) / k
-        x1, y1 = ox + run, oy + k * run
-        ins.plot([ox, x1], [oy, y1], color="#3d3d3a", linewidth=1.2, solid_capstyle="round")
-        ins.text(x1 + 0.02 * w, y1, f"{k:g}", fontsize=7, color="#3d3d3a", va="center", ha="left")
-    ins.text(0.96 * w, 0.96 * h, r"$k_{sn}$ (dz/d$\chi$)", fontsize=7, color="#3d3d3a",
-             ha="right", va="top")
-    return ins
+    ks = sorted({float(k) for k in ksn_values if np.isfinite(k) and k > 0}, reverse=True)
+    if not ks:
+        raise ValueError("give at least one positive k_sn for the gradient key")
+    height = max(y1 - y0, 1e-9)
+    lines = []
+    tops = []
+    for rank, k in enumerate(ks):
+        top = y0 + height * (0.86 - 0.13 * rank)
+        run = width
+        if y0 + k * run > top:
+            run = (top - y0) / k
+        xe, ye = x0 + run, y0 + k * run
+        lines += ax.plot([x0, xe], [y0, ye], color="#3d3d3a", linewidth=1.3,
+                         solid_capstyle="round", zorder=3)
+        ax.annotate(f"{k:g}", (xe, ye), xytext=(3, 0), textcoords="offset points",
+                    fontsize=label_size, color="#3d3d3a", va="center", ha="left")
+        tops.append(ye)
+    ax.annotate(r"$k_{sn}$ key", (x0, max(tops)), xytext=(0, 8), textcoords="offset points",
+                fontsize=label_size, color="#3d3d3a", ha="left", va="bottom")
+    # room for the labels to the right of the longest line
+    ax.update_datalim([(x0 + 1.3 * width, y0)])
+    return lines
 
 
-def _gradient_inset(ax, gradient_inset, values, loc):
-    """Draw the inset for a ``gradient_inset`` argument (False/None, True or
-    ``"auto"`` for :func:`reference_ksn` of ``values``, or a list of k_sn)."""
-    if gradient_inset is None or gradient_inset is False:
-        return None
-    if gradient_inset is True or (isinstance(gradient_inset, str) and gradient_inset == "auto"):
-        ks = reference_ksn(values)
-    else:
-        ks = list(gradient_inset)
-    return add_gradient_inset(ax, ks, loc=loc) if ks else None
+def _key_values(gradient_key, values):
+    """k_sn values for a ``gradient_key`` argument: ``True`` / ``"auto"`` for
+    :func:`reference_ksn` of ``values``; a list is used as given."""
+    if gradient_key is True or (isinstance(gradient_key, str) and gradient_key == "auto"):
+        return reference_ksn(values)
+    return [float(k) for k in gradient_key]
 
 
 def plot_chi_profile(
@@ -396,8 +330,7 @@ def plot_chi_profile(
     removed: Optional[pd.DataFrame] = None,
     show_removed: str = "ghost",
     classes=None,
-    gradient_inset=None,
-    gradient_inset_loc: str = "auto",
+    gradient_key=None,
 ):
     """Plot a single basin's chi-elevation profile.
 
@@ -437,12 +370,11 @@ def plot_chi_profile(
             :func:`lsdviztools3.charts.ksn_distribution.ksn_colour_classes`,
             so the profiles match a classed map). ``vmin`` / ``vmax`` and
             ``log_color`` are then unused; the colourbar shows the classes.
-        gradient_inset: Add a key of chi-elevation gradients at the plot's
-            scale (:func:`add_gradient_inset`): ``True`` / ``"auto"`` for
-            the 10th, 50th and 90th percentiles of the plotted k_sn, or a list
-            of k_sn values; ``None`` (default) for none.
-        gradient_inset_loc: Its corner, one of :data:`INSET_CORNERS`, or
-            ``"auto"`` (default) for the emptiest corner (of any row).
+        gradient_key: Add a key of chi-elevation gradients, drawn as an
+            extra profile to the right of the data at exactly the plot's scale
+            (:func:`add_gradient_key`): ``True`` / ``"auto"`` for the 10th,
+            50th and 90th percentiles of the plotted k_sn rounded to one
+            significant figure, or a list of k_sn; ``None`` (default) for none.
 
     Returns:
         ``(fig, ax)``.
@@ -497,9 +429,16 @@ def plot_chi_profile(
     ax.set_title(f"Basin {basin}")
     if colorbar and mappable is not None:
         _add_colorbar(fig, ax, mappable, color_by, log_color, extend, classes)
-    if gradient_inset is not None and gradient_inset is not False:
-        ax.autoscale_view()
-        _gradient_inset(ax, gradient_inset, rows[color_by].to_numpy(dtype=float), gradient_inset_loc)
+    if gradient_key is not None and gradient_key is not False:
+        ks = _key_values(gradient_key, rows[color_by].to_numpy(dtype=float))
+        if ks:
+            lo, hi = _basin_chi_bounds(rows, segments)
+            zcol = ("downstream_elevation", "upstream_elevation") if segments else ("observed_elevation",)
+            z = np.concatenate([rows[c].to_numpy(dtype=float) for c in zcol])
+            span = (hi - lo) or 1.0
+            add_gradient_key(ax, ks, x0=hi + 0.12 * span, width=0.35 * span,
+                             y0=float(np.nanmin(z)), y1=float(np.nanmax(z)))
+            ax.autoscale_view()
     return fig, ax
 
 
@@ -526,8 +465,7 @@ def plot_chi_stacked(
     classes=None,
     basins_per_row: Optional[int] = None,
     row_height: float = 3.2,
-    gradient_inset=None,
-    gradient_inset_loc: str = "auto",
+    gradient_key=None,
 ):
     """Stacked chi-elevation plot: basins normalised to chi=0 and offset right.
 
@@ -572,14 +510,13 @@ def plot_chi_stacked(
             share the chi and elevation scales and one colourbar. ``None``
             (default): one row. Not with ``ax``.
         row_height: Height of each row in inches (default 3.2).
-        gradient_inset: Add a key of chi-elevation gradients at the plot's
-            scale (:func:`add_gradient_inset`): ``True`` / ``"auto"`` for
-            the 10th, 50th and 90th percentiles of the plotted k_sn, or a list
-            of k_sn values; ``None`` (default) for none.
-        gradient_inset_loc: Its corner, one of :data:`INSET_CORNERS`, or
-            ``"auto"`` (default) for the emptiest corner (of any row).
-            On a multi-row plot the scales are shared, so it holds for every
-            row wherever it goes.
+        gradient_key: Add a key of chi-elevation gradients, drawn as an
+            extra profile to the right of the data at exactly the plot's scale
+            (:func:`add_gradient_key`): ``True`` / ``"auto"`` for the 10th,
+            50th and 90th percentiles of the plotted k_sn rounded to one
+            significant figure, or a list of k_sn; ``None`` (default) for none.
+            On a multi-row plot it follows the last basin of the last row;
+            the rows share their scales, so it holds for every row.
 
     Returns:
         ``(fig, ax)``; with more than one row, ``ax`` is the array of row axes
@@ -625,15 +562,34 @@ def plot_chi_stacked(
                             LineCollection=LineCollection)
         mappable = m if m is not None else mappable
         row_ax.set_ylabel("Elevation (m)")
+    if gradient_key is not None and gradient_key is not False:
+        ks = _key_values(gradient_key, sel[color_by].to_numpy(dtype=float))
+        if ks:
+            _gradient_key_on_stack(axes[-1], data[data["basin_index"].isin(basins)], layout[-1],
+                                   ks, segments)
     _share_limits(axes)
     axes[-1].set_xlabel(r"$\chi$ (m, offset per basin)")
     if colorbar and mappable is not None:
         _add_colorbar(fig, axes if len(axes) > 1 else axes[0], mappable, color_by, log_color,
                       extend, classes, max_height=max(row_height, 3.0) if len(axes) > 1 else None)
-    if gradient_inset is not None and gradient_inset is not False:
-        _gradient_inset(axes, gradient_inset, sel[color_by].to_numpy(dtype=float),
-                        gradient_inset_loc)
     return fig, (axes[0] if len(axes) == 1 else np.array(axes))
+
+
+def _gradient_key_on_stack(ax, data, shifts, ks, segments):
+    """The gradient key as an extra profile after the last basin of a row,
+    spaced like the basins and spanning the elevations of the whole plot."""
+    widths, ends = [], []
+    for b, shift in shifts.items():
+        lo, hi = _basin_chi_bounds(data[data["basin_index"] == b], segments)
+        widths.append(hi - lo)
+        ends.append(hi + shift)
+    allw = [np.subtract(*_basin_chi_bounds(data[data["basin_index"] == b], segments)[::-1])
+            for b in data["basin_index"].unique()]
+    wmax = max(allw) if allw else 1.0
+    zcol = ("downstream_elevation", "upstream_elevation") if segments else ("observed_elevation",)
+    z = np.concatenate([data[c].to_numpy(dtype=float) for c in zcol])
+    x0 = (max(ends) if ends else 0.0) + 0.2 * wmax
+    add_gradient_key(ax, ks, x0=x0, width=0.5 * wmax, y0=float(np.nanmin(z)), y1=float(np.nanmax(z)))
 
 
 def _share_limits(axes, margin: float = 0.05):

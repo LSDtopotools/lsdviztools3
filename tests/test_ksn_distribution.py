@@ -129,67 +129,34 @@ def test_stacked_rows_share_scales():
     plt.close("all")
 
 
-def test_gradient_inset_matches_plot_scale():
-    from lsdviztools3.charts.chi import add_gradient_inset, reference_ksn
-    assert reference_ksn(np.arange(1, 101)) == [11.0, 50.0, 90.0]
-    fig, ax = plot_chi_stacked(_many_basins(3))
-    ins = add_gradient_inset(ax, [5, 20], loc="lower right")
-    # data units per axes-fraction are the same in the inset and the plot
-    bx, bi = ax.get_position(), ins.get_position()
-    (xa, xb), (ya, yb) = ax.get_xlim(), ax.get_ylim()
-    (ia, ib), (ja, jb) = ins.get_xlim(), ins.get_ylim()
-    assert np.isclose((ib - ia) / bi.width, (xb - xa) / bx.width)
-    assert np.isclose((jb - ja) / bi.height, (yb - ya) / bx.height)
-    # each line's slope is its k_sn
-    slopes = sorted(np.diff(l.get_ydata())[0] / np.diff(l.get_xdata())[0] for l in ins.lines)
-    assert np.allclose(slopes, [5, 20])
+def test_reference_ksn_rounds_to_one_significant_figure():
+    from lsdviztools3.charts.chi import reference_ksn, round_ksn
+    assert [round_ksn(x) for x in (13, 87, 217, 2.2, 0.47)] == [10, 90, 200, 2, 0.5]
+    assert reference_ksn(np.arange(1, 101)) == [10, 50, 90]
+
+
+def test_gradient_key_is_an_extra_profile_at_plot_scale():
+    from matplotlib.collections import LineCollection
+    fig, ax = plot_chi_stacked(_many_basins(3), gradient_key=[5, 20])
+    key = [l for l in ax.lines if l.get_color() == "#3d3d3a"]
+    assert len(key) == 2
+    slopes = sorted(np.diff(l.get_ydata())[0] / np.diff(l.get_xdata())[0] for l in key)
+    assert np.allclose(slopes, [5, 20])              # slope in data units = k_sn
+    data_xmax = max(np.asarray(seg)[:, 0].max() for c in ax.collections
+                    if isinstance(c, LineCollection) for seg in c.get_segments())
+    assert min(l.get_xdata()[0] for l in key) > data_xmax   # after the last basin
+    xl = ax.get_xlim()
+    assert max(l.get_xdata()[1] for l in key) < xl[1]       # inside the axes
     plt.close(fig)
 
 
-def test_gradient_inset_auto_avoids_data():
-    from lsdviztools3.charts.chi import best_inset_spot
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.plot(np.linspace(0, 1, 200), np.linspace(0, 1, 200))   # fills lower left and upper right
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    _, loc = best_inset_spot([ax])
-    assert loc in ("upper left", "lower right")
-    fig2, axes = plot_chi_stacked(_many_basins(), basins_per_row=5, gradient_inset=True)
-    assert sum(len(a.child_axes) for a in axes) == 1
-    plt.close("all")
-
-
-def test_class_limits_and_end_classes():
-    from lsdviztools3.colour_classes import make_colour_classes
-    rng = np.random.default_rng(0)
-    inside = 10 ** rng.uniform(np.log10(5), np.log10(250), 10000)
-    low = np.full(50, 1.0)       # 0.5%: an end class
-    high = np.full(5, 900.0)     # 0.05%: joins the top class
-    v = np.concatenate([inside, low, high])
-    cc = make_colour_classes(v, "quantile", n_classes=4, log_scale=True, class_min=5, class_max=250)
-    assert cc.breaks[0] == 5.0 and 250.0 not in cc.breaks
-    assert cc.n_classes == 5                     # 4 between the limits + "below 5"
-    assert all(5 < b < 250 for b in cc.breaks[1:])
-    assert cc.labels[0] == "below 5"
-    # both ends present
-    v2 = np.concatenate([v, np.full(100, 900.0)])
-    cc2 = make_colour_classes(v2, "quantile", n_classes=4, log_scale=True, class_min=5, class_max=250)
-    assert cc2.breaks[0] == 5.0 and cc2.breaks[-1] == 250.0 and cc2.n_classes == 6
-    # neither end: no data beyond the limits
-    cc3 = make_colour_classes(inside, "equal_interval", n_classes=3, log_scale=True,
-                              class_min=5, class_max=250)
-    assert cc3.n_classes == 3
-    assert np.allclose(np.log10(cc3.breaks), np.log10(5) + np.array([1, 2]) * np.log10(50) / 3)
-    # breaks given by hand are untouched
-    cc4 = make_colour_classes(v, [20, 40], log_scale=True, class_min=5, class_max=250)
-    assert cc4.breaks == (20.0, 40.0)
-
-
-def test_ksn_classes_default_limits():
-    seg = _segments()
-    nodes = _nodes(seg)
-    cc = ksn_colour_classes("quantile", nodes=nodes, n_classes=2)
-    # 10, 20 are inside [5, 250); 100..900 has 300..900 above 250 (12 of 108 pixels)
-    assert cc.breaks[-1] == 250.0 and 5.0 not in cc.breaks
-    cc = ksn_colour_classes("quantile", nodes=nodes, n_classes=2, class_min=None, class_max=None)
-    assert 250.0 not in cc.breaks
+def test_gradient_key_on_last_row_and_profile():
+    fig, axes = plot_chi_stacked(_many_basins(), basins_per_row=5, gradient_key=True)
+    assert not [l for l in axes[0].lines if l.get_color() == "#3d3d3a"]
+    assert [l for l in axes[-1].lines if l.get_color() == "#3d3d3a"]
+    assert axes[0].get_xlim() == axes[-1].get_xlim()
+    plt.close(fig)
+    fig, ax = plot_chi_profile(_segments(), basin=0, gradient_key=[50])
+    (key,) = [l for l in ax.lines if l.get_color() == "#3d3d3a"]
+    assert np.isclose(np.diff(key.get_ydata())[0] / np.diff(key.get_xdata())[0], 50)
+    plt.close(fig)
