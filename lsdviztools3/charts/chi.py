@@ -565,8 +565,7 @@ def plot_chi_stacked(
     if gradient_key is not None and gradient_key is not False:
         ks = _key_values(gradient_key, sel[color_by].to_numpy(dtype=float))
         if ks:
-            _gradient_key_on_stack(axes[-1], data[data["basin_index"].isin(basins)], layout[-1],
-                                   ks, segments)
+            _gradient_key_on_stack(axes[-1], sel, layout[-1], ks, segments)
     _share_limits(axes)
     axes[-1].set_xlabel(r"$\chi$ (m, offset per basin)")
     if colorbar and mappable is not None:
