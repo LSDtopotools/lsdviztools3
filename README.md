@@ -29,6 +29,10 @@ channel networks, lithology, valleys, hillslopes, landscape evolution,
 cosmogenic nuclides, spectral analysis) plus a command reference. This README covers install
 and the most basic usage only.
 
+**Examples: <https://github.com/LSDtopotools/lsdtt3_notebooks>** — worked
+examples of lsdtt3 and lsdviztools3 together on real landscapes, as notebooks
+you can run in Google Colab without installing anything.
+
 ## Design at a glance
 
 - **Backend-agnostic IO/data core** (`lsdviztools3.io`): rioxarray/xarray,

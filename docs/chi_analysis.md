@@ -26,10 +26,16 @@ pixi run lsdviz3-chi --data-dir work/eigg --prefix eigg --m-over-n 0.45 \
 | `--no-stacked` | Skip the stacked plot. |
 | `--cmap`, `--coordinates`, `--dpi` | k_sn colour map (default `viridis`), map coordinates, profile DPI. |
 | `--ksn-vmin`, `--ksn-vmax` | The k_sn colour range, **in k_sn units** (see below). Default: the data's range. |
-| `--ksn-classes`, `--n-classes`, `--class-colors`, `--class-color-mode` | Colour the map's k_sn in classes, with a class legend instead of the colourbar (see [Colouring k_sn in classes](#colouring-k_sn-in-classes)). |
+| `--ksn-classes`, `--n-classes`, `--class-colors`, `--class-color-mode` | Colour k_sn on the map and the chi profiles in classes, with a class legend instead of the colourbar (see [Colouring k_sn in classes](#colouring-k_sn-in-classes)). |
+| `--ksn-class-basis pixels\|segments` | Which k_sn distribution a class scheme is found in (see [k_sn distributions](#k_sn-distributions)). Default `pixels`. |
+| `--ksn-class-min`, `--ksn-class-max` | A class scheme finds its breaks only between these k_sn (defaults 5 and 250); see [Colouring k_sn in classes](#colouring-k_sn-in-classes). `none` for no limit. |
+| `--basins 37,2,5` | Plot only these basins (by `basin_index`), in this order. |
+| `--basins-per-row N` | Wrap the stacked plot onto rows of at most N basins (see [Stacked plot layout](#stacked-plot-layout)). |
+| `--ksn-gradient-key [K1,K2,K3]` | Add a key of chi–elevation gradients for a few k_sn values, drawn as an extra profile after the last basin, at the plot's scale. |
+| `--no-ksn-distribution` | Skip the k_sn distribution plot. |
 
-It writes `<prefix>_ksn_map.png`, `<prefix>_chi_stacked.png` and
-`<prefix>_chi_profile_basin<N>.png`. The sections below describe the plots
+It writes `<prefix>_ksn_distribution.png`, `<prefix>_ksn_map.png`,
+`<prefix>_chi_stacked.png` and `<prefix>_chi_profile_basin<N>.png`. The sections below describe the plots
 and the Python functions behind them.
 
 ### Setting the k_sn colour range
@@ -61,21 +67,102 @@ they are `ksn_vmin=` / `ksn_vmax=`. All of them take k_sn units.
 
 ### Colouring k_sn in classes
 
-`--ksn-classes` colours the k_sn map in classes, with a legend of the classes
-instead of the colourbar: give the breaks in k_sn units (`--ksn-classes
+`--ksn-classes` colours k_sn in classes on the map and on the chi profiles
+(the same classes on both), with a legend of the classes instead of the
+colourbar, and draws the class breaks on the k_sn distribution plot: give the breaks in k_sn units (`--ksn-classes
 20,50,100,200` makes five classes), or a scheme, `equal_interval`, `quantile`
 or `natural_breaks` (`jenks`), with `--n-classes`. The schemes work in log10
 k_sn, so `equal_interval` gives classes of equal ratio. `--ksn-vmin` and
 `--ksn-vmax` set the ends of the colour gradient (each class takes the colour
 at its centre) and the range the schemes use. `--class-colors` gives one
 colour per class, and a qualitative `--cmap` (`tab10`, `Set1`, ...) gives
-distinct colours. The same options work on the map of `lsdviz3-knickpoints`.
+distinct colours. The same options work on the map and profile of `lsdviz3-knickpoints`.
 The details are in [Colouring in classes](basic_plots.md#colouring-in-classes).
+
+A scheme finds its `--n-classes` classes only between `--ksn-class-min` and
+`--ksn-class-max` (k_sn 5 and 250 by default), so a few very low or very high
+values cannot pull the breaks. Each limit is also a break: values below 5 and
+values of 250 and above are classes of their own (so up to `--n-classes` + 2
+classes), but only when at least 0.1% of the samples fall there; otherwise
+they join the class next to them. `none` turns a limit off. Breaks given by
+hand are used as they are. In Python: `ksn_colour_classes(...,
+class_min=5, class_max=250)`, or `make_colour_classes(..., class_min=,
+class_max=, min_end_fraction=0.001)` for any values.
 
 ```bash
 pixi run lsdviz3-chi --data-dir . --prefix salmon_ksn --m-over-n 0.45 \
   --dem salmon_DEM.tif --out-dir . --ksn-classes natural_breaks --n-classes 5
 ```
+
+### k_sn distributions
+
+`<prefix>_ksn_distribution.png` shows the k_sn of the plotted channels (the
+removed tributaries are left out) sampled two ways, side by side on one
+log10 k_sn axis:
+
+- **channel pixels**: every channel node with a k_sn is one sample, so a
+  segment counts in proportion to its length (how much of the network is
+  steep);
+- **fitted segments**: every segment is one sample, whatever its length (how
+  many steep reaches the fit found).
+
+Each is a histogram (probability density per log10 unit) with its median.
+Bars take the map's colours. With `--ksn-classes` the bars take their class
+colour, the breaks are drawn on both panels, and the panel the classes were
+found in is marked. `--ksn-class-basis pixels` (the default) finds the
+scheme's breaks in the pixel distribution, `segments` in the segment one;
+breaks given by hand are used as they are.
+
+```bash
+pixi run lsdviz3-chi --data-dir . --prefix wvvr --m-over-n 0.45 --dem wvfront_DEM.tif \
+  --out-dir . --longest-channels 3 --ksn-classes natural_breaks --ksn-class-basis pixels
+```
+
+In Python, find the classes once and pass them to every plot:
+
+```python
+from lsdviztools3.io.chi import load_chi_fit, load_chi_fit_segments
+from lsdviztools3.charts.ksn_distribution import ksn_colour_classes, plot_ksn_distributions
+from lsdviztools3.charts import plot_chi_stacked
+from lsdviztools3.workflows import render_chi_ksn_map
+
+segments = load_chi_fit_segments("wvvr_chi_fit_segments_mn_0p450.csv")
+nodes = load_chi_fit("wvvr_chi_fit_nodes_mn_0p450.csv", "wvvr_chi_fit_segments_mn_0p450.csv")
+cc = ksn_colour_classes("natural_breaks", nodes=nodes, basis="pixels", removed=removed)
+plot_ksn_distributions(segments, nodes, removed=removed, classes=cc, class_basis="pixels")
+plot_chi_stacked(segments, removed=removed, classes=cc)
+render_chi_ksn_map("wvfront_DEM.tif", "wvvr_chi_fit_segment_lines_mn_0p450.fgb", "ksn_map.png",
+                   removed=removed, ksn_classes=cc)
+```
+
+### Stacked plot layout
+
+With many basins the stacked plot becomes one very long row. `--basins`
+picks the basins (and their order), and `--basins-per-row N` wraps them onto
+rows of at most N: 9 basins at 5 per row give rows of 5 and 4. All rows share
+the same chi and elevation scales (so slopes compare across rows) and one
+colourbar, kept to about one row's height at the top.
+
+`--ksn-gradient-key` adds a key of chi–elevation gradients. In chi–elevation
+space a segment's slope is its k_sn, so the key draws a line of slope k_sn for
+each of three values. It is drawn as an extra "profile" after the last basin
+(of the last row), in the plot's own coordinates, so it is at exactly the
+plot's scale: a segment parallel to the "50" line has k_sn 50. Without values
+it uses the 10th, 50th and 90th percentiles of the plotted k_sn, rounded to
+one significant figure (13 → 10, 87 → 90, 217 → 200); or give them,
+`--ksn-gradient-key 10,50,200`. The same option works on the
+`lsdviz3-knickpoints` profile.
+
+```bash
+pixi run lsdviz3-chi --data-dir . --prefix wvvr --m-over-n 0.45 --out-dir . \
+  --longest-channels 3 --basins 37,2,5,10,14,20,25,30,41 --basins-per-row 5 \
+  --ksn-gradient-key
+```
+
+In Python: `plot_chi_stacked(segments, basins=[...], basins_per_row=5,
+gradient_key=True)` (or `gradient_key=[10, 50, 200]`); with more than one
+row it returns the array of row axes. `add_gradient_key(ax, [10, 50, 200],
+x0=, width=, y0=, y1=)` draws the key on any chi–elevation axes.
 
 ### Removing tributaries
 
@@ -100,6 +187,7 @@ never removed:
 | `--min-tributary-area-m2 A` | its drainage area where it joins is below A. |
 | `--min-tributary-area-fraction F` | that area is below F of its basin's. |
 | `--top-tributaries N` | it is not among the N largest tributaries of its basin. |
+| `--longest-channels X` | it is not among the X longest channels of its basin, counting the main stem: `1` keeps only the main stem, `3` the main stem and its two longest tributaries. Length is `length_m` (flow length, head to junction). Applied after the other rules, and a tributary is only picked once the branch it drains into has been, so the kept channels are one connected network. |
 | `--keep-descendants` | (turns off) removing the tributaries that drain into a removed one, which is the default. |
 | `--show-removed ghost\|hide` | how removed tributaries appear on the profiles: thin and light grey (default), or not at all. |
 
@@ -112,11 +200,11 @@ pixi run lsdviz3-chi --data-dir work/eigg --prefix eigg --m-over-n 0.45 \
 With any of these flags the command also writes:
 - `<prefix>_removed_tributaries.csv`: the removed rows of the tributary
   table, with a `reason` column (`ksn_outlier`, `small_area`,
-  `small_fraction`, `rank` or `drains_to_removed`; the first rule that
+  `small_fraction`, `rank`, `length_rank` or `drains_to_removed`; the first rule that
   applied, in that order);
 - with `--dem`, `<prefix>_removed_tributaries_map.png`: the kept network
   coloured by k_sn, each removed tributary dashed in its reason's style,
-  junctions of removed tributaries as open circles, and a legend with counts.
+  and a legend with counts.
 
 The k_sn map and the profiles then show only the kept tributaries. Their
 colour range is taken from the kept ones, so removing a few dam-routed links
@@ -133,11 +221,18 @@ segments = load_chi_fit_segments("eigg_chi_fit_segments_mn_0p450.csv")
 kept, removed = select_tributaries(load_chi_tributaries("eigg_chi_tributaries_mn_0p450.csv"),
                                    ksn_max=800, min_area_fraction=0.01)
 fig, ax = plot_chi_stacked(segments, removed=removed, show_removed="ghost")
+
+# just the main stem and the two longest tributaries of each basin
+kept, removed = select_tributaries(load_chi_tributaries("eigg_chi_tributaries_mn_0p450.csv"),
+                                   longest_channels=3)
 ```
 
 `removed=` is accepted by `plot_chi_profile`, `plot_chi_stacked`,
-`render_chi_ksn_map` and `render_chi_profiles`, and `render_chi_removed_map`
-draws the map. Selection only chooses what is drawn: the chi fit is not
+`render_chi_ksn_map`, `render_chi_profiles`, `plot_ksn_distributions` and the
+knickpoint functions, and `render_chi_removed_map` draws the removed ones.
+With `--dem`, `lsdviz3-chi` maps only the kept channels
+(`<prefix>_ksn_map.png`) and the removed ones by reason
+(`<prefix>_removed_tributaries_map.png`). Selection only chooses what is drawn: the chi fit is not
 redone without the removed tributaries.
 ## Knickpoints (`lsdviz3-knickpoints`)
 
@@ -171,8 +266,8 @@ pixi run lsdviz3-knickpoints --data-dir work/eigg --prefix eigg --m-over-n 0.45 
 | `--along chi\|chi_normalised\|elevation` | x axis of the along-chi plot. |
 | `--basin N` | One basin's profile instead of the stacked plot. |
 | `--ksn-vmin`, `--ksn-vmax`, `--cmap` | The k_sn colours of the profile and map, as `lsdviz3-chi`. |
-| `--ksn-classes`, `--n-classes`, `--class-colors`, `--class-color-mode` | The map's k_sn network in classes, as `lsdviz3-chi`. |
-| tributary flags | `--remove-ksn-above`, `--min-tributary-area-m2`, `--min-tributary-area-fraction`, `--top-tributaries`, `--keep-descendants`, `--show-removed` as in [Removing tributaries](#removing-tributaries). The knickpoints of removed tributaries are dropped. |
+| `--ksn-classes`, `--n-classes`, `--class-colors`, `--class-color-mode`, `--ksn-class-basis` | k_sn on the map and profile in classes, as `lsdviz3-chi`. |
+| tributary flags | `--remove-ksn-above`, `--min-tributary-area-m2`, `--min-tributary-area-fraction`, `--top-tributaries`, `--longest-channels`, `--keep-descendants`, `--show-removed` as in [Removing tributaries](#removing-tributaries). The knickpoints of removed tributaries are dropped. |
 
 It writes:
 

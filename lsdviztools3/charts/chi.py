@@ -81,6 +81,45 @@ def _colour_values(values: np.ndarray, log_scale: bool) -> np.ndarray:
     return out
 
 
+def _colour_mapping(rows, color_by, log_color, cmap, vmin, vmax, classes):
+    """``(values, cmap, norm, extend)`` for colouring ``rows``: continuous
+    (log10) k_sn, or the class index when ``classes`` (a
+    :class:`~lsdviztools3.colour_classes.ColourClasses`) is given."""
+    from matplotlib import colors
+
+    if classes is not None:
+        from .ksn_distribution import mpl_colour
+        n = classes.n_classes
+        return (classes.classify(rows[color_by].to_numpy(dtype=float)),
+                colors.ListedColormap([mpl_colour(c) for c in classes.colors]),
+                colors.BoundaryNorm(np.arange(n + 1) - 0.5, n), "neither")
+    cvals = _colour_values(rows[color_by].to_numpy(), log_color)
+    lo, hi, extend = colour_limits(cvals, vmin, vmax, log_scale=log_color)
+    return cvals, cmap, colors.Normalize(vmin=lo, vmax=hi), extend
+
+
+def _add_colorbar(fig, ax, mappable, color_by, log_color, extend, classes, max_height=None):
+    """Colourbar beside ``ax`` (an axes or a list of row axes). With
+    ``max_height`` (inches) it is no taller than that, at the top of the rows,
+    instead of spanning them all."""
+    kw = {}
+    if max_height is not None:
+        axes = list(np.atleast_1d(ax))
+        top = max(a.get_position().y1 for a in axes)
+        bottom = min(a.get_position().y0 for a in axes)
+        span = (top - bottom) * fig.get_size_inches()[1]
+        if span > max_height:
+            kw = dict(shrink=max_height / span, anchor=(0.0, 1.0), panchor=(1.0, 1.0),
+                      fraction=0.15 * min(1.0, 6.0 / fig.get_size_inches()[0]) + 0.02)
+    if classes is None:
+        fig.colorbar(mappable, ax=ax, label=_colour_label(color_by, log_color), extend=extend, **kw)
+        return
+    cb = fig.colorbar(mappable, ax=ax, label=r"$k_{sn}$ class" if color_by == "k_sn" else color_by,
+                      ticks=np.arange(classes.n_classes), **kw)
+    cb.ax.set_yticklabels(list(classes.labels), fontsize=8)
+    cb.ax.tick_params(length=0)
+
+
 def _colour_label(color_by: str, log_scale: bool) -> str:
     if color_by == "k_sn":
         return r"$\log_{10}\,k_{sn}$" if log_scale else r"$k_{sn}$"
@@ -169,6 +208,109 @@ def stack_offsets(
     return out
 
 
+def stack_rows(
+    data: pd.DataFrame,
+    basins: Optional[Sequence[int]] = None,
+    x_offset: Optional[float] = None,
+    basins_per_row: Optional[int] = None,
+) -> list:
+    """The rows of the stacked plot and each basin's chi shift in its row.
+
+    Basins (in the given order) fill rows of at most ``basins_per_row``
+    (``None``: one row), e.g. 9 basins at 5 per row make rows of 5 and 4.
+    Every row uses the same gap ``x_offset`` (default 20% of the widest basin's
+    chi span over all the basins), so the rows share one chi scale.
+
+    Returns:
+        A list of ``{basin_index: shift}``, one per row.
+    """
+    if basins is None:
+        basins = sorted(data["basin_index"].unique())
+    basins = [b for b in basins if (data["basin_index"] == b).any()]
+    if x_offset is None:
+        segments = _is_segments(data)
+        widths = [np.subtract(*_basin_chi_bounds(data[data["basin_index"] == b], segments)[::-1])
+                  for b in basins]
+        x_offset = 0.2 * max(widths) if widths else 0.0
+    n = max(len(basins), 1) if basins_per_row is None else int(basins_per_row)
+    if n < 1:
+        raise ValueError(f"basins_per_row must be >= 1, got {basins_per_row}")
+    return [stack_offsets(data, basins[i:i + n], x_offset) for i in range(0, len(basins), n)] or [{}]
+
+
+def reference_ksn(values, n: int = 3) -> list:
+    """``n`` round k_sn values spanning the data for a gradient key: the 10th,
+    50th and 90th percentiles (for ``n = 3``) to one significant figure
+    (:func:`round_ksn`: 13 -> 10, 87 -> 90, 217 -> 200), repeats dropped."""
+    v = np.asarray(values, dtype=float)
+    v = v[np.isfinite(v) & (v > 0)]
+    if v.size == 0:
+        return []
+    out = []
+    for q in np.linspace(10, 90, n):
+        x = round_ksn(float(np.percentile(v, q)))
+        if x > 0 and x not in out:
+            out.append(x)
+    return out
+
+
+def round_ksn(x: float) -> float:
+    """``x`` to one significant figure: 13 -> 10, 87 -> 90, 217 -> 200."""
+    x = float(x)
+    if not (np.isfinite(x) and x > 0):
+        return x
+    e = 10.0 ** np.floor(np.log10(x))
+    return float(np.round(x / e) * e)
+
+
+def add_gradient_key(ax, ksn_values, *, x0: float, width: float, y0: float, y1: float,
+                     label_size: float = 7):
+    """A key of chi-elevation gradients drawn as an extra "profile" on ``ax``.
+
+    In chi-elevation space a channel's slope is its k_sn (dz/dchi), so a line
+    of slope k_sn shows how steep a segment with that k_sn looks on the plot.
+    The lines are drawn in ``ax``'s own data coordinates, from
+    ``(x0, y0)``, at most ``width`` long in chi and no higher than ``y1``;
+    they are therefore at exactly the plot's scale whatever its size. The
+    steepest line may rise to 86% of the way to ``y1``, each gentler one stops
+    a little lower, so their labels do not stack; a ``k_sn key`` heading sits
+    above them, and the axes' data limits are widened for the labels.
+
+    Returns:
+        The list of drawn ``Line2D``.
+    """
+    ks = sorted({float(k) for k in ksn_values if np.isfinite(k) and k > 0}, reverse=True)
+    if not ks:
+        raise ValueError("give at least one positive k_sn for the gradient key")
+    height = max(y1 - y0, 1e-9)
+    lines = []
+    tops = []
+    for rank, k in enumerate(ks):
+        top = y0 + height * (0.86 - 0.13 * rank)
+        run = width
+        if y0 + k * run > top:
+            run = (top - y0) / k
+        xe, ye = x0 + run, y0 + k * run
+        lines += ax.plot([x0, xe], [y0, ye], color="#3d3d3a", linewidth=1.3,
+                         solid_capstyle="round", zorder=3)
+        ax.annotate(f"{k:g}", (xe, ye), xytext=(3, 0), textcoords="offset points",
+                    fontsize=label_size, color="#3d3d3a", va="center", ha="left")
+        tops.append(ye)
+    ax.annotate(r"$k_{sn}$ key", (x0, max(tops)), xytext=(0, 8), textcoords="offset points",
+                fontsize=label_size, color="#3d3d3a", ha="left", va="bottom")
+    # room for the labels to the right of the longest line
+    ax.update_datalim([(x0 + 1.3 * width, y0)])
+    return lines
+
+
+def _key_values(gradient_key, values):
+    """k_sn values for a ``gradient_key`` argument: ``True`` / ``"auto"`` for
+    :func:`reference_ksn` of ``values``; a list is used as given."""
+    if gradient_key is True or (isinstance(gradient_key, str) and gradient_key == "auto"):
+        return reference_ksn(values)
+    return [float(k) for k in gradient_key]
+
+
 def plot_chi_profile(
     data: pd.DataFrame,
     *,
@@ -187,6 +329,8 @@ def plot_chi_profile(
     vmax: Optional[float] = None,
     removed: Optional[pd.DataFrame] = None,
     show_removed: str = "ghost",
+    classes=None,
+    gradient_key=None,
 ):
     """Plot a single basin's chi-elevation profile.
 
@@ -221,6 +365,16 @@ def plot_chi_profile(
             the kept tributaries only.
         show_removed: ``"ghost"`` (default) draws removed tributaries thin and
             light grey under the kept ones; ``"hide"`` leaves them out.
+        classes: Colour k_sn in classes instead of a continuous scale: a
+            :class:`~lsdviztools3.colour_classes.ColourClasses` (e.g. from
+            :func:`lsdviztools3.charts.ksn_distribution.ksn_colour_classes`,
+            so the profiles match a classed map). ``vmin`` / ``vmax`` and
+            ``log_color`` are then unused; the colourbar shows the classes.
+        gradient_key: Add a key of chi-elevation gradients, drawn as an
+            extra profile to the right of the data at exactly the plot's scale
+            (:func:`add_gradient_key`): ``True`` / ``"auto"`` for the 10th,
+            50th and 90th percentiles of the plotted k_sn rounded to one
+            significant figure, or a list of k_sn; ``None`` (default) for none.
 
     Returns:
         ``(fig, ax)``.
@@ -245,9 +399,7 @@ def plot_chi_profile(
 
     mappable = None
     rows, ghost = _split_removed(rows, removed, show_removed)
-    cvals = _colour_values(rows[color_by].to_numpy(), log_color)
-    lo, hi, extend = colour_limits(cvals, vmin, vmax, log_scale=log_color)
-    norm = colors.Normalize(vmin=lo, vmax=hi)
+    cvals, cmap, norm, extend = _colour_mapping(rows, color_by, log_color, cmap, vmin, vmax, classes)
     if segments and len(ghost):
         ax.add_collection(LineCollection(_segment_lines(ghost, 0.0), colors=GHOST_COLOUR,
                                          linewidths=0.7, zorder=0))
@@ -276,7 +428,17 @@ def plot_chi_profile(
     ax.set_ylabel("Elevation (m)")
     ax.set_title(f"Basin {basin}")
     if colorbar and mappable is not None:
-        fig.colorbar(mappable, ax=ax, label=_colour_label(color_by, log_color), extend=extend)
+        _add_colorbar(fig, ax, mappable, color_by, log_color, extend, classes)
+    if gradient_key is not None and gradient_key is not False:
+        ks = _key_values(gradient_key, rows[color_by].to_numpy(dtype=float))
+        if ks:
+            lo, hi = _basin_chi_bounds(rows, segments)
+            zcol = ("downstream_elevation", "upstream_elevation") if segments else ("observed_elevation",)
+            z = np.concatenate([rows[c].to_numpy(dtype=float) for c in zcol])
+            span = (hi - lo) or 1.0
+            add_gradient_key(ax, ks, x0=hi + 0.12 * span, width=0.35 * span,
+                             y0=float(np.nanmin(z)), y1=float(np.nanmax(z)))
+            ax.autoscale_view()
     return fig, ax
 
 
@@ -300,6 +462,10 @@ def plot_chi_stacked(
     vmax: Optional[float] = None,
     removed: Optional[pd.DataFrame] = None,
     show_removed: str = "ghost",
+    classes=None,
+    basins_per_row: Optional[int] = None,
+    row_height: float = 3.2,
+    gradient_key=None,
 ):
     """Stacked chi-elevation plot: basins normalised to chi=0 and offset right.
 
@@ -334,9 +500,27 @@ def plot_chi_stacked(
         removed, show_removed: Tributaries to leave out, and whether to ghost
             them; as :func:`plot_chi_profile`. Basin positions on the stack do
             not change.
+        classes: Colour k_sn in classes instead of a continuous scale: a
+            :class:`~lsdviztools3.colour_classes.ColourClasses` (e.g. from
+            :func:`lsdviztools3.charts.ksn_distribution.ksn_colour_classes`,
+            so the profiles match a classed map). ``vmin`` / ``vmax`` and
+            ``log_color`` are then unused; the colourbar shows the classes.
+        basins_per_row: At most this many basins per row; more wrap onto
+            further rows (9 basins at 5 per row: rows of 5 and 4). The rows
+            share the chi and elevation scales and one colourbar. ``None``
+            (default): one row. Not with ``ax``.
+        row_height: Height of each row in inches (default 3.2).
+        gradient_key: Add a key of chi-elevation gradients, drawn as an
+            extra profile to the right of the data at exactly the plot's scale
+            (:func:`add_gradient_key`): ``True`` / ``"auto"`` for the 10th,
+            50th and 90th percentiles of the plotted k_sn rounded to one
+            significant figure, or a list of k_sn; ``None`` (default) for none.
+            On a multi-row plot it follows the last basin of the last row;
+            the rows share their scales, so it holds for every row.
 
     Returns:
-        ``(fig, ax)``.
+        ``(fig, ax)``; with more than one row, ``ax`` is the array of row axes
+        (top first).
     """
     plt, colors, LineCollection = _import_mpl()
     segments = _is_segments(data)
@@ -349,26 +533,95 @@ def plot_chi_stacked(
     # Global colour normalisation across all selected basins.
     sel = data[data["basin_index"].isin(basins)]
     sel, _ = _split_removed(sel, removed, show_removed)
-    all_c = _colour_values(sel[color_by].to_numpy(), log_color)
-    lo, hi, extend = colour_limits(all_c, vmin, vmax, log_scale=log_color)
-    norm = colors.Normalize(vmin=lo, vmax=hi)
+    _, cmap, norm, extend = _colour_mapping(sel, color_by, log_color, cmap, vmin, vmax, classes)
 
-    shifts = stack_offsets(data, basins, x_offset)
+    def cvalues(r):
+        if classes is not None:
+            return classes.classify(r[color_by].to_numpy(dtype=float))
+        return _colour_values(r[color_by].to_numpy(), log_color)
+
+    layout = stack_rows(data, basins, x_offset, basins_per_row)
+    n_basins_max = max(len(r) for r in layout)
 
     if ax is None:
-        fig, ax = plt.subplots(figsize=(max(6, 1.6 * len(basins)), 4))
+        fig, axes = plt.subplots(len(layout), 1, squeeze=False, sharex=True, sharey=True,
+                                 figsize=(max(6, 1.6 * n_basins_max), row_height * len(layout) + 0.8))
+        axes = list(axes[:, 0])
+    elif len(layout) > 1:
+        raise ValueError("basins_per_row with more than one row needs ax=None (it makes the figure).")
     else:
-        fig = ax.figure
+        fig, axes = ax.figure, [ax]
 
     mappable = None
+    for row_ax, shifts in zip(axes, layout):
+        m = _draw_stack_row(row_ax, data, shifts, segments=segments, removed=removed,
+                            show_removed=show_removed, observed=observed,
+                            observed_color=observed_color, observed_size=observed_size,
+                            cvalues=cvalues, cmap=cmap, norm=norm, point_size=point_size,
+                            show_fit=show_fit, label_basins=label_basins,
+                            LineCollection=LineCollection)
+        mappable = m if m is not None else mappable
+        row_ax.set_ylabel("Elevation (m)")
+    if gradient_key is not None and gradient_key is not False:
+        ks = _key_values(gradient_key, sel[color_by].to_numpy(dtype=float))
+        if ks:
+            _gradient_key_on_stack(axes[-1], sel, layout[-1], ks, segments)
+    _share_limits(axes)
+    axes[-1].set_xlabel(r"$\chi$ (m, offset per basin)")
+    if colorbar and mappable is not None:
+        _add_colorbar(fig, axes if len(axes) > 1 else axes[0], mappable, color_by, log_color,
+                      extend, classes, max_height=max(row_height, 3.0) if len(axes) > 1 else None)
+    return fig, (axes[0] if len(axes) == 1 else np.array(axes))
+
+
+def _gradient_key_on_stack(ax, data, shifts, ks, segments):
+    """The gradient key as an extra profile after the last basin of a row,
+    spaced like the basins and spanning the elevations of the whole plot."""
+    widths, ends = [], []
+    for b, shift in shifts.items():
+        lo, hi = _basin_chi_bounds(data[data["basin_index"] == b], segments)
+        widths.append(hi - lo)
+        ends.append(hi + shift)
+    allw = [np.subtract(*_basin_chi_bounds(data[data["basin_index"] == b], segments)[::-1])
+            for b in data["basin_index"].unique()]
+    wmax = max(allw) if allw else 1.0
+    zcol = ("downstream_elevation", "upstream_elevation") if segments else ("observed_elevation",)
+    z = np.concatenate([data[c].to_numpy(dtype=float) for c in zcol])
+    x0 = (max(ends) if ends else 0.0) + 0.2 * wmax
+    add_gradient_key(ax, ks, x0=x0, width=0.5 * wmax, y0=float(np.nanmin(z)), y1=float(np.nanmax(z)))
+
+
+def _share_limits(axes, margin: float = 0.05):
+    """Set every row to the union of the rows' data limits (plus ``margin``),
+    explicitly, so the rows share one chi and elevation scale whatever is
+    added later."""
+    from matplotlib.transforms import Bbox
+
+    boxes = [a.dataLim for a in axes if np.all(np.isfinite(a.dataLim.bounds))
+             and a.dataLim.width >= 0 and a.dataLim.height >= 0]
+    if not boxes:
+        return
+    bb = Bbox.union(boxes)
+    mx = margin * (bb.width or 1.0)
+    my = margin * (bb.height or 1.0)
+    for a in axes:
+        a.set_xlim(bb.x0 - mx, bb.x1 + mx)
+        a.set_ylim(bb.y0 - my, bb.y1 + my)
+
+
+def _draw_stack_row(ax, data, shifts, *, segments, removed, show_removed, observed,
+                    observed_color, observed_size, cvalues, cmap, norm, point_size,
+                    show_fit, label_basins, LineCollection):
+    """Draw the basins of one stacked row (``{basin: shift}``) on ``ax``;
+    returns the colour mappable."""
+    mappable = None
     all_lines, all_cvals = [], []
-    for b in basins:
+    for b, shift in shifts.items():
         rows = data[data["basin_index"] == b]
         if rows.empty:
             continue
         chi0, chi_max = _basin_chi_bounds(rows, segments)
         width = chi_max - chi0
-        shift = shifts[b]
         cursor = shift + chi0
         rows, ghost = _split_removed(rows, removed, show_removed)
         if segments and len(ghost):
@@ -377,46 +630,33 @@ def plot_chi_stacked(
         elif len(ghost):
             ax.scatter(ghost["chi"].to_numpy() + shift, ghost["observed_elevation"],
                        c=GHOST_COLOUR, s=point_size * 0.6, edgecolors="none", zorder=0)
-
         if observed is not None:
-            _scatter_observed(ax, observed, b, shift,
-                              color=observed_color, size=observed_size)
-
+            _scatter_observed(ax, observed, b, shift, color=observed_color, size=observed_size)
+        if rows.empty:
+            continue
         if segments:
             all_lines.extend(_segment_lines(rows, shift))
-            all_cvals.append(_colour_values(rows[color_by].to_numpy(), log_color))
+            all_cvals.append(cvalues(rows))
             zmin = float(rows["downstream_elevation"].min())
         else:
-            cvals = _colour_values(rows[color_by].to_numpy(), log_color)
-            mappable = ax.scatter(
-                rows["chi"].to_numpy() + shift, rows["observed_elevation"],
-                c=cvals, cmap=cmap, norm=norm, s=point_size,
-                edgecolors="none", zorder=2,
-            )
+            mappable = ax.scatter(rows["chi"].to_numpy() + shift, rows["observed_elevation"],
+                                  c=cvalues(rows), cmap=cmap, norm=norm, s=point_size,
+                                  edgecolors="none", zorder=2)
             if show_fit and "fitted_elevation" in rows.columns:
                 for _, branch in rows.groupby("branch_id"):
                     branch = branch.sort_values("chi")
-                    ax.plot(branch["chi"].to_numpy() + shift,
-                            branch["fitted_elevation"],
+                    ax.plot(branch["chi"].to_numpy() + shift, branch["fitted_elevation"],
                             color="0.25", linewidth=0.6, zorder=1)
             zmin = float(rows["observed_elevation"].min())
-
         if label_basins:
             ax.text(cursor + 0.05 * (width or 1.0), zmin, str(int(b)),
                     fontsize=8, va="bottom", ha="left")
-
     if segments and all_lines:
         lc = LineCollection(all_lines, cmap=cmap, norm=norm, linewidths=1.2)
         lc.set_array(np.concatenate(all_cvals))
         ax.add_collection(lc)
-        ax.autoscale()
         mappable = lc
-
-    ax.set_xlabel(r"$\chi$ (m, offset per basin)")
-    ax.set_ylabel("Elevation (m)")
-    if colorbar and mappable is not None:
-        fig.colorbar(mappable, ax=ax, label=_colour_label(color_by, log_color), extend=extend)
-    return fig, ax
+    return mappable
 
 
 def plot_ksn_vs_erate(

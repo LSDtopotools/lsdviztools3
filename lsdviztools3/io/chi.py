@@ -58,6 +58,38 @@ KNICKPOINT_COLUMNS = (
     "chi_normalised",
 )
 
+#: Split-hierarchy columns of the knickpoint table (lsdtt3 with the split
+#: ranking; needed by the ``split`` / ``split_normalised`` measures and by
+#: ``threshold="major"``).
+KNICKPOINT_SPLIT_COLUMNS = (
+    "split_rank", "split_depth", "split_divergence_metres", "split_dchi_below",
+    "split_dchi_above", "split_ksn_below", "split_ksn_above", "split_delta_ksn",
+    "split_delta_ksn_metres", "split_delta_ksn_normalised", "split_clamped", "is_major",
+)
+
+#: Columns of ``*_chi_knickzones_mn_*.csv`` (one row per foot/lip pair).
+KNICKZONE_COLUMNS = (
+    "knickzone_id", "basin_index", "basin_key", "source_key", "branch_id", "foot_type",
+    "foot_flat", "lip_flat", "foot_x", "foot_y", "lip_x", "lip_y", "foot_chi", "lip_chi",
+    "foot_elevation", "lip_elevation", "relief_m", "chi_span", "flow_length_m", "ksn_below",
+    "ksn_inside", "ksn_above", "foot_split_delta_ksn_metres", "lip_split_delta_ksn_metres",
+    "foot_split_delta_ksn_normalised", "lip_split_delta_ksn_normalised", "threshold_method",
+    "threshold", "foot_threshold_split_delta_ksn_metres",
+)
+
+#: Columns of ``*_chi_steps_mn_*.csv`` (``run_step_change_detection``; one row
+#: per step reach: waterfall, dam or steep gorge reach).
+STEP_COLUMNS = (
+    "step_id", "basin_index", "basin_key", "source_key", "branch_id", "bottom_flat", "top_flat",
+    "bottom_x", "bottom_y", "top_x", "top_y", "bottom_elevation", "top_elevation", "drop_m",
+    "flow_length_m", "mean_gradient", "max_window_gradient", "n_pairs", "bottom_chi", "top_chi",
+    "bottom_flow_distance_m", "bottom_drainage_area_m2", "distance_to_branch_base_m",
+    "at_tributary_mouth", "at_basin_outlet", "contains_uphill_pairs",
+)
+
+#: Step flags; a flagged step is drawn muted and ``hide_flagged`` drops it.
+STEP_FLAGS = ("at_basin_outlet", "at_tributary_mouth", "contains_uphill_pairs")
+
 #: Columns of ``*_chi_knickpoint_thresholds_mn_*.csv``.
 THRESHOLD_COLUMNS = ("measure", "method", "threshold", "n_above", "n_total")
 
@@ -89,6 +121,103 @@ def load_chi_knickpoints(path) -> pd.DataFrame:
     tributary mouth).
     """
     return _load_with_columns(path, KNICKPOINT_COLUMNS, "knickpoint")
+
+
+def load_chi_knickzones(path) -> pd.DataFrame:
+    """Load ``*_chi_knickzones_mn_*.csv``: one row per knickzone, a lip (a
+    major shallowing-upstream split) and its foot below. ``foot_type`` is
+    ``split`` (a steepening split), or ``basin_outlet`` / ``tributary_junction``
+    when the steep reach runs down to the branch's base."""
+    return _load_with_columns(path, KNICKZONE_COLUMNS, "knickzone")
+
+
+def load_chi_steps(path) -> pd.DataFrame:
+    """Load ``*_chi_steps_mn_*.csv`` (``run_step_change_detection``): one row
+    per step reach found on the longitudinal profile, with its drop, flow
+    length, gradients, chi of both ends and the flags in :data:`STEP_FLAGS`."""
+    return _load_with_columns(path, STEP_COLUMNS, "step")
+
+
+def filter_chi_steps(steps: pd.DataFrame, *, min_drop: float = 0.0, hide_flagged: bool = False,
+                     removed: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Steps to draw: drop at least ``min_drop`` metres, optionally without
+    flagged steps (:data:`STEP_FLAGS`), and without removed tributaries
+    (:func:`select_tributaries`). Adds a boolean ``flagged`` column."""
+    out = steps[steps["drop_m"].to_numpy(dtype=float) >= float(min_drop)].copy()
+    out["flagged"] = np.zeros(len(out), dtype=bool)
+    for f in STEP_FLAGS:
+        out["flagged"] |= out[f].to_numpy() != 0
+    if hide_flagged:
+        out = out[~out["flagged"]]
+    if removed is not None and len(removed):
+        out = out[~removed_mask(out, removed)]
+    return out
+
+
+def chi_fit_files(base, mn: str, *, stage: str = "auto") -> dict:
+    """Paths of one chi run's fit outputs at m/n suffix ``mn``.
+
+    ``base`` is ``<data_dir>/<write_fname>_chi``. ``stage`` picks the fit
+    (nodes, segments, segment lines, tributaries): ``"auto"`` (the step-aware
+    stage 2 files when the run wrote them, else stage 1), ``"stage1"`` or
+    ``"stepaware"``. The knickpoint, threshold and knickzone tables are always
+    the stage 1 ones: lsdtt3 ranks knickpoints on the ordinary fit only. The
+    steps table is the same for both stages. Returns a dict with ``stage`` (``"stage1"`` or ``"stepaware"``)
+    and the paths ``fit_nodes``, ``fit_segments``, ``segment_lines``,
+    ``knickpoints``, ``thresholds``, ``knickzones``, ``tributaries``,
+    ``steps``, ``step_lines``.
+    """
+    if stage not in ("auto", "stage1", "stepaware"):
+        raise ValueError(f"stage must be auto, stage1 or stepaware, got {stage!r}")
+    b = str(base)
+
+    def paths(tag):
+        return {"fit_nodes": Path(f"{b}_fit_nodes{tag}_mn_{mn}.csv"),
+                "fit_segments": Path(f"{b}_fit_segments{tag}_mn_{mn}.csv"),
+                "segment_lines": Path(f"{b}_fit_segment_lines{tag}_mn_{mn}.fgb"),
+                "knickpoints": Path(f"{b}_knickpoints_mn_{mn}.csv"),
+                "thresholds": Path(f"{b}_knickpoint_thresholds_mn_{mn}.csv"),
+                "knickzones": Path(f"{b}_knickzones_mn_{mn}.csv"),
+                "tributaries": Path(f"{b}_tributaries{tag}_mn_{mn}.csv")}
+
+    two = paths("_stepaware")
+    if stage == "auto":
+        stage = "stepaware" if two["fit_segments"].exists() else "stage1"
+    out = two if stage == "stepaware" else paths("")
+    out["stage"] = stage
+    out["steps"] = Path(f"{b}_steps_mn_{mn}.csv")
+    out["step_lines"] = Path(f"{b}_step_lines_mn_{mn}.fgb")
+    return out
+
+
+def attach_flow_distance(nodes: pd.DataFrame, points: pd.DataFrame) -> pd.DataFrame:
+    """Add ``flow_distance`` (m, from the outlet) to chi fit nodes, read from
+    the chi data maps (``write_chi_data_maps``) rather than recomputed.
+
+    The fit nodes carry no flow distance; the data maps do, per node, with
+    ``source_key`` and ``chi``. Within a source, chi rises strictly
+    upstream, so each fit node takes the flow distance of the data-map node
+    of the same ``source_key`` with the nearest chi. Nodes without a source
+    key (``-1``: incomplete basins, which the data maps leave out) get NaN.
+    """
+    for c in ("source_key", "chi"):
+        if c not in nodes.columns:
+            raise ValueError(f"fit nodes lack {c!r}: rerun with a current lsdtt3")
+    for c in ("source_key", "chi", "flow_distance"):
+        if c not in points.columns:
+            raise ValueError(f"chi data maps lack {c!r}")
+    left = nodes.reset_index(drop=False).rename(columns={"index": "_row"})
+    left = left.assign(_chi=left["chi"].astype(float), _sk=left["source_key"].astype("int64"))
+    right = points[["source_key", "chi", "flow_distance"]].rename(
+        columns={"chi": "_chi", "source_key": "_sk"}).astype({"_chi": float, "_sk": "int64"})
+    left = left.sort_values("_chi", kind="mergesort")
+    right = right.sort_values("_chi", kind="mergesort")
+    m = pd.merge_asof(left, right, on="_chi", by="_sk", direction="nearest")
+    m.loc[m["_sk"] < 0, "flow_distance"] = np.nan
+    m = m.sort_values("_row").set_index("_row")
+    out = nodes.copy()
+    out["flow_distance"] = m["flow_distance"].to_numpy()
+    return out
 
 
 def load_chi_knickpoint_thresholds(path) -> pd.DataFrame:
@@ -243,7 +372,31 @@ def load_chi_points(path) -> pd.DataFrame:
 
 #: Removal reasons, in the order they are tested (the first that applies is
 #: recorded).
-REMOVAL_REASONS = ("ksn_outlier", "small_area", "small_fraction", "rank", "drains_to_removed")
+REMOVAL_REASONS = ("ksn_outlier", "small_area", "small_fraction", "rank", "length_rank",
+                   "drains_to_removed")
+
+
+def _longest_channels(t: pd.DataFrame, eligible: pd.Series, n_channels: int) -> set:
+    """``(basin_index, branch_id)`` of the main stem plus the ``n_channels - 1``
+    longest tributaries of each basin (``length_m``, head to junction), chosen
+    greedily among ``eligible`` rows so that every pick drains into a branch
+    already picked: the chosen set is always one connected network."""
+    chosen = set()
+    length = pd.to_numeric(t["length_m"], errors="coerce").fillna(-np.inf)
+    for b, g in t.groupby("basin_index", sort=False):
+        picked = {0}
+        cand = {int(br): (float(length[i]), int(p))
+                for i, br, p in zip(g.index, g["branch_id"], g["parent_branch_id"])
+                if br != 0 and eligible[i]}
+        while len(picked) < n_channels:
+            ready = [(ln, -br, br) for br, (ln, p) in cand.items() if p in picked]
+            if not ready:
+                break
+            _, _, br = max(ready)
+            picked.add(br)
+            del cand[br]
+        chosen.update((b, br) for br in picked)
+    return chosen
 
 
 def select_tributaries(
@@ -253,6 +406,7 @@ def select_tributaries(
     min_junction_area_m2=None,
     min_area_fraction=None,
     top_n=None,
+    longest_channels=None,
     remove_descendants: bool = True,
     thresholds: pd.DataFrame = None,
 ):
@@ -273,6 +427,13 @@ def select_tributaries(
       this fraction of its basin's;
     * ``top_n``: keep only the ``top_n`` largest tributaries of each basin by
       area at the junction (``area_rank_in_basin``);
+    * ``longest_channels``: keep only the main stem plus the
+      ``longest_channels - 1`` longest tributaries of each basin (``length_m``,
+      head to junction), so ``1`` keeps just the main stem. Applied after the
+      rules above, to the tributaries they kept (a k_sn outlier does not use
+      up a place), and greedily so that a tributary is only picked once the
+      branch it drains into has been: the kept set is always connected
+      (reason ``length_rank``);
     * ``remove_descendants``: also remove every tributary that drains into a
       removed one, at any depth (reason ``drains_to_removed``).
 
@@ -306,6 +467,12 @@ def select_tributaries(
         mark(t["area_fraction"] < float(min_area_fraction), "small_fraction")
     if top_n is not None:
         mark(t["area_rank_in_basin"] > int(top_n), "rank")
+    if longest_channels is not None:
+        if int(longest_channels) < 1:
+            raise ValueError("longest_channels counts the main stem: it must be >= 1")
+        keep = _longest_channels(t, reason == "", int(longest_channels))
+        mark(pd.Series([(b, br) not in keep for b, br in zip(t["basin_index"], t["branch_id"])],
+                       index=t.index), "length_rank")
     if remove_descendants:
         parent = {(b, br): p for b, br, p in zip(t["basin_index"], t["branch_id"], t["parent_branch_id"])}
         removed_keys = {(b, br) for b, br, r in zip(t["basin_index"], t["branch_id"], reason) if r}

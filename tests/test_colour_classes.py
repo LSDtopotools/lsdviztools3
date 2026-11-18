@@ -314,15 +314,17 @@ def test_cli_drape_and_channels_take_classes(tmp_path):
 
 
 def test_cli_chi_and_knickpoints_have_ksn_classes():
-    from lsdviztools3.cli import plot_chi, plot_knickpoints
+    from lsdviztools3.cli import _common, plot_chi, plot_knickpoints
 
     for mod in (plot_chi, plot_knickpoints):
         a = mod.build_parser().parse_args(["--data-dir", ".", "--prefix", "p", "--m-over-n", "0.45",
                                            "--out-dir", ".", "--ksn-classes", "20,50,100",
-                                           "--class-colors", "a,b,c,d"])
-        kw = mod._ksn_class_kwargs(a)
-        assert kw["ksn_classes"] == [20.0, 50.0, 100.0]
+                                           "--class-colors", "a,b,c,d",
+                                           "--ksn-class-basis", "pixels"])
+        kw = _common.class_kwargs(a)
+        assert kw["classes"] == [20.0, 50.0, 100.0]
         assert kw["class_colors"] == ["a", "b", "c", "d"]
+        assert a.ksn_class_basis == "pixels"
 
 
 def test_basins_map_has_no_cosmogenic_text_unless_asked(tmp_path, monkeypatch):

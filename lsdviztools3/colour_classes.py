@@ -450,6 +450,34 @@ def _colour_text(colour) -> str:
         return c                     # leave GMT-only names (e.g. "darkseagreen4") to GMT
 
 
+def _breaks_within_limits(values, scheme, n_classes, log_scale, class_min, class_max,
+                          min_end_fraction):
+    """Scheme breaks found between ``class_min`` and ``class_max``, plus each
+    limit as a break when at least ``min_end_fraction`` of the values lie
+    beyond it; see :func:`make_colour_classes`."""
+    _check_limits(class_min, class_max, log_scale)
+    v = np.asarray(values, dtype=float).ravel()
+    v = v[np.isfinite(v)]
+    if log_scale:
+        v = v[v > 0]
+    if v.size == 0:
+        raise ValueError("No finite values to classify" + (" (log scale: no positive values)."
+                                                            if log_scale else "."))
+    lo = float(class_min) if class_min is not None else float(v.min())
+    hi = float(class_max) if class_max is not None else float(v.max())
+    inside = v[(v >= lo) & (v <= hi)]
+    if inside.size == 0:
+        raise ValueError(f"No values between the class limits {lo:g} and {hi:g}.")
+    interior = class_breaks(inside, scheme, n_classes, log_scale=log_scale, vmin=lo, vmax=hi)
+    interior = interior[(interior > lo) & (interior < hi)]
+    ends = []
+    if class_min is not None and np.mean(v < lo) >= float(min_end_fraction):
+        ends.append(lo)
+    if class_max is not None and np.mean(v >= hi) >= float(min_end_fraction):
+        ends.append(hi)
+    return np.unique(np.concatenate([interior, np.asarray(ends, dtype=float)]))
+
+
 def make_colour_classes(
     values=None,
     classes: ClassesSpec = "natural_breaks",
@@ -462,6 +490,9 @@ def make_colour_classes(
     log_scale: bool = False,
     color_mode: str = "auto",
     label_format=None,
+    class_min: Optional[float] = None,
+    class_max: Optional[float] = None,
+    min_end_fraction: float = 0.001,
 ) -> ColourClasses:
     """Breaks, colours and labels for colouring ``values`` in classes.
 
@@ -486,6 +517,17 @@ def make_colour_classes(
             module docstring.
         label_format: Number format for the legend labels; see
             :func:`class_labels`.
+        class_min, class_max: Limits for a scheme, in data units: the scheme
+            finds its ``n_classes`` classes only between them, and each limit
+            becomes a break of its own, so the values below ``class_min`` and
+            those at or above ``class_max`` are end classes (at most
+            ``n_classes + 2`` classes). An end class is only made when at
+            least ``min_end_fraction`` of the values (default 0.1%) fall in
+            it; otherwise those values join the class next to it. They take
+            the place of ``vmin`` / ``vmax`` as the scheme's range (``vmin``
+            / ``vmax`` still set the colour gradient). Ignored for breaks
+            given by hand.
+        min_end_fraction: See ``class_min``.
 
     Returns:
         A :class:`ColourClasses`.
@@ -504,7 +546,11 @@ def make_colour_classes(
     if isinstance(classes, str):
         if values is None:
             raise ValueError(f"The {classes!r} scheme needs the data values.")
-        breaks = class_breaks(values, classes, n_classes, log_scale=log_scale, vmin=vmin, vmax=vmax)
+        if class_min is not None or class_max is not None:
+            breaks = _breaks_within_limits(values, classes, n_classes, log_scale, class_min,
+                                           class_max, min_end_fraction)
+        else:
+            breaks = class_breaks(values, classes, n_classes, log_scale=log_scale, vmin=vmin, vmax=vmax)
         scheme = SCHEMES[classes.strip().lower()]
         if breaks.size == 0:
             raise ValueError(f"The data have a single value in range: {classes!r} cannot make classes.")
