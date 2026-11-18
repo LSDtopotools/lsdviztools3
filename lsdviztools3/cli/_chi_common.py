@@ -168,9 +168,9 @@ def add_profile_layout_args(parser: argparse.ArgumentParser, *, basins: bool = T
     if basins:
         g.add_argument("--basins", default=None,
                        help="Comma-separated basin_index values to plot, in this order (default all).")
-    g.add_argument("--basins-per-row", type=int, default=None,
-                   help="Wrap the stacked chi plot onto rows of at most this many basins (e.g. 5 with "
-                        "9 basins: rows of 5 and 4). Rows share the chi and elevation scales.")
+    g.add_argument("--basins-per-row", type=int, default=5,
+                   help="Wrap the stacked chi plot onto rows of at most this many basins (default 5: "
+                        "9 basins make rows of 5 and 4). Rows share the chi and elevation scales.")
     g.add_argument("--ksn-gradient-key", "--ksn-gradient-inset", dest="ksn_gradient_key",
                    nargs="?", const="auto", default=None, metavar="K1,K2,K3",
                    help="Add a key of chi-elevation gradients for a few k_sn values, drawn as an extra "

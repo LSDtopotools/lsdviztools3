@@ -59,6 +59,9 @@ def build_parser() -> argparse.ArgumentParser:
                                 "schemes work in log10 k_sn)")
     add_ksn_class_basis_arg(parser)
     add_profile_layout_args(parser)
+    parser.add_argument("--stage1", action="store_true",
+                        help="Read the ordinary (stage 1) fit even when the run wrote the step-aware one "
+                             "(run_step_change_detection), which is used by default.")
     parser.add_argument("--no-ksn-distribution", action="store_true",
                         help="Skip the k_sn distribution plot (per channel pixel and per segment).")
     return parser
@@ -83,11 +86,9 @@ def main(argv=None) -> int:
     mn = mn_suffix(args.m_over_n)
     stem = args.out_prefix or args.prefix
     base = data_dir / f"{args.prefix}_chi"
-    outputs = {
-        "fit_nodes": Path(f"{base}_fit_nodes_mn_{mn}.csv"),
-        "fit_segments": Path(f"{base}_fit_segments_mn_{mn}.csv"),
-        "segment_lines": Path(f"{base}_fit_segment_lines_mn_{mn}.fgb"),
-    }
+    from ..io.chi import chi_fit_files
+    outputs = chi_fit_files(base, mn, stage="stage1" if args.stage1 else "auto")
+    print(f"fit: {'step-aware (stage 2)' if outputs['stage'] == 'stepaware' else 'ordinary (stage 1)'}")
     for key in ("fit_nodes", "fit_segments"):
         if not outputs[key].exists():
             raise SystemExit(f"{outputs[key]} not found: was the chi run made with "
@@ -98,7 +99,14 @@ def main(argv=None) -> int:
     from ..io.chi import load_chi_fit, load_chi_fit_segments
     segments = load_chi_fit_segments(outputs["fit_segments"])
     nodes = load_chi_fit(outputs["fit_nodes"], outputs["fit_segments"])
-    ksn_classes = ksn_classes_from_args(args, segments, nodes, removed)
+    # step segments (stage 2) are drawn but, as in lsdtt3's statistics, left
+    # out of the k_sn classes and distributions
+    seg_stats, node_stats = segments, nodes
+    if "is_step" in segments.columns:
+        seg_stats = segments[segments["is_step"] == 0]
+    if "is_step" in nodes.columns:
+        node_stats = nodes[nodes["is_step"] == 0]
+    ksn_classes = ksn_classes_from_args(args, seg_stats, node_stats, removed)
 
     written = []
     if not args.no_ksn_distribution:
@@ -106,7 +114,7 @@ def main(argv=None) -> int:
 
         from ..charts.ksn_distribution import plot_ksn_distributions
         fig, _ = plot_ksn_distributions(
-            segments, nodes, removed=removed, classes=ksn_classes,
+            seg_stats, node_stats, removed=removed, classes=ksn_classes,
             class_basis=args.ksn_class_basis if ksn_classes is not None and ksn_classes.scheme != "manual" else None,
             cmap=args.cmap, vmin=args.ksn_vmin, vmax=args.ksn_vmax)
         written.append(out_dir / f"{stem}_ksn_distribution.png")
