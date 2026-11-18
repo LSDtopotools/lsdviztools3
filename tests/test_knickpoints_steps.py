@@ -206,33 +206,39 @@ def test_long_profile_draws_steps_as_segments_green_when_flagged():
         plot_steps_on_long_profile(nodes.drop(columns="flow_distance"), _steps())
 
 
-def test_selection_order_per_channel_by_strength():
+def test_selection_order_per_channel_and_direction():
     from lsdviztools3.charts.knickpoints import knickpoint_selection_order
     o = knickpoint_selection_order(_knickpoints())
-    b0 = o[(o.basin_index == 0) & (o.branch_id == 0)]
-    # |5| > |-4| > |0.5|; the junction row is left out
-    assert b0.sort_values("selection_order")["split_delta_ksn_normalised"].tolist() == [5.0, -4.0, 0.5]
-    assert o[o.basin_index == 1]["selection_order"].tolist() == [1]
+    b0 = o[(o.basin_index == 0) & (o.branch_id == 0)].sort_values(["direction", "selection_order"])
+    # steepening 5 > 0.5, shallowing -4 alone; the junction row is left out
+    assert list(zip(b0.direction, b0.selection_order, b0.split_delta_ksn_normalised)) == [
+        ("shallowing", 1, -4.0), ("steepening", 1, 5.0), ("steepening", 2, 0.5)]
+    assert o[o.basin_index == 1][["direction", "selection_order"]].values.tolist() == [["shallowing", 1]]
     assert len(knickpoint_selection_order(_knickpoints(), majors_only=True)) == 3
+    assert set(knickpoint_selection_order(_knickpoints(), basins=[1]).basin_index) == {1}
 
 
-def test_order_kde_lines_and_legend():
+def test_order_kde_rows_by_direction():
     from lsdviztools3.charts.knickpoints import knickpoint_selection_order, plot_knickpoint_order_kde
     rows = []
     rng = np.random.default_rng(1)
     for br in range(30):
-        for o, (z0, c0) in enumerate([(1000, 8), (600, 4), (300, 2)]):
+        # per channel: a lip near 1000 m, a weaker one near 600 m, a foot near 300 m
+        for v, z0, c0 in [(-10.0, 1000, 8), (-5.0, 600, 4), (3.0, 300, 2)]:
             r = {c: 0 for c in KNICKPOINT_COLUMNS + KNICKPOINT_SPLIT_COLUMNS}
-            r.update(basin_index=br % 3, branch_id=br, split_delta_ksn_normalised=10.0 / (o + 1),
+            r.update(basin_index=br % 3, branch_id=br, split_delta_ksn_normalised=v,
                      elevation=z0 + rng.normal(0, 30), chi=c0 + rng.normal(0, 0.3))
             rows.append(r)
     o = knickpoint_selection_order(pd.DataFrame(rows))
-    fig, (az, ac) = plot_knickpoint_order_kde(o, max_order=3)
-    assert [t.get_text() for t in ac.get_legend().get_texts()] == [
-        "1st on its channel (n = 30)", "2nd on its channel (n = 30)", "3rd on its channel (n = 30)"]
-    # the 1st-order elevation density peaks near 1000 m
-    line = az.get_lines()[0]
-    assert line.get_ydata()[np.nanargmax(line.get_xdata())] == pytest.approx(1000, abs=40)
+    fig, axes = plot_knickpoint_order_kde(o, max_order=3)
+    assert axes.shape == (2, 2)
+    assert [t.get_text() for t in axes[0, 1].get_legend().get_texts()] == [
+        "1st on its channel (n = 30)", "2nd on its channel (n = 30)"]
+    assert [t.get_text() for t in axes[1, 1].get_legend().get_texts()] == ["1st on its channel (n = 30)"]
+    # 1st shallowing peaks near 1000 m, 1st steepening near 300 m
+    for ax, z in ((axes[0, 0], 1000), (axes[1, 0], 300)):
+        line = ax.get_lines()[0]
+        assert line.get_ydata()[np.nanargmax(line.get_xdata())] == pytest.approx(z, abs=40)
     plt.close(fig)
     with pytest.raises(ValueError, match="max_order"):
         plot_knickpoint_order_kde(o, max_order=9)

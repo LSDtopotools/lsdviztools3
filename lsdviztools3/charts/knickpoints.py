@@ -601,22 +601,32 @@ def knickpoint_selection_order(
     include_junctions: bool = False,
     removed: Optional[pd.DataFrame] = None,
     majors_only: bool = False,
+    basins: Optional[Sequence[int]] = None,
 ) -> pd.DataFrame:
-    """Order the knickpoints of each channel (basin, branch) by the ranking
-    measure: ``selection_order`` 1 is the channel's strongest boundary
-    (largest |measure|), 2 the next, and so on. ``majors_only`` orders only
-    the rows lsdtt3 marked ``is_major``. Rows without a finite measure are
-    dropped. Returns the rows with ``selection_order`` and ``measure_value``.
+    """Order the knickpoints of each channel (basin, branch) by strength,
+    separately for each direction: ``direction`` is ``"shallowing"``
+    (measure < 0, upstream shallower: a lip) or ``"steepening"`` (> 0: a
+    foot), and ``selection_order`` 1 is the channel's strongest boundary of
+    that direction (largest |measure|), 2 the next, and so on.
+    ``majors_only`` orders only rows lsdtt3 marked ``is_major``; ``basins``
+    keeps only those basins. Rows without a finite, nonzero measure are
+    dropped. Returns the rows with ``direction``, ``selection_order`` and
+    ``measure_value``.
     """
     col, _, _ = _measure(measure)
     k = candidate_knickpoints(knickpoints, include_junctions=include_junctions, removed=removed)
+    if basins is not None:
+        k = k[k["basin_index"].isin(list(basins))]
     if majors_only:
         k = k[k["is_major"] != 0]
-    k = k[np.isfinite(k[col].to_numpy(dtype=float))].copy()
+    v = k[col].to_numpy(dtype=float)
+    k = k[np.isfinite(v) & (v != 0)].copy()
     k["measure_value"] = k[col]
+    k["direction"] = np.where(k[col].to_numpy(dtype=float) < 0, "shallowing", "steepening")
     k["_abs"] = np.abs(k[col].to_numpy(dtype=float))
-    k = k.sort_values(["basin_index", "branch_id", "_abs"], ascending=[True, True, False], kind="mergesort")
-    k["selection_order"] = k.groupby(["basin_index", "branch_id"]).cumcount() + 1
+    k = k.sort_values(["basin_index", "branch_id", "direction", "_abs"],
+                      ascending=[True, True, True, False], kind="mergesort")
+    k["selection_order"] = k.groupby(["basin_index", "branch_id", "direction"]).cumcount() + 1
     return k.drop(columns="_abs")
 
 
@@ -637,14 +647,16 @@ def plot_knickpoint_order_kde(
     title: str = "",
 ):
     """Kernel density of the elevation and chi of the 1st, 2nd, ...
-    knickpoint of every channel, pooled over all basins
-    (:func:`knickpoint_selection_order`). Left: elevation upward, density
-    across; right: density against chi. One line per order, darkest for the
-    1st; the legend gives n. A rim or wave of incision shows as a 1st-order
-    peak that later orders lack.
+    strongest knickpoint of each direction on every channel, pooled over the
+    basins in ``ordered`` (:func:`knickpoint_selection_order`; pass it
+    ``basins=`` for a subset). Top row: shallowing upstream (lips); bottom
+    row: steepening upstream (feet). Left: elevation upward, density across;
+    right: density against chi. One line per order, darkest for the 1st;
+    the legends give n. A plateau rim shows as a 1st-order shallowing peak.
 
     Returns:
-        ``(fig, (ax_elevation, ax_chi))``.
+        ``(fig, axes)``: a 2 x 2 array, rows (shallowing, steepening),
+        columns (elevation, chi).
     """
     import matplotlib.pyplot as plt
 
@@ -652,38 +664,51 @@ def plot_knickpoint_order_kde(
         raise ValueError(f"max_order must be 1 to {len(ORDER_COLOURS)}, got {max_order}")
     if ordered.empty:
         raise ValueError("no knickpoints to plot")
-    counts = ordered["selection_order"].value_counts()
-    if not any(counts.get(o, 0) >= 2 for o in range(1, int(max_order) + 1)):
+    counts = ordered.groupby(["direction", "selection_order"]).size()
+    if not (counts[counts.index.get_level_values(1) <= int(max_order)] >= 2).any():
         raise ValueError("fewer than 2 knickpoints of every order: no density to draw")
-    fig, (az, ac) = plt.subplots(1, 2, figsize=(11, 5), gridspec_kw={"width_ratios": [1, 1.4]})
+    fig, axes = plt.subplots(2, 2, figsize=(11, 9), gridspec_kw={"width_ratios": [1, 1.4]})
     z_all, c_all = ordered["elevation"].to_numpy(dtype=float), ordered["chi"].to_numpy(dtype=float)
     zg = np.linspace(np.nanmin(z_all), np.nanmax(z_all), 400)
     cg = np.linspace(0.0, np.nanmax(c_all), 400)
     names = {1: "1st", 2: "2nd", 3: "3rd", 4: "4th"}
+    for row, (direction, what) in enumerate((("shallowing", "shallowing upstream (lips)"),
+                                             ("steepening", "steepening upstream (feet)"))):
+        az, ac = axes[row]
+        d = ordered[ordered["direction"] == direction]
+        drawn = 0
+        for o in range(1, int(max_order) + 1):
+            r = d[d["selection_order"] == o]
+            if len(r) < 2:
+                continue
+            c = ORDER_COLOURS[o - 1]
+            lab = f"{names[o]} on its channel (n = {len(r)})"
+            az.plot(_gaussian_kde(r["elevation"].to_numpy(dtype=float), zg), zg, color=c, lw=2, label=lab)
+            ac.plot(cg, _gaussian_kde(r["chi"].to_numpy(dtype=float), cg), color=c, lw=2, label=lab)
+            drawn += 1
+        from matplotlib.ticker import MaxNLocator
+        az.xaxis.set_major_locator(MaxNLocator(3))   # densities per metre: long tick labels
+        az.set_ylim(zg[0], zg[-1])
+        ac.set_xlim(cg[0], cg[-1])
+        az.set_ylabel("elevation (m)")
+        az.set_xlabel("density")
+        ac.set_xlabel(r"$\chi$ (m)")
+        ac.set_ylabel("density")
+        az.set_title(what, fontsize=10, loc="left")
+        if drawn:
+            ac.legend(fontsize=8, frameon=False)
+        else:
+            ac.text(0.5, 0.5, "fewer than 2 per order", transform=ac.transAxes, ha="center", color="0.4")
+        for ax in (az, ac):
+            ax.grid(alpha=0.25, lw=0.5)
+            for side in ("top", "right"):
+                ax.spines[side].set_visible(False)
     n_channels = ordered.groupby(["basin_index", "branch_id"]).ngroups
-    for o in range(1, int(max_order) + 1):
-        r = ordered[ordered["selection_order"] == o]
-        if len(r) < 2:
-            continue
-        c = ORDER_COLOURS[o - 1]
-        lab = f"{names[o]} on its channel (n = {len(r)})"
-        az.plot(_gaussian_kde(r["elevation"].to_numpy(dtype=float), zg), zg, color=c, lw=2, label=lab)
-        ac.plot(cg, _gaussian_kde(r["chi"].to_numpy(dtype=float), cg), color=c, lw=2, label=lab)
-    az.set_ylabel("elevation (m)")
-    az.set_xlabel("density")
-    ac.set_xlabel(r"$\chi$ (m)")
-    ac.set_ylabel("density")
-    ac.legend(fontsize=8, frameon=False)
-    for ax in (az, ac):
-        ax.grid(alpha=0.25, lw=0.5)
-        for side in ("top", "right"):
-            ax.spines[side].set_visible(False)
     n_basins = ordered["basin_index"].nunique()
     fig.suptitle((title + ": " if title else "") + f"knickpoints ordered by strength on each channel "
                  f"({n_channels} channels, {n_basins} basins)", fontsize=10, x=0.01, ha="left")
     fig.tight_layout()
-    return fig, (az, ac)
-
+    return fig, axes
 
 def plot_knickpoints_along_chi(
     knickpoints: pd.DataFrame,

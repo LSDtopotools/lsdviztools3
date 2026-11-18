@@ -10,7 +10,8 @@ segments meet), its suggested thresholds, and the fit segments, and writes:
   <out-prefix>_knickpoints_by_elevation.png  the elevations of the major
       knickpoints against all candidates, overall and per basin
   <out-prefix>_knickpoint_order_kde.png  kernel density of the elevation and
-      chi of each channel's 1st, 2nd, 3rd, 4th strongest knickpoint, all basins
+      chi of each channel's 1st, 2nd, 3rd, 4th strongest shallowing and
+      steepening knickpoint, pooled over the basins (all, or --basins)
   <out-prefix>_knickpoints_along_chi.png  where major knickpoints sit along chi
   <out-prefix>_knickpoint_map.png  with --dem: major knickpoints on the map
   <out-prefix>_major_knickpoints.csv  the selected rows and the threshold used
