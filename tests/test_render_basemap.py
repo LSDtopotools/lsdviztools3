@@ -219,8 +219,18 @@ def test_locator_modes_export_png(tmp_path, mode):
 
 @pytest.mark.network
 def test_regional_relief_exports_png(tmp_path):
-    fig = render_regional_basemap(_utm_raster(), relief=True,
-                                  style=MapStyle(figure_size="8c", transparent=False))
+    """Relief needs GMT's remote @earth_relief grid. Like the other network
+    tests, skip when it cannot be fetched (offline, or GMT's remote download
+    switched off on its server); any other error still fails."""
+    from pygmt.exceptions import GMTCLibError
+
+    try:
+        fig = render_regional_basemap(_utm_raster(), relief=True,
+                                      style=MapStyle(figure_size="8c", transparent=False))
+    except GMTCLibError as exc:
+        if "Unable to obtain remote file" in str(exc) or "Remote download" in str(exc):
+            pytest.skip(f"GMT remote relief data unavailable: {exc}")
+        raise
     out = tmp_path / "regional_relief.png"
     fig.savefig(out)
     assert out.exists() and out.stat().st_size > 0
