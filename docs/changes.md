@@ -2,6 +2,46 @@
 
 ## Unreleased
 
+**Knickpoints (`lsdviz3-knickpoints`).** See [Knickpoints](chi_analysis.md#knickpoints-lsdviz3-knickpoints).
+
+- **Changed defaults:** major knickpoints are ranked by lsdtt3's split
+  hierarchy (`--measure split_normalised`), and the threshold is lsdtt3's own
+  choice (`--threshold major`). A table from an older lsdtt3 without the
+  split columns still uses `delta` and `p95`. The knickpoints are always the
+  stage 1 ones; `--stepaware-ksn` colours the k_sn of the step-aware fit
+  under them.
+- **New plots:**
+  - `_knickpoints_by_elevation.png`;
+  - `_knickpoint_order_kde.png`, the 1st to 4th strongest knickpoint of each
+    channel, shallowing and steepening (`--max-order`, `--order-majors-only`);
+  - `_step_long_profiles.png`, steps on the longitudinal profiles, green at a
+    basin outlet or tributary mouth.
+- **New overlays:** knickzones on the map (`--no-map-knickzones` to leave
+  them off, `--profile-knickzones` to add them to the chi profile,
+  `--no-knickzones`). Steps can be filtered with `--min-step-drop` and
+  `--hide-flagged-steps`, or left off with `--no-steps`.
+- `--basins` limits every figure and CSV to those basins.
+
+**Chi plots (`lsdviz3-chi`, and the profiles of `lsdviz3-knickpoints`).**
+
+- **Choosing what to plot:**
+  - `--basins` picks the basins and their order;
+  - `--basins-per-row` wraps the stacked plot onto rows;
+  - `--ksn-gradient-key` adds a key of chi–elevation gradients at the plot's
+    scale;
+  - `--longest-channels N` keeps the main stem and the N-1 longest
+    tributaries of each basin.
+
+  See [Stacked plot layout](chi_analysis.md#stacked-plot-layout) and
+  [Removing tributaries](chi_analysis.md#removing-tributaries).
+- **New plot:** `_ksn_distribution.png`, the k_sn distribution per channel
+  pixel and per fitted segment (`--no-ksn-distribution` to skip it).
+  `--ksn-class-basis` chooses which one a class scheme is found in, and
+  `--ksn-class-min` / `--ksn-class-max` bound the scheme (defaults 5 and 250).
+  See [k_sn distributions](chi_analysis.md#k_sn-distributions).
+- **Fit choice:** a run with step detection is drawn from its step-aware
+  (stage 2) fit; `--stage1` draws the ordinary fit.
+
 - New: `lsdviz3-slope-area` draws an lsdtt-slope-area run: binned gradient
   against area per polyfit lambda or D8 window, a comparison of two runs, and
   the low-concavity theta histogram, slope-area cloud and segments map. See

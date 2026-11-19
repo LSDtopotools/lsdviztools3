@@ -31,8 +31,10 @@ pixi run lsdviz3-chi --data-dir work/eigg --prefix eigg --m-over-n 0.45 \
 | `--ksn-class-min`, `--ksn-class-max` | A class scheme finds its breaks only between these k_sn (defaults 5 and 250); see [Colouring k_sn in classes](#colouring-k_sn-in-classes). `none` for no limit. |
 | `--basins 37,2,5` | Plot only these basins (by `basin_index`), in this order. |
 | `--basins-per-row N` | Wrap the stacked plot onto rows of at most N basins (see [Stacked plot layout](#stacked-plot-layout)). |
-| `--ksn-gradient-key [K1,K2,K3]` | Add a key of chi–elevation gradients for a few k_sn values, drawn as an extra profile after the last basin, at the plot's scale. |
+| `--ksn-gradient-key [K1,K2,K3]` (or `--ksn-gradient-inset`) | Add a key of chi–elevation gradients for a few k_sn values, drawn as an extra profile after the last basin, at the plot's scale. |
 | `--no-ksn-distribution` | Skip the k_sn distribution plot. |
+| `--stage1` | Draw the ordinary (stage 1) fit. By default a run with `run_step_change_detection: true` is drawn from its step-aware (stage 2) fit, which leaves the steps out of the k_sn. |
+| `--locator global\|regional` and its options | A locator inset on the map (see [Locator maps](basic_plots.md#locator-maps-where-is-this-raster)). |
 
 It writes `<prefix>_ksn_distribution.png`, `<prefix>_ksn_map.png`,
 `<prefix>_chi_stacked.png` and `<prefix>_chi_profile_basin<N>.png`. The sections below describe the plots
@@ -236,69 +238,132 @@ With `--dem`, `lsdviz3-chi` maps only the kept channels
 redone without the removed tributaries.
 ## Knickpoints (`lsdviz3-knickpoints`)
 
-A current lsdtt3 chi run also writes `<prefix>_chi_knickpoints_mn_*.csv`
-(`write_chi_knickpoint_table`, on by default). It has one row per node where
-two fitted k_sn segments meet, with:
-- `delta_ksn`: upstream minus downstream k_sn, positive where the channel
-  steepens upstream;
-- `log_ratio_ksn`: log₁₀ of their ratio;
-- `at_junction`: 1 where a tributary's first segment meets its parent, at
-  its mouth.
+A current lsdtt3 chi run with `write_chi_knickpoint_table: true` (the
+default) writes three tables, all from the ordinary (stage 1) fit:
 
-It also writes `<prefix>_chi_knickpoint_thresholds_mn_*.csv`, suggested
-thresholds for a "major" knickpoint over the within-tributary rows: for
-|Δk_sn| and |log ratio|, the 90th and 95th percentiles, the median plus three
-times the MAD (scaled by 1.4826) and Otsu's two-class split. lsdtt3 computes
-all of these; this command draws them and applies the threshold you choose.
+- **`<prefix>_chi_knickpoints_mn_*.csv`**, one row per node where two
+  fitted k_sn segments meet:
+  - `delta_ksn`: upstream minus downstream k_sn, positive where the channel
+    steepens upstream;
+  - `log_ratio_ksn`: log₁₀ of their ratio;
+  - `split_delta_ksn_normalised`: lsdtt3's ranking. It is the chord-weighted
+    k_sn change of the split made at that node, over the branch's chi span;
+  - `is_major`: lsdtt3's choice of major knickpoints;
+  - `at_junction`: 1 where a tributary's first segment meets its parent, at
+    its mouth.
+- **`<prefix>_chi_knickpoint_thresholds_mn_*.csv`**: suggested thresholds
+  for a "major" knickpoint over the within-tributary rows. For each measure
+  they are the 90th and 95th percentiles, the median plus three times the MAD
+  (scaled by 1.4826) and Otsu's two-class split.
+- **`<prefix>_chi_knickzones_mn_*.csv`**: knickzones, each from a foot (a
+  steepening knickpoint) up to a lip (a major shallowing one).
+
+With `run_step_change_detection: true` the run also writes
+`<prefix>_chi_steps_mn_*.csv`, the abrupt steps in the profile. lsdtt3
+computes all of these (see
+[Tributaries and knickpoints](https://lsdtopotools.github.io/lsdtt3/design_and_algorithms/chi_analysis.html#tributaries-and-knickpoints));
+this command draws them and applies the threshold you choose.
 
 ```bash
 pixi run lsdviz3-knickpoints --data-dir work/eigg --prefix eigg --m-over-n 0.45 \
-  --out-dir demo_output/knickpoints --dem work/eigg/eigg_remove_seas.tif \
-  --threshold otsu
+  --out-dir demo_output/knickpoints --dem work/eigg/eigg_remove_seas.tif
 ```
+
+**Which knickpoints**
 
 | Flag | Meaning |
 |---|---|
-| `--measure delta\|log_ratio` | The change in k_sn: the difference (default) or the log ratio. |
-| `--threshold` | A value of \|measure\|, or a suggestion from the thresholds table: `p90`, `p95` (default), `median_plus_3mad`, `otsu`. |
+| `--measure split_normalised\|split\|delta\|log_ratio` | The change in k_sn used to rank and threshold. `split_normalised` (default) is lsdtt3's ranking; `split` is the chord-weighted change in metres; `delta` the difference; `log_ratio` the log ratio. A table without the split columns (an older lsdtt3) falls back to `delta`. |
+| `--threshold` | `major` (lsdtt3's `is_major`, the default with `split_normalised`); a value of \|measure\|; or a suggestion from the thresholds table: `p90`, `p95` (the default for the other measures), `median_plus_3mad`, `otsu`. |
 | `--direction both\|steepening\|shallowing` | Count changes in both directions (default), or only where the channel steepens, or shallows, upstream. |
 | `--include-junctions` | Also count changes at tributary mouths (left out by default). |
-| `--along chi\|chi_normalised\|elevation` | x axis of the along-chi plot. |
+
+**What is drawn**
+
+| Flag | Meaning |
+|---|---|
 | `--basin N` | One basin's profile instead of the stacked plot. |
+| `--basins 13,10,0`, `--basins-per-row N`, `--ksn-gradient-key` | Which basins (every figure and CSV is limited to them), and the stacked layout, as in [Stacked plot layout](#stacked-plot-layout). |
+| `--along chi\|chi_normalised\|elevation` | x axis of the along-chi plot. |
+| `--stepaware-ksn` | Colour the profile and map with the k_sn of the step-aware (stage 2) fit. The knickpoints are the stage 1 ones either way. |
+| `--no-map-knickzones` | Leave the knickzone reaches off the map (drawn by default). |
+| `--profile-knickzones` | Also draw knickzones, foot to lip, on the chi profile (off by default). |
+| `--no-knickzones` | No knickzones anywhere. |
+| `--no-steps` | No steps. |
+| `--min-step-drop M` | Draw only steps that drop at least M metres (default 0: every step the run found). |
+| `--hide-flagged-steps` | Leave out the steps at a basin outlet or tributary mouth, or with uphill pairs. Otherwise they are drawn green. |
+| `--max-order N` | Orders in the knickpoint-order plot (default 4). |
+| `--order-majors-only` | Order only lsdtt3's major knickpoints in that plot (default: every segment boundary). |
 | `--ksn-vmin`, `--ksn-vmax`, `--cmap` | The k_sn colours of the profile and map, as `lsdviz3-chi`. |
-| `--ksn-classes`, `--n-classes`, `--class-colors`, `--class-color-mode`, `--ksn-class-basis` | k_sn on the map and profile in classes, as `lsdviz3-chi`. |
-| tributary flags | `--remove-ksn-above`, `--min-tributary-area-m2`, `--min-tributary-area-fraction`, `--top-tributaries`, `--longest-channels`, `--keep-descendants`, `--show-removed` as in [Removing tributaries](#removing-tributaries). The knickpoints of removed tributaries are dropped. |
+| `--ksn-classes`, `--n-classes`, `--class-colors`, `--class-color-mode`, `--ksn-class-basis`, `--ksn-class-min`, `--ksn-class-max` | k_sn on the map and profile in classes, as `lsdviz3-chi`. |
+| `--locator` and its options | A locator inset on the map, as `lsdviz3-chi` (see [Locator maps](basic_plots.md#locator-maps-where-is-this-raster)). |
+| tributary flags | `--remove-ksn-above`, `--min-tributary-area-m2`, `--min-tributary-area-fraction`, `--top-tributaries`, `--longest-channels`, `--keep-descendants`, `--show-removed` as in [Removing tributaries](#removing-tributaries). The knickpoints, knickzones and steps of removed tributaries are dropped. |
 
 It writes:
 
-- `<prefix>_knickpoint_distribution.png`. Left: a histogram of the signed
-  change, with counts on a log axis so the tails show. Right: the absolute
-  changes ranked largest first, where a break in slope can be picked by eye.
+- `<prefix>_knickpoint_distribution.png`.
+  - Left: a histogram of the signed change, with counts on a log axis so the
+    tails show.
+  - Right: the absolute changes ranked largest first, where a break in slope
+    can be picked by eye.
+
   Both carry every suggested threshold (with how many knickpoints lie
   beyond it) and the chosen one in black. To choose by hand, read a value
   off the ranked curve and pass it as `--threshold`.
-- `<prefix>_knickpoint_profile.png`: the chi profile (stacked, or one
-  basin) with the major knickpoints. An open upward triangle marks where the
+- `<prefix>_knickpoint_profile.png` (`_basin<N>` with `--basin`): the chi
+  profile with the major knickpoints. An open upward triangle marks where the
   channel steepens upstream, a filled downward one where it shallows; the
   size scales with the change.
+- `<prefix>_knickpoints_by_elevation.png`.
+  - Left: histograms over elevation of all candidate boundaries (grey) and of
+    the major knickpoints, shallowing and steepening.
+  - Right: each major knickpoint at its elevation, one column per basin.
+
+  A plateau rim or a migrating wave shows as a cluster at one elevation
+  across basins.
+- `<prefix>_knickpoint_order_kde.png`: kernel densities of the elevation
+  (left) and chi (right) of each channel's 1st, 2nd, 3rd and 4th strongest
+  knickpoint, pooled over the basins (all, or `--basins`).
+  - Top row: shallowing upstream (lips).
+  - Bottom row: steepening upstream (feet).
+  - The darkest line is the 1st order.
+
+  A plateau rim shows as a 1st-order shallowing peak.
 - `<prefix>_knickpoints_along_chi.png`: a histogram of the major
   knickpoints along chi over that of all segment boundaries, and one row per
   basin. Knickpoints at the same chi across tributaries or basins are what a
   wave of incision moving upstream would leave.
 - `<prefix>_knickpoint_map.png` (with `--dem`): the same symbols on the
-  hillshade over the k_sn network.
+  hillshade over the k_sn network, with the knickzone reaches.
+- `<prefix>_step_long_profiles.png` (with steps, the fit nodes and
+  `write_chi_data_maps: true`): the steps on the longitudinal profile,
+  elevation against flow distance, one panel per basin.
+  - Each step is a heavy blue segment as long as the step.
+  - It is green at a basin outlet or tributary mouth.
+  - Steps are drawn only here, not on the chi profiles.
 - `<prefix>_major_knickpoints.csv`: the selected rows, with the measure,
-  threshold and direction used.
+  threshold and direction used; `<prefix>_plotted_steps.csv`: the steps
+  drawn, after filtering.
 
 A steep segment between two gentle ones gives a pair: a steepening knickpoint
 at its foot and a shallowing one at its top. A staircase of such pairs along
 one channel often marks a single knickzone fitted in pieces.
 
-In Python: `select_major_knickpoints`, `plot_knickpoint_distribution`,
-`plot_knickpoints_on_profile`, `plot_knickpoints_along_chi` and
-`render_knickpoint_map` in `lsdviztools3.charts.knickpoints`;
-`load_chi_knickpoints` and `load_chi_knickpoint_thresholds` in
-`lsdviztools3.io.chi`.
+In Python:
+
+- in `lsdviztools3.charts.knickpoints`:
+  - `select_major_knickpoints`;
+  - `plot_knickpoint_distribution`, `plot_knickpoints_on_profile`;
+  - `plot_knickpoints_by_elevation`;
+  - `knickpoint_selection_order`, `plot_knickpoint_order_kde`;
+  - `plot_knickpoints_along_chi`, `plot_steps_on_long_profile`;
+  - `render_knickpoint_map`;
+- in `lsdviztools3.io.chi`:
+  - `chi_fit_files` (the paths of a run's tables, stage 1 or step-aware);
+  - `load_chi_knickpoints`, `load_chi_knickpoint_thresholds`;
+  - `load_chi_knickzones`;
+  - `load_chi_steps`, `filter_chi_steps`;
+  - `attach_flow_distance`.
 
 ## Channel network coloured by log₁₀ k_sn
 

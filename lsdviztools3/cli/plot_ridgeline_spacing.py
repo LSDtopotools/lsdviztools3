@@ -46,19 +46,26 @@ def build_parser() -> argparse.ArgumentParser:
                         help="A site (ridgeline 0, whole profile); repeat per site.")
     parser.add_argument("--site-count", dest="site_count", type=int, default=None,
                         help="Number of site_<N>_* driver entries.")
-    parser.add_argument("--log-spacing", dest="log_spacing", type=boolean, default=False)
+    parser.add_argument("--log-spacing", dest="log_spacing", type=boolean, default=False,
+                        help="Logarithmic spacing axis (true/false; default false).")
     parser.add_argument("--fixed-spacing-ylim", dest="fixed_spacing_ylim", type=boolean,
-                        default=True)
-    parser.add_argument("--spacing-y-max-m", dest="spacing_y_max_m", type=float, default=200.0)
+                        default=True,
+                        help="Spacing axis from 0 to --spacing-y-max-m (true/false; default true). "
+                             "Ignored with --log-spacing.")
+    parser.add_argument("--spacing-y-max-m", dest="spacing_y_max_m", type=float, default=200.0,
+                        help="Upper limit of the spacing axis (m; default 200).")
     parser.add_argument("--absolute-curvature-label", dest="absolute_curvature_label",
-                        type=boolean, default=False)
+                        type=boolean, default=False,
+                        help="Label the curvature axis as absolute maximal curvature (true/false; "
+                             "default false).")
     parser.add_argument("--figure-width-inches", dest="figure_width_inches", type=float,
-                        default=2.75)
+                        default=2.75, help="Figure width (inches; default 2.75), whatever the site count.")
     parser.add_argument("--row-height-inches", dest="row_height_inches", type=float,
-                        default=1.1)
+                        default=1.1, help="Height of each site's row (inches; default 1.1).")
     parser.add_argument("--xlabel-space-inches", dest="xlabel_space_inches", type=float,
-                        default=0.45)
-    parser.add_argument("--font-size", dest="font_size", type=float, default=6.0)
+                        default=0.45, help="Extra height for the bottom x labels (inches; default 0.45).")
+    parser.add_argument("--font-size", dest="font_size", type=float, default=6.0,
+                        help="Font size of every text element (points; default 6).")
     add_output_args(parser, "zero_spacing_slope_area")
     return parser
 

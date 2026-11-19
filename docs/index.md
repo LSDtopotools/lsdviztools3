@@ -30,8 +30,8 @@ as **Python / notebook** code. The commands are written as run from a clone
 |---|---|
 | [Getting started](getting_started.md) | Coordinate modes, `MapStyle`, saving, target directories; downloading a DEM; running lsdtt3 from Python; the workflow helpers and example scripts |
 | [Basic plots](basic_plots.md) | Hillshades, raster drapes, colouring in classes, basins, points, locator maps and insets, decorations, 3D relief, vector overlays, swath profiles |
-| [Chi analysis](chi_analysis.md) | k_sn maps, stacked chi plots and single-basin profiles (`lsdviz3-chi`) |
-| [Channel networks](channel_networks.md) | Channel maps, bearing roses and circular comparisons, junction angles (`lsdviz3-channel-bearings`), network geometry, divide migration, stream-burning QC, worked examples |
+| [Chi analysis](chi_analysis.md) | k_sn maps and distributions, stacked chi plots and single-basin profiles (`lsdviz3-chi`); knickpoints, knickzones and steps (`lsdviz3-knickpoints`) |
+| [Channel networks](channel_networks.md) | Channel maps, bearing roses and circular comparisons, junction angles (`lsdviz3-channel-bearings`), network geometry, divide migration, stream-burning QC, slope-area and low-concavity reaches (`lsdviz3-slope-area`), worked examples |
 | [Lithology](lithology.md) | Geologic unit maps, k_sn by lithologic unit, erodibility calibration |
 | [Valleys and cross sections](valleys_and_cross_sections.md) | Floodplains and terraces, method comparisons, the fluvial-surface ladder, valley widths, cross sections, hydraulic breaks, perimeter valley sources |
 | [Hillslopes and ridgelines](hillslopes_and_ridgelines.md) | Slope–area, gradient–curvature, E*–R*, hilltop–channel coupling, ridgeline profiles |

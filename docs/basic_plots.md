@@ -79,6 +79,11 @@ default 40), `--vmin`/`--vmax` (fixed colour-scale bounds), `--percentile-min`/
 (`bottom`/`top`/`left`/`right`, default `bottom`), `--clean` (strip all furniture,
 draw just a solid scale bar — see [Hillshade](#hillshade)), plus the shared style
 flags (`--cmap` sets the drape colour map; the base stays gray).
+`--categorical-gt-breaks 0.05,0.12,0.21` with `--categorical-colors
+yellow,orange,red` is an older form of [classes](#colouring-in-classes). Each
+colour paints the values strictly greater than its threshold, and values at or
+below the first threshold stay transparent. Give both or neither; they cannot
+be combined with `--classes`.
 
 **Colour maps.** `--cmap` accepts GMT's own maps (`geo`, `roma`, `batlow`,
 `viridis`, `seis`, …), **matplotlib colour maps** (`cividis`, `Spectral`, `RdBu`,

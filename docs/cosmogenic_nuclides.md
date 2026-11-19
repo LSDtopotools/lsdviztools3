@@ -18,9 +18,20 @@ pixi run lsdviz3-cosmo-basins --base runs/site_DEM.tif \
 ```
 
 Flags: `--base --basins --cosmo-csv --out [--hillshade --joined-basins-out
---colorbar --scaling-scheme --muon-scheme --atmosphere --erate-input-units
---allow-incomplete-basins]`. Python: `join_basins_with_cosmo_erates`,
-`render_cosmo_basin_erate_map`.
+--basin-id-col --erate-col --lon-col --lat-col --sample-col --out-erate-col
+--colorbar/--no-colorbar --colorbar-label --plot-title --fill --transparency
+--scaling-scheme --muon-scheme --atmosphere --erate-input-units
+--allow-incomplete-basins --dir]` plus the shared style flags.
+
+- **CSV columns:** `--erate-col`, `--lon-col`, `--lat-col`, `--sample-col` and
+  `--basin-id-col` name the columns when the usual names are not found. Without
+  them the columns are picked from the common names (for example `longitude`,
+  `lon`, `x`).
+- `--out-erate-col` is the name of the joined erosion-rate attribute (default
+  `inferred_erate_mm_yr`), used in `--joined-basins-out`.
+- The colourbar is drawn by default; `--no-colorbar` leaves it off.
+
+Python: `join_basins_with_cosmo_erates`, `render_cosmo_basin_erate_map`.
 
 **Chi with erosion rates (`lsdviz3-chi-cosmo`).** From a chi run's fit tables,
 writes the stacked and per-basin chi plots, a per-basin k_sn summary and map,
@@ -36,7 +47,8 @@ pixi run lsdviz3-chi-cosmo --fit-nodes-csv runs/site_chi_fit_nodes_mn_0p450.csv 
 Flags: `--fit-nodes-csv --fit-segments-csv --outdir [--base --hillshade
 --basins --basin-id-col --cosmo-csv --erate-col --lon-col --lat-col
 --sample-col --theta --scaling-scheme --atmosphere --muon-scheme
---erate-input-units --allow-incomplete-basins --stem --dpi --cmap]`. Python:
+--erate-input-units --allow-incomplete-basins --stem --dpi --cmap --dir]`. The
+column flags work as for `lsdviz3-cosmo-basins`. Python:
 `render_chi_and_cosmo_basin_workflow`, `summarize_basin_ksn`,
 `render_chi_basin_ksn_map`, `charts.plot_ksn_vs_erate`.
 

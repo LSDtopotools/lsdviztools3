@@ -243,7 +243,7 @@ absolute path:
 
 ## Console scripts
 
-The package installs 41 `lsdviz3-*` commands, one per kind of figure (for
+The package installs 42 `lsdviz3-*` commands, one per kind of figure (for
 example `lsdviz3-hillshade`, `lsdviz3-channels`, `lsdviz3-chi`,
 `lsdviz3-valley-widths`, `lsdviz3-cosmo-basins`), plus `lsdviz3-grabdem` to
 download a DEM and `lsdviz3-lsdtt` to run an lsdtt3 tool. Every command takes

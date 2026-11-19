@@ -85,6 +85,7 @@ lsdviztools3/
 ├── pixi.toml                  conda-forge env (includes gmt, which pip cannot install) + tasks.
 ├── lsdviztools3/
 │   ├── __init__.py            Package version + top-level re-exports.
+│   ├── colour_classes.py, colour_limits.py   Class breaks (equal interval, quantile, natural breaks) and colour ranges.
 │   ├── frames.py              Oblique analysis frames (lsdtt3 rotated feature frames), grid convergence.
 │   ├── paths.py               Target-directory helpers (--dir).
 │   ├── regions.py             Named demo regions; box_from_corners / parse_lat_lon.
@@ -92,7 +93,8 @@ lsdviztools3/
 │   ├── io/                    Backend-agnostic IO/data core (NO pygmt), one module per lsdtt3 product:
 │   │   ├── raster.py, vector.py, table.py   Grids, vectors, CSV points; coordinate handling.
 │   │   ├── grids.py           Derived grids (hillshade prep; deferred, §8).
-│   │   ├── chi.py, swath.py   Chi fit tables / data maps (node->segment k_sn join); swath percentiles.
+│   │   ├── chi.py, swath.py   Chi fit tables, knickpoints, knickzones, steps, tributary selection; swath percentiles.
+│   │   ├── slope_area.py      lsdtt-slope-area binned tables and low-concavity outputs.
 │   │   ├── channel_bearings.py, network_geometry.py, snapping.py, coverage.py   Channel networks.
 │   │   ├── lithology.py, erodibility_calibration.py                             Lithology.
 │   │   ├── divide_migration.py, hilltop_coupling.py, ridgeline.py               Divides, hillslopes, ridges.
@@ -106,8 +108,9 @@ lsdviztools3/
 │   │   ├── divide_migration.py, ridgeline.py   Divides and ridges.
 │   │   └── animation.py, lem_pulse.py, lem_ci_animation.py, hillslope_comparison_animation.py   GIFs.
 │   ├── charts/                x-y charts (matplotlib), grouped as in the guide:
-│   │   ├── chi.py, swath.py, distributions.py
-│   │   ├── rose.py, circular.py, channel_bearings.py, network_geometry.py, network_maps.py, snapping.py
+│   │   ├── chi.py, knickpoints.py, ksn_distribution.py, swath.py, distributions.py
+│   │   ├── rose.py, circular.py, channel_bearings.py, network_geometry.py, network_maps.py, snapping.py,
+│   │   │   channel_slopes.py, burned_profiles.py
 │   │   ├── lithology_ksn.py, erodibility_calibration.py
 │   │   ├── floodplain_qq.py, surface_methods.py, training_polygons.py, ladder_windows.py,
 │   │   │   ladder_density.py, ladder_band_map.py, valley_sections.py, valley_section_map.py,
@@ -119,7 +122,8 @@ lsdviztools3/
 │   ├── download/              DEM acquisition: apikey.py (secure key resolution), ot_scraper.py.
 │   ├── driver/                lsdtt3 process orchestration: config.py (locate the CLIs), lsdtt_driver.py (run_lsdtt).
 │   └── cli/                   argparse entry points, one module per lsdviz3-* command;
-│                              _common.py (style flags, --dir, IO, save), _ridgeline.py (driver files).
+│                              _common.py (style flags, --dir, IO, save), _chi_common.py (chi layout and
+│                              tributary flags), _ridgeline.py (driver files).
 ├── examples/                  End-to-end scripts (see Getting started).
 └── tests/                     pytest suite (unit, smoke, and lsdtt3 integration tests).
 ```

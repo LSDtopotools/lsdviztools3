@@ -78,7 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Draw only steps that drop at least this much (m; default 0, all the run found).")
     p.add_argument("--hide-flagged-steps", action="store_true",
                    help="Leave out steps at a basin outlet or tributary mouth, or with uphill pairs "
-                        "(drawn grey otherwise).")
+                        "(drawn green on the long profiles otherwise).")
     p.add_argument("--direction", choices=["both", "steepening", "shallowing"], default="both",
                    help="Which changes count: both (default), steepening upstream only, or shallowing only.")
     p.add_argument("--include-junctions", action="store_true",

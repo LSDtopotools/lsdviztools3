@@ -36,12 +36,22 @@ draws flat opaque colours.
   stream order (`--channel-order-column`), or by k_sn
   (`--channel-color-by k_sn`, which mutes the geology). `--network-status`
   draws a channel-network-analysis run's whole network, analysed links thick.
+  `--channel-width` sets the line width (default `0.6p`).
+- **k_sn channels:**
+  - `--ksn-cmap` is the colour map (default `plasma`);
+  - `--ksn-percentiles lo,hi` sets the colour limits as percentiles
+    (default `2,98`);
+  - `--ksn-log` colours log10 k_sn (values <= 0 are not drawn);
+  - `--geology-mute` is the transparency of the unit colours under them
+    (percent, default 65).
 - **Regions:** `--regions` outlines region polygons (e.g. physiographic
   provinces), named by `--region-field`.
 - `--hide-unmapped` leaves unmapped cells out; `--legend-title`,
   `--legend-columns`, `--transparency`, `--relief` and the shared style flags
   control the look; `--credit`, `--attribution`, `--dem-source` or
-  `--no-credit` set the credit line.
+  `--no-credit` set the credit line. The DEM's source is read from
+  `--dem-params`, an lsdtt-fetch-raster parameter file (default: the
+  `<stem>_ingested_params.param` beside `--dem`, if it records one).
 
 ## k_sn by lithology (`lsdviz3-ksn-by-lithology`)
 
