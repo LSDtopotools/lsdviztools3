@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- New: `lsdviz3-slope-area` draws an lsdtt-slope-area run: binned gradient
+  against area per polyfit lambda or D8 window, a comparison of two runs, and
+  the low-concavity theta histogram, slope-area cloud and segments map. See
+  [Slope-area and low-concavity reaches](channel_networks.md#slope-area-and-low-concavity-reaches-lsdviz3-slope-area).
+  `load_slope_area` moved to `lsdviztools3.io.slope_area` (still importable
+  from `lsdviztools3.io.ridgeline`).
 - Fixed: in the vertical box plots of `lsdviz3-ksn-by-lithology` (node and
   reach k<sub>sn</sub>), the "(low sample: few qualifying reaches)" note under
   each low-sample unit ran into its neighbours' labels. The labels now say

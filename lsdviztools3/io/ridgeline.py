@@ -46,10 +46,9 @@ RIDGELINE_ID_COLUMNS = ("ridgeline_number", "basin_junction_number")
 #: Quantiles of the zero-crossing spacing (name, percentile).
 SPACING_QUANTILES = (("d05", 5), ("d25", 25), ("d50", 50), ("d75", 75), ("d95", 95))
 
-#: Columns of the ``lsdtt-slope-area`` binned table used here.
-SLOPE_AREA_COLUMNS = (
-    "drainage_area", "d05_slope", "d25_slope", "d50_slope", "d75_slope", "d95_slope",
-)
+# The ``lsdtt-slope-area`` binned table reader lives in io.slope_area; it is
+# re-exported here so the ridgeline code and its callers are unchanged.
+from .slope_area import SLOPE_AREA_COLUMNS, load_slope_area  # noqa: E402,F401
 
 _LAMBDA_COLUMN = r"{metric}(?:_lambda_([0-9]+(?:\.[0-9]+)?)m)?"
 _MOVING_WINDOW = re.compile(r"moving_window_detrended_elevation_([0-9]+)px$")
@@ -350,31 +349,6 @@ def tdj_display_positions(tdj: dict, profile_distance, reverse: bool = False,
     (:func:`tdj_rows_in_range`)."""
     return tdj_rows_in_range(tdj, profile_distance, reverse,
                              distance_range)["display_distance"].to_numpy(dtype=float)
-
-
-# -----------------------------------------------------------------------------
-# Slope-area
-# -----------------------------------------------------------------------------
-def load_slope_area(path) -> pd.DataFrame:
-    """Load the ``lsdtt-slope-area`` binned table, sorted by drainage area.
-
-    Raises:
-        ValueError: on missing or non-finite columns.
-    """
-    path = Path(path)
-    if not path.is_file():
-        raise FileNotFoundError(f"Slope-area CSV does not exist: {path}")
-    df = pd.read_csv(path, encoding="utf-8-sig")
-    missing = [c for c in SLOPE_AREA_COLUMNS if c not in df.columns]
-    if missing:
-        raise ValueError(f"Slope-area CSV {path} is missing column(s): {', '.join(missing)}")
-    if df.empty:
-        raise ValueError(f"Slope-area CSV contains no rows: {path}")
-    for column in SLOPE_AREA_COLUMNS:
-        df[column] = pd.to_numeric(df[column], errors="coerce")
-        if not np.all(np.isfinite(df[column].to_numpy(dtype=float))):
-            raise ValueError(f"Non-finite value in {column!r} in {path}")
-    return df.sort_values("drainage_area", kind="stable").reset_index(drop=True)
 
 
 # -----------------------------------------------------------------------------

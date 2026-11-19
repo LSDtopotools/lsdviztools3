@@ -2,7 +2,8 @@
 
 Channel network maps, channel-link bearings and junction angles, network
 geometry across synthetic networks, divide migration, and the stream-burning
-quality-control maps and burned long profiles. For k_sn on the network see
+quality-control maps and burned long profiles, and slope-area plots with
+low-concavity reaches. For k_sn on the network see
 [Chi analysis](chi_analysis.md); for statistics by rock type see
 [Lithology](lithology.md).
 
@@ -360,6 +361,61 @@ from lsdviztools3.charts.channel_slopes import (
 pts = load_channel_points("site_channel_slope_points.csv")
 fig, ax = plot_slope_area(pts, min_area_m2=1e6)
 render_channel_slope_map("site.tif", pts, "slope_map.png", slope_vmin=1e-3, slope_vmax=0.3)
+```
+
+## Slope-area and low-concavity reaches (`lsdviz3-slope-area`)
+
+Draws the outputs of one
+[`lsdtt-slope-area`](https://lsdtopotools.github.io/lsdtt3/cli_reference/cli_reference_lsdtt_slope_area.html)
+run. Everything is read from the run's files; nothing is recomputed. The
+method is explained in
+[Slope-area analysis and low-concavity reaches](https://lsdtopotools.github.io/lsdtt3/design_and_algorithms/slope_area_and_low_concavity.html).
+
+```bash
+pixi run lsdviz3-slope-area --data-dir runs/site --prefix site \
+  --dem runs/site/site_DEM.tif --out-dir figures
+```
+
+`--prefix` is the run's `write_fname`. This writes:
+
+- `<prefix>_binned.png`: the median gradient (d50) against drainage area,
+  log-log, with the d25-d75 band, one line per polyfit lambda
+  (`_lambda_XXm.csv`) or D8 window (`_d8window_XXm.csv`).
+- `<prefix>_method_comparison.png` (with `--compare-data-dir` and/or
+  `--compare-prefix`): the binned d50 of this run and of a second run, for
+  example polyfit against the D8 flow-path gradient. `--name` and
+  `--compare-name` label them; `--comparison-bands` adds the d25-d75 bands.
+
+With `run_low_concavity_detection: true` in the run, it also writes:
+
+- `<prefix>_theta_distribution.png`: a histogram of theta for channel
+  pixels with a valid fit, with lines at ± the run's
+  `low_concavity_max_abs_concavity` (read from its
+  `_ingested_params.param`) and the counts flagged and valid.
+  `--theta-range` and `--theta-bins` set the axis and bins.
+- `<prefix>_low_concavity_slope_area.png` (with
+  `write_low_concavity_point_table: true`): every channel pixel's gradient
+  against area, low-concavity pixels in a second colour.
+- `<prefix>_low_concavity_map.png` (with `--dem`): the segments on a
+  hillshade, coloured as low concavity, not, or no valid fit. Line width
+  follows the Strahler order unless `--no-width-by-order` is given.
+
+A flag says that gradient did not vary with area over the fit window, not
+that the reach follows a clean power law. The theta histogram and the
+slope-area cloud show how loose the fits are.
+
+In Python:
+
+```python
+from lsdviztools3.io.slope_area import (find_binned_slope_area,
+                                        load_low_concavity_points)
+from lsdviztools3.charts.slope_area import (plot_binned_slope_area,
+                                            plot_low_concavity_slope_area)
+
+tables = find_binned_slope_area("runs/site", "site")
+fig, ax = plot_binned_slope_area(tables)
+points = load_low_concavity_points("runs/site/site_low_concavity_points.csv")
+fig, ax = plot_low_concavity_slope_area(points)
 ```
 
 ## Worked examples

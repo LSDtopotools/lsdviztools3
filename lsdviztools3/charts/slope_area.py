@@ -37,11 +37,15 @@ representation using digital elevation models. *Water Resources Research*
 29:3925-3934.
 
 Nothing here computes a landscape quantity: slope and drainage area are read
-from rasters lsdtt3 wrote.
+from rasters lsdtt3 wrote. The second half of the module draws the binned
+tables, low-concavity points and segments that ``lsdtt-slope-area`` writes
+(read with :mod:`lsdviztools3.io.slope_area`); the bins, gradients and
+concavities in them are lsdtt3's.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional, Tuple
 
 import numpy as np
@@ -304,3 +308,330 @@ def plot_slope_area(slope_raster,
 
     fig.tight_layout()
     return fig
+
+
+# =============================================================================
+# lsdtt-slope-area outputs: binned tables, low-concavity points and segments
+# =============================================================================
+#
+# These read what lsdtt-slope-area wrote (lsdviztools3.io.slope_area) and draw
+# it. The bins, gradients and concavities are lsdtt3's; nothing is recomputed.
+#
+# ``plot_binned_slope_area``             d50 with a d25-d75 band, one line per
+#     polyfit lambda / D8 window
+# ``plot_slope_area_method_comparison``  the binned d50 of two runs (e.g.
+#     polyfit and D8 flow path) on one plot
+# ``plot_theta_distribution``            histogram of theta for channel pixels
+#     with a valid fit, with the +/- threshold lines
+# ``plot_low_concavity_slope_area``      the channel-pixel slope-area cloud,
+#     low-concavity pixels in a second colour
+# ``render_low_concavity_map``           the segments on a hillshade, coloured
+#     by ``low_concavity``
+
+#: Line colours of the binned tables, in fixed order (as charts.knickpoints).
+SERIES_COLOURS = ("#2a78d6", "#1baf7a", "#9a5bd6", "#eb6834", "#d6a01b", "#d6457a")
+#: low_concavity classes: 1, 0 and -1 (no valid fit).
+LOW_CONCAVITY_COLOUR = "#eb6834"
+NOT_LOW_CONCAVITY_COLOUR = "#2a78d6"
+NO_FIT_COLOUR = "#9a9a9a"
+#: The same colours as GMT r/g/b, for the map.
+_GMT_CLASS = {1: ("235/104/52", "low concavity"), 0: ("42/120/214", "not low concavity"),
+              -1: ("150/150/150", "no valid fit")}
+
+
+def _draw_binned(ax, tables, *, colours, linestyle="-", band_alpha=0.18, label_prefix=""):
+    """One d50 line and d25-d75 band per table. Returns the d50 lines."""
+    lines = []
+    for k, t in enumerate(tables):
+        df = t["table"]
+        colour = colours[k % len(colours)]
+        a = df["drainage_area"].to_numpy(dtype=float)
+        keep = a > 0
+        a = a[keep]
+        d25 = df["d25_slope"].to_numpy(dtype=float)[keep]
+        d50 = df["d50_slope"].to_numpy(dtype=float)[keep]
+        d75 = df["d75_slope"].to_numpy(dtype=float)[keep]
+        pos = (d25 > 0) & (d75 > 0)
+        if band_alpha > 0 and pos.any():
+            ax.fill_between(a[pos], d25[pos], d75[pos], color=colour, alpha=band_alpha, lw=0)
+        good = d50 > 0
+        (line,) = ax.plot(a[good], d50[good], linestyle, marker="o", ms=3.5, lw=1.8, color=colour,
+                          label=f"{label_prefix}{t['label']}")
+        lines.append(line)
+    return lines
+
+
+def _finish_log_axes(ax, title):
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("drainage area (m$^2$)")
+    ax.set_ylabel("gradient $S$ (m/m)")
+    ax.grid(True, which="both", alpha=0.25)
+    if title:
+        ax.set_title(title)
+
+
+def plot_binned_slope_area(tables, *, title: Optional[str] = None,
+                           figsize: Tuple[float, float] = (7.5, 5.5)):
+    """Binned median gradient against drainage area, one line per scale.
+
+    Args:
+        tables: ``[{"label", "table"}, ...]`` from
+            :func:`lsdviztools3.io.slope_area.find_binned_slope_area`; each
+            ``table`` has ``drainage_area``, ``d25_slope``, ``d50_slope``,
+            ``d75_slope`` as lsdtt-slope-area wrote them.
+        title: Axes title (default: none).
+
+    Returns:
+        ``(fig, ax)``. The d50 is a line with markers; the shaded band is the
+        d25-d75 range of the same bins.
+    """
+    plt = _import_mpl()
+    if not tables:
+        raise ValueError("no binned slope-area tables to plot")
+    fig, ax = plt.subplots(figsize=figsize)
+    _draw_binned(ax, tables, colours=SERIES_COLOURS)
+    _finish_log_axes(ax, title)
+    ax.legend(title="binned d50, band d25-d75", fontsize=8, title_fontsize=8,
+              loc="best", framealpha=0.9)
+    fig.tight_layout()
+    return fig, ax
+
+
+def plot_slope_area_method_comparison(tables, compare_tables, *, name: str = "run",
+                                      compare_name: str = "comparison",
+                                      title: Optional[str] = None, bands: bool = False,
+                                      figsize: Tuple[float, float] = (7.5, 5.5)):
+    """The binned d50 of two runs on one log-log plot.
+
+    The first run's lines are solid, the comparison run's dashed. Colours
+    run in one fixed order over both sets. The d25-d75 bands are off by
+    default (``bands=True`` draws them, lighter than in
+    :func:`plot_binned_slope_area`): four or more overlapping bands hide the
+    lines.
+
+    Args:
+        tables, compare_tables: As for :func:`plot_binned_slope_area`.
+        name, compare_name: Run names, put in front of each label.
+
+    Returns:
+        ``(fig, ax)``.
+    """
+    plt = _import_mpl()
+    if not tables or not compare_tables:
+        raise ValueError("the method comparison needs binned tables from both runs")
+    fig, ax = plt.subplots(figsize=figsize)
+    n = len(tables)
+    alpha = 0.1 if bands else 0.0
+    _draw_binned(ax, tables, colours=SERIES_COLOURS, band_alpha=alpha, label_prefix=f"{name}: ")
+    _draw_binned(ax, compare_tables, colours=SERIES_COLOURS[n:] + SERIES_COLOURS[:n],
+                 linestyle="--", band_alpha=alpha, label_prefix=f"{compare_name}: ")
+    _finish_log_axes(ax, title)
+    ax.legend(title="binned d50, band d25-d75" if bands else "binned d50", fontsize=8, title_fontsize=8,
+              loc="best", framealpha=0.9)
+    fig.tight_layout()
+    return fig, ax
+
+
+def _class_counts(flag):
+    flag = np.asarray(flag)
+    return int((flag == 1).sum()), int((flag == 0).sum()), int((flag == -1).sum())
+
+
+def plot_theta_distribution(theta, flag, threshold: float, *, theta_range=None, bins: int = 60,
+                            title: Optional[str] = None,
+                            figsize: Tuple[float, float] = (7.5, 4.8)):
+    """Histogram of the fitted concavity theta of the channel pixels.
+
+    Only pixels with a valid fit (``flag >= 0``) are counted. Vertical lines
+    mark ``-threshold`` and ``+threshold`` (lsdtt3's
+    ``low_concavity_max_abs_concavity``); the bars inside them are the
+    low-concavity pixels.
+
+    Args:
+        theta: Theta per channel pixel, as lsdtt3 wrote it.
+        flag: ``low_concavity`` per pixel: 1, 0, -1 (no valid fit).
+        threshold: ``low_concavity_max_abs_concavity`` of the run.
+        theta_range: ``(low, high)`` of the x axis. Default: the 2nd to 98th
+            percentile of the valid theta (taken at data values, so fewer
+            than ~50 pixels are all shown), widened to include 2 x threshold
+            either side. Values outside are not drawn, and their number is
+            given in the legend.
+        bins: Number of histogram bins across ``theta_range``.
+
+    Returns:
+        ``(fig, ax)``.
+    """
+    plt = _import_mpl()
+    theta = np.asarray(theta, dtype=float)
+    flag = np.asarray(flag)
+    if theta.shape != flag.shape:
+        raise ValueError("theta and flag must have the same length")
+    n_low, n_not, n_none = _class_counts(flag)
+    n_valid = n_low + n_not
+    valid = (flag >= 0) & np.isfinite(theta)
+    t = theta[valid]
+
+    if theta_range is None:
+        if t.size:
+            # nearest data values, so a small sample is shown whole
+            lo = np.percentile(t, 2, method="lower")
+            hi = np.percentile(t, 98, method="higher")
+        else:
+            lo, hi = -threshold, threshold
+        lo, hi = min(lo, -2 * threshold), max(hi, 2 * threshold)
+    else:
+        lo, hi = (float(v) for v in theta_range)
+        if not hi > lo:
+            raise ValueError("theta_range must be (low, high) with high > low")
+    inside = (t >= lo) & (t <= hi)
+    n_out = int((~inside).sum())
+
+    fig, ax = plt.subplots(figsize=figsize)
+    edges = np.linspace(lo, hi, bins + 1)
+    if t.size:
+        low = flag[valid] == 1          # lsdtt3's flag, not re-derived from theta
+        ax.hist([t[inside & ~low], t[inside & low]], bins=edges, stacked=True,
+                color=[NOT_LOW_CONCAVITY_COLOUR, LOW_CONCAVITY_COLOUR],
+                label=[f"not low concavity ({n_not:,})", f"low concavity ({n_low:,})"],
+                edgecolor="white", linewidth=0.4)
+    for sign in (-1, 1):
+        ax.axvline(sign * threshold, color="k", ls="--", lw=1.2,
+                   label=f"|$\\theta$| = {threshold:g}" if sign == 1 else None)
+    # Counts with no bar of their own, as legend entries.
+    from matplotlib.patches import Patch
+    handles, labels = ax.get_legend_handles_labels()
+    handles.append(Patch(color=NO_FIT_COLOUR))
+    labels.append(f"no valid fit, not drawn ({n_none:,})")
+    if n_out:
+        handles.append(Patch(color="none"))
+        labels.append(f"valid, outside the x range ({n_out:,})")
+    ax.legend(handles, labels, fontsize=8, loc="upper right", framealpha=0.9)
+    ax.set_xlim(lo, hi)
+    ax.set_xlabel(r"concavity $\theta$ ($S \propto A^{-\theta}$)")
+    ax.set_ylabel("channel pixels")
+    ax.grid(True, axis="y", alpha=0.25)
+    share = f"{n_low / n_valid:.1%}" if n_valid else "n/a"
+    ax.set_title(title if title is not None else
+                 f"{n_low:,} of {n_valid:,} valid channel pixels low concavity ({share}); "
+                 f"{n_none:,} no valid fit", fontsize=10)
+    fig.tight_layout()
+    return fig, ax
+
+
+def plot_low_concavity_slope_area(points: "pd.DataFrame", *, title: Optional[str] = None,
+                                  figsize: Tuple[float, float] = (7.5, 5.5)):
+    """The channel-pixel slope-area cloud, coloured by ``low_concavity``.
+
+    Each point is one channel pixel of ``<prefix>_low_concavity_points.csv``
+    (``drainage_area_m2`` against ``slope``, the D8 flow-path gradient of
+    the low-concavity fit). Low-concavity pixels are drawn last, in a second
+    colour; pixels with no valid fit are muted. Pixels without a positive
+    area and gradient cannot go on log axes and are counted in the title.
+
+    Returns:
+        ``(fig, ax)``.
+    """
+    plt = _import_mpl()
+    a = points["drainage_area_m2"].to_numpy(dtype=float)
+    s = points["slope"].to_numpy(dtype=float)
+    f = points["low_concavity"].to_numpy()
+    drawable = np.isfinite(a) & np.isfinite(s) & (a > 0) & (s > 0)
+    fig, ax = plt.subplots(figsize=figsize)
+    for value, colour, label, size, alpha in (
+            (-1, NO_FIT_COLOUR, "no valid fit", 5, 0.35),
+            (0, NOT_LOW_CONCAVITY_COLOUR, "not low concavity", 7, 0.55),
+            (1, LOW_CONCAVITY_COLOUR, "low concavity", 10, 0.9)):
+        sel = drawable & (f == value)
+        n_all = int((f == value).sum())
+        ax.scatter(a[sel], s[sel], s=size, color=colour, alpha=alpha, linewidths=0,
+                   label=f"{label} ({int(sel.sum()):,} of {n_all:,})")
+    _finish_log_axes(ax, None)
+    ax.set_ylabel("D8 flow-path gradient $S$ (m/m)")
+    n_hidden = int((~drawable).sum())
+    ax.set_title(title if title is not None else
+                 f"channel pixels; {n_hidden:,} without a positive gradient not drawn",
+                 fontsize=10)
+    leg = ax.legend(fontsize=8, loc="best", framealpha=0.9, title="pixels drawn",
+                    title_fontsize=8)
+    for handle in leg.legend_handles:
+        try:
+            handle.set_alpha(1.0)
+        except Exception:  # noqa: BLE001
+            pass
+    fig.tight_layout()
+    return fig, ax
+
+
+def stream_order_pen_width(order, base: float = 0.8, step: float = 0.6,
+                           maximum: float = 3.2) -> float:
+    """Map line width (points) for a Strahler order: ``base + step*(order-1)``,
+    capped at ``maximum``."""
+    return float(min(maximum, base + step * max(int(order) - 1, 0)))
+
+
+def render_low_concavity_map(dem_path, segments, png_path, *, width_by_order: bool = True,
+                             line_width: float = 1.2, coordinates: str = "local",
+                             high_res: bool = False,
+                             legend_position: str = "JTR+jTR+o0.2c",
+                             title: Optional[str] = None):
+    """The low-concavity segments on a hillshade of ``dem_path``.
+
+    Segments are coloured by ``low_concavity``: low concavity (orange), not
+    (blue), no valid fit (grey), drawn in that order from the bottom so the
+    low-concavity reaches are on top. With ``width_by_order`` the line width
+    grows with ``stream_order`` (:func:`stream_order_pen_width`), else every
+    line is ``line_width`` points.
+
+    Args:
+        dem_path: DEM for the hillshade (the run's input DEM).
+        segments: ``GeoDataFrame`` or path of ``<prefix>_low_concavity_segments.fgb``.
+        png_path: Output PNG.
+
+    Returns:
+        ``Path`` to the written PNG.
+    """
+    import io as _io
+
+    from ..io.raster import get_crs, load_raster, to_coordinates, to_gmt_grid
+    from ..io.slope_area import load_low_concavity_segments
+    from ..render.base import grid_to_display, save_figure
+    from ..render.channels import render_channels
+    from ..render.decorations import add_scalebar
+    from ..render.hillshade import render_hillshade
+    from ..render.style import MapStyle
+
+    width = MapStyle.MAX_WIDTH
+    gdf = segments if not isinstance(segments, (str, Path)) else load_low_concavity_segments(segments)
+    if gdf.empty:
+        raise ValueError("no low-concavity segments to draw")
+    da = to_coordinates(load_raster(dem_path), coordinates)
+    crs = get_crs(da)
+    _, extent = grid_to_display(to_gmt_grid(da), crs)
+    fig = render_hillshade(str(dem_path), coordinates=coordinates, shade=True,
+                           style=MapStyle(cmap="gray", figure_size=width, transparent=False))
+    has_order = width_by_order and "stream_order" in gdf.columns
+    rows = []
+    for value in (-1, 0, 1):
+        colour, label = _GMT_CLASS[value]
+        part = gdf[gdf["low_concavity"] == value]
+        if part.empty:
+            continue
+        groups = (part.groupby("stream_order") if has_order else [(None, part)])
+        for order, g in groups:
+            w = stream_order_pen_width(order) if order is not None else line_width
+            fig = render_channels(g, coordinates=coordinates,
+                                  style=MapStyle(line_width=f"{w:g}p", line_color=colour,
+                                                 figure_size=width), fig=fig)
+        rows.append(f"S 0.3c - 0.5c - 2p,{colour} 0.9c {label} ({len(part):,} segments)")
+    if has_order:
+        lo, hi = int(gdf["stream_order"].min()), int(gdf["stream_order"].max())
+        rows.append(f"L 8p - L line width: stream order {lo}-{hi}" if hi > lo
+                    else f"L 8p - L stream order {lo}")
+    if title:
+        rows.insert(0, f"L 9p - L {title}")
+    fig.legend(spec=_io.StringIO("\n".join(rows)), position=legend_position,
+               box="+gwhite@20+p0.5p,black")
+    add_scalebar(fig, extent, crs)
+    save_figure(fig, png_path, style=MapStyle(figure_size=width, transparent=False), high_res=high_res)
+    return Path(png_path)
