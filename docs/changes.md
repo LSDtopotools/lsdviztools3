@@ -1,6 +1,6 @@
 # What's new
 
-## Unreleased
+## 0.4.3
 
 **Knickpoints (`lsdviz3-knickpoints`).** See [Knickpoints](chi_analysis.md#knickpoints-lsdviz3-knickpoints).
 
