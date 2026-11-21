@@ -95,6 +95,7 @@ lsdviztools3/
 │   │   ├── grids.py           Derived grids (hillshade prep; deferred, §8).
 │   │   ├── chi.py, swath.py   Chi fit tables, knickpoints, knickzones, steps, tributary selection; swath percentiles.
 │   │   ├── slope_area.py      lsdtt-slope-area binned tables and low-concavity outputs.
+│   │   ├── slope_stability.py lsdtt-slope-stability rasters, SINMAP tables and catalogues.
 │   │   ├── channel_bearings.py, network_geometry.py, snapping.py, coverage.py   Channel networks.
 │   │   ├── lithology.py, erodibility_calibration.py                             Lithology.
 │   │   ├── divide_migration.py, hilltop_coupling.py, ridgeline.py               Divides, hillslopes, ridges.
@@ -118,6 +119,7 @@ lsdviztools3/
 │   │   ├── slope_area.py, gradient_curvature.py, estar_rstar.py, hilltop_coupling.py, ridgeline.py
 │   │   ├── hillslope_profiles.py, hillslope_residuals.py, hillslope_transient_residuals.py
 │   │   ├── cosmo_comparison.py, cosmo_transient.py, cosmo_transient_spatial.py, landslides.py
+│   │   ├── slope_stability.py (SINMAP slope-area, catalogues, depth comparison, and its maps)
 │   │   └── spectral.py, valley_spacing.py, divide_migration.py
 │   ├── download/              DEM acquisition: apikey.py (secure key resolution), ot_scraper.py.
 │   ├── driver/                lsdtt3 process orchestration: config.py (locate the CLIs), lsdtt_driver.py (run_lsdtt).
