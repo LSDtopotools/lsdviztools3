@@ -79,6 +79,24 @@ def _run_dir(tmp_path, *, sinmap=True, catalogues=True, slip=True):
     return d
 
 
+def _frequency_area_tables(d, prefix="ss", what="landslide"):
+    """Tables as lsdtt3 writes them: a power law p(A) = 0.3 (alpha - 1) / A_min (A / A_min)^-alpha above 2,000 m2."""
+    centres = np.logspace(3, 5, 12)
+    alpha, amin, frac = 2.8, 2000.0, 0.3
+    dens = np.where(centres >= amin, frac * (alpha - 1) / amin * (centres / amin) ** (-alpha), 1e-4)
+    rows = []
+    for cat in ("by_daylight", "amalgamated"):
+        for c, p in zip(centres, dens):
+            rows.append({"catalogue": cat, "area_lower_m2": c / 1.2, "area_upper_m2": c * 1.2, "area_centre_m2": c,
+                         "n_landslides": 10, "probability_density_per_m2": p})
+    pd.DataFrame(rows).to_csv(d / f"{prefix}_{what}_frequency_area.csv", index=False)
+    pd.DataFrame({"catalogue": ["by_daylight", "amalgamated"], "n_landslides": [1000, 800],
+                  "method": "mle_discrete_ks_xmin", "area_min_m2": [amin, amin], "eta": [-alpha, -alpha + 0.2],
+                  "eta_standard_error": [0.05, 0.06], "n_tail": [300, 240], "ks_distance": [0.02, 0.03],
+                  "binned_eta": [-2.9, -2.7], "binned_eta_standard_error": [0.1, 0.1],
+                  "n_bins_fitted": [6, 6]}).to_csv(d / f"{prefix}_{what}_frequency_area_fit.csv", index=False)
+
+
 def _dem(tmp_path):
     r, c = np.mgrid[0:NR, 0:NC]
     return _write(tmp_path / "dem.tif", 100.0 + 2.0 * r + np.sin(c / 3.0))
@@ -149,6 +167,29 @@ def test_area_distribution_counts_every_landslide():
     plt.close(fig)
 
 
+def test_frequency_area_line_has_slope_eta_from_a_min(tmp_path):
+    d = tmp_path / "fa"
+    d.mkdir()
+    _frequency_area_tables(d)
+    density, fit = ss_io.load_frequency_area(d / "ss_landslide_frequency_area.csv",
+                                             d / "ss_landslide_frequency_area_fit.csv")
+    fig, ax = ch.plot_frequency_area(density, fit)
+    solid = [l for l in ax.get_lines() if l.get_linestyle() == "-"]
+    dotted = [l for l in ax.get_lines() if l.get_linestyle() == ":"]
+    assert len(ax.collections) == 2 and len(solid) == 2 and len(dotted) == 2
+    for line, eta in zip(solid, fit["eta"]):
+        x, y = line.get_xdata(), line.get_ydata()
+        assert x[0] == pytest.approx(2000.0)
+        slope = (np.log10(y[-1]) - np.log10(y[0])) / (np.log10(x[-1]) - np.log10(x[0]))
+        assert slope == pytest.approx(eta, rel=1e-9)
+    # The by-daylight line goes through the tables' own density at A_min.
+    y0 = solid[0].get_ydata()[0]
+    assert y0 == pytest.approx(0.3 * 1.8 / 2000.0)
+    labels = [t.get_text() for t in ax.get_legend().get_texts()]
+    assert any("-2.80" in t and "0.05" in t and "2,000" in t for t in labels)
+    plt.close(fig)
+
+
 def test_depth_comparison(tmp_path):
     d = _run_dir(tmp_path)
     fig, ax = ch.plot_depth_comparison(ss_io.read_band(d / "ss_rupture_depth.tif"),
@@ -208,6 +249,18 @@ def test_cli_end_to_end(tmp_path, capsys):
         assert str(out / n) in printed
 
 
+def test_cli_frequency_area_replaces_the_histogram(tmp_path):
+    from lsdviztools3.cli import plot_slope_stability
+    d = _run_dir(tmp_path, sinmap=False, slip=False)
+    _frequency_area_tables(d)
+    out = tmp_path / "out"
+    assert plot_slope_stability.main(["--data-dir", str(d), "--prefix", "ss", "--out-dir", str(out),
+                                      "--dpi", "50"]) == 0
+    names = sorted(p.name for p in out.iterdir())
+    assert "ss_landslide_frequency_area.png" in names
+    assert "ss_landslide_area_distribution.png" not in names
+
+
 def test_cli_without_dem_or_slip(tmp_path, capsys):
     from lsdviztools3.cli import plot_slope_stability
     d = _run_dir(tmp_path, sinmap=False, slip=False)
@@ -220,6 +273,7 @@ def test_cli_without_dem_or_slip(tmp_path, capsys):
     printed = capsys.readouterr().out
     assert "no SINMAP slope-area plot" in printed
     assert "no slip bodies catalogue charts" in printed
+    assert "drawing the area histogram instead" in printed
     assert "give --dem" in printed
 
 

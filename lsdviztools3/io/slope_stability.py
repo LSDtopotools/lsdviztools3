@@ -28,6 +28,8 @@ OUTPUTS: Dict[str, str] = {
     "rupture_failure_probability": "_rupture_failure_probability.tif",
     "landslides": "_landslide_catalogue.csv",
     "landslides_amalgamated": "_landslide_catalogue_amalgamated.csv",
+    "landslide_frequency_area": "_landslide_frequency_area.csv",
+    "landslide_frequency_area_fit": "_landslide_frequency_area_fit.csv",
     # Slip surfaces
     "slip_safety_factor": "_slip_safety_factor.tif",
     "slip_evaluated": "_slip_evaluated.tif",
@@ -38,6 +40,8 @@ OUTPUTS: Dict[str, str] = {
     "slip_cover_failure_probability": "_slip_cover_failure_probability.tif",
     "slip_bodies": "_slip_body_catalogue.csv",
     "slip_bodies_amalgamated": "_slip_body_catalogue_amalgamated.csv",
+    "slip_body_frequency_area": "_slip_body_frequency_area.csv",
+    "slip_body_frequency_area_fit": "_slip_body_frequency_area_fit.csv",
     # Groundwater
     "water_table_depth": "_water_table_depth.tif",
 }
@@ -107,3 +111,22 @@ def load_sinmap_class_areas(path) -> pd.DataFrame:
     if missing:
         raise KeyError(f"{Path(path).name}: missing columns {sorted(missing)}")
     return df
+
+
+def load_frequency_area(density_path, fit_path):
+    """The frequency - area density table and its power-law fit table.
+
+    Returns ``(density, fit)``: ``density`` has catalogue, area_lower_m2,
+    area_upper_m2, area_centre_m2, n_landslides, probability_density_per_m2;
+    ``fit`` one row per catalogue with area_min_m2, eta, eta_standard_error,
+    n_tail, n_landslides, binned_eta. The fits are lsdtt3's.
+    """
+    d = pd.read_csv(density_path)
+    f = pd.read_csv(fit_path)
+    need_d = {"catalogue", "area_centre_m2", "n_landslides", "probability_density_per_m2"}
+    need_f = {"catalogue", "n_landslides", "area_min_m2", "eta", "eta_standard_error", "n_tail"}
+    if need_d - set(d.columns):
+        raise KeyError(f"{Path(density_path).name}: missing columns {sorted(need_d - set(d.columns))}")
+    if need_f - set(f.columns):
+        raise KeyError(f"{Path(fit_path).name}: missing columns {sorted(need_f - set(f.columns))}")
+    return d, f

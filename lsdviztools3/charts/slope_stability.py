@@ -220,6 +220,51 @@ def plot_catalogue_area_distribution(catalogues, *, per_decade: int = 8, title: 
     return fig, ax
 
 
+#: Readable names of the catalogues in lsdtt3's frequency - area tables.
+CATALOGUE_LABELS = {"by_daylight": "by daylight point", "by_toe": "by toe", "amalgamated": "amalgamated"}
+
+
+def plot_frequency_area(density, fit, *, title: Optional[str] = None, ax=None):
+    """Frequency - area: the log-binned probability density p(A) with lsdtt3's power-law tail.
+
+    ``density`` and ``fit`` are the tables of
+    :func:`lsdviztools3.io.slope_stability.load_frequency_area`. For each
+    catalogue the binned density is drawn as points, and the fitted tail as a
+    line from A_min: p(A) = (n_tail / n) (alpha - 1) / A_min (A / A_min)^(-alpha),
+    alpha = -eta, the maximum-likelihood fit lsdtt3 wrote (its normalisation over
+    the whole catalogue). The legend gives eta with its standard error and A_min;
+    a dotted line marks A_min.
+    """
+    fig, ax = _catalogue_axes(ax, figsize=(6.2, 5.0))
+    for k, cat in enumerate(fit["catalogue"].tolist()):
+        colour = SERIES_COLOURS[k % len(SERIES_COLOURS)]
+        part = density[(density["catalogue"] == cat) & (density["n_landslides"] > 0)]
+        label = CATALOGUE_LABELS.get(cat, cat)
+        ax.scatter(part["area_centre_m2"], part["probability_density_per_m2"], s=22, color=colour, linewidths=0,
+                   alpha=0.85, label=f"{label} ({int(fit.loc[fit['catalogue'] == cat, 'n_landslides'].iloc[0]):,})")
+        row = fit[fit["catalogue"] == cat].iloc[0]
+        eta, se, amin = float(row["eta"]), float(row["eta_standard_error"]), float(row["area_min_m2"])
+        if not (np.isfinite(eta) and np.isfinite(amin) and amin > 0):
+            continue
+        alpha = -eta
+        frac = float(row["n_tail"]) / float(row["n_landslides"])
+        amax = float(part["area_upper_m2"].max()) if "area_upper_m2" in part else float(part["area_centre_m2"].max())
+        a = np.logspace(np.log10(amin), np.log10(max(amax, amin * 1.01)), 50)
+        p = frac * (alpha - 1.0) / amin * (a / amin) ** (-alpha)
+        ax.plot(a, p, color=colour, lw=1.8,
+                label=f"  \u03b7 = {eta:.2f} \u00b1 {se:.2f}, A \u2265 {amin:,.0f} m\u00b2 ({int(row['n_tail']):,})")
+        ax.axvline(amin, color=colour, lw=0.9, ls=":")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("area A (m²)")
+    ax.set_ylabel("probability density p(A) (m⁻²)")
+    ax.grid(True, which="major", color="#dddddd", lw=0.6)
+    ax.set_axisbelow(True)
+    ax.legend(fontsize=8, loc="lower left")
+    ax.set_title(title or "frequency - area")
+    return fig, ax
+
+
 def plot_catalogue_length_width(catalogues, *, per_decade: int = 10, title: Optional[str] = None,
                                 ax=None):
     """Counts of length / width (logarithmic bins from 1), one step line per catalogue."""

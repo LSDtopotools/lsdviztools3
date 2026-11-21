@@ -7,10 +7,14 @@ Reads the run's rasters and tables (``<prefix>_<suffix>``; see
       plot: cells coloured by stability class, with the class boundaries (one
       figure per region of the boundaries table)
   <out-prefix>_landslide_area_volume.png, _landslide_area_depth.png,
-  _landslide_area_distribution.png, _landslide_length_width.png
-      the rupture-plane catalogues (by daylight point and amalgamated)
+  _landslide_frequency_area.png, _landslide_length_width.png
+      the rupture-plane catalogues (by daylight point and amalgamated); the
+      frequency - area plot draws lsdtt3's binned p(A) and its power-law tail
+      fit (eta, its standard error and A_min in the legend). Without the
+      frequency - area tables (an older lsdtt3) _landslide_area_distribution.png,
+      a histogram, is drawn instead
   <out-prefix>_slip_body_area_volume.png, ..._area_depth.png,
-  ..._area_distribution.png, ..._length_width.png
+  ..._frequency_area.png, ..._length_width.png
       the slip-body catalogues (by toe and amalgamated)
   <out-prefix>_depth_comparison.png  per crown: the slip surface's deepest body
       thickness against the rupture-plane depth
@@ -69,8 +73,8 @@ def main(argv=None) -> int:
     if not data_dir.is_dir():
         raise SystemExit(f"{data_dir} is not a directory.")
 
-    from ..io.slope_stability import (load_catalogue, load_sinmap_class_areas, load_sinmap_curves,
-                                      present, read_band, slope_stability_files)
+    from ..io.slope_stability import (load_catalogue, load_frequency_area, load_sinmap_class_areas,
+                                      load_sinmap_curves, present, read_band, slope_stability_files)
 
     f = present(slope_stability_files(data_dir, args.prefix))
     if not f:
@@ -102,23 +106,33 @@ def main(argv=None) -> int:
              + " (run_sinmap, write_sinmap_rasters and write_sinmap_slope_area_curves_table)")
 
     # Catalogues.
-    def catalogue_charts(keys, labels, out_word, title_word):
+    def catalogue_charts(keys, labels, out_word, title_word, fa_keys):
         cats = [(lab, load_catalogue(f[k])) for k, lab in zip(keys, labels) if k in f]
         cats = [(lab, df) for lab, df in cats if not df.empty]
         if not cats:
             note(f"no {title_word} catalogue charts: no non-empty {'/'.join(keys)} tables")
             return
-        for suffix, fn, word in (("area_volume", ch.plot_catalogue_area_volume, "area - volume"),
-                                 ("area_depth", ch.plot_catalogue_area_depth, "area - mean depth"),
-                                 ("area_distribution", ch.plot_catalogue_area_distribution, "area distribution"),
-                                 ("length_width", ch.plot_catalogue_length_width, "length / width")):
+        charts = [("area_volume", ch.plot_catalogue_area_volume, "area - volume"),
+                  ("area_depth", ch.plot_catalogue_area_depth, "area - mean depth"),
+                  ("length_width", ch.plot_catalogue_length_width, "length / width")]
+        if not all(k in f for k in fa_keys):
+            note(f"no {title_word} frequency - area plot ({args.prefix}_{out_word}_frequency_area*.csv not found, "
+                 "an older lsdtt3); drawing the area histogram instead")
+            charts.append(("area_distribution", ch.plot_catalogue_area_distribution, "area distribution"))
+        for suffix, fn, word in charts:
             fig, _ = fn(cats, title=f"{title_word}: {word}")
             _save(fig, out_dir / f"{stem}_{out_word}_{suffix}.png", args.dpi, written)
+        if all(k in f for k in fa_keys):
+            density, fit = load_frequency_area(f[fa_keys[0]], f[fa_keys[1]])
+            fig, _ = ch.plot_frequency_area(density, fit, title=f"{title_word}: frequency - area")
+            _save(fig, out_dir / f"{stem}_{out_word}_frequency_area.png", args.dpi, written)
 
     catalogue_charts(("landslides", "landslides_amalgamated"), ("by daylight point", "amalgamated"),
-                     "landslide", "rupture-plane landslides")
+                     "landslide", "rupture-plane landslides",
+                     ("landslide_frequency_area", "landslide_frequency_area_fit"))
     catalogue_charts(("slip_bodies", "slip_bodies_amalgamated"), ("by toe", "amalgamated"),
-                     "slip_body", "slip bodies")
+                     "slip_body", "slip bodies",
+                     ("slip_body_frequency_area", "slip_body_frequency_area_fit"))
 
     # Depth comparison.
     if "rupture_depth" in f and "slip_max_depth" in f:

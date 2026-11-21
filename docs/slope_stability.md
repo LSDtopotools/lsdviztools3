@@ -27,7 +27,12 @@ it needs are there, and the command says which ones it skipped and why.
   amalgamated):
   - `<prefix>_landslide_area_volume.png`
   - `<prefix>_landslide_area_depth.png` (mean depth)
-  - `<prefix>_landslide_area_distribution.png` (counts in logarithmic bins)
+  - `<prefix>_landslide_frequency_area.png`: the probability density p(A) in
+    logarithmic bins, with the power-law tail lsdtt3 fitted, p(A) ~ A^η. The
+    line starts at A_min (marked by a dotted line), and the legend gives η,
+    its standard error and the number of landslides in the tail. With output
+    from an older lsdtt3 that has no frequency – area tables, a plain area
+    histogram, `_landslide_area_distribution.png`, is drawn instead.
   - `<prefix>_landslide_length_width.png`
 - The same four for the slip-body catalogues (by toe, and amalgamated), named
   `<prefix>_slip_body_...`.
