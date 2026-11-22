@@ -1,5 +1,15 @@
 # What's new
 
+## Unreleased
+
+- New: `lsdviz3-slope-stability` draws an lsdtt-slope-stability run: SINMAP's
+  slope - specific catchment area plot and class map, the landslide and
+  slip-body catalogues (area-volume, area-depth, area and length/width
+  distributions), rupture against slip-surface depth, and maps of depth,
+  factor of safety and probability of failure. The frequency – area plot
+  draws lsdtt3's power-law tail fit and its exponent η. See
+  [Slope stability](slope_stability.md).
+
 ## 0.4.3
 
 **Knickpoints (`lsdviz3-knickpoints`).** See [Knickpoints](chi_analysis.md#knickpoints-lsdviz3-knickpoints).
