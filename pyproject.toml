@@ -105,6 +105,7 @@ lsdviz3-floodplain = "lsdviztools3.cli.plot_floodplain:main"
 lsdviz3-surface-methods = "lsdviztools3.cli.plot_surface_methods:main"
 lsdviz3-slope-area = "lsdviztools3.cli.plot_slope_area:main"
 lsdviz3-slope-stability = "lsdviztools3.cli.plot_slope_stability:main"
+lsdviz3-landslide-validation = "lsdviztools3.cli.plot_landslide_validation:main"
 
 [tool.hatch.version]
 # The one place the version is written. The release workflow checks the tag

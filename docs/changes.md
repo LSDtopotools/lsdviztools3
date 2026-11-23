@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- New: `lsdviz3-landslide-validation` compares slope-stability outputs with a
+  mapped landslide inventory: ROC and AUC, frequency ratio, precision and recall,
+  results by landslide size, and agreement maps. See
+  [Slope stability](slope_stability.md).
 - New: `lsdviz3-slope-stability` draws potential landslides from a DEM of
   difference: maps of changed pixels and the difference, the error statistics,
   area coverage, frequency - area, and detections against noise alone. See

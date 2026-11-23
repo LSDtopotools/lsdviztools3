@@ -90,3 +90,25 @@ pixi run lsdviz3-slope-stability --data-dir runs/site --prefix site \
 
 The patches are candidates. Vegetation, snow, water, radar penetration and DEM
 artefacts also change elevation between two products.
+
+## Comparing outputs with a landslide inventory
+
+`lsdviz3-landslide-validation` draws tables of scores against a mapped inventory.
+It reads `validation_*.csv` from `--tables-dir` and draws whichever are present.
+
+```bash
+pixi run lsdviz3-landslide-validation --tables-dir tables --out-dir figures --prefix site \
+  --dem pre_event_dem.tif --inventory-raster inventory.tif \
+  --rupture-unstable run_rupture_unstable.tif --hazard-area run_hazard_area.tif \
+  --dem-change-class run_dem_change_class.tif
+```
+
+- `<prefix>_skill.png`: ROC curves, and each predictor's AUC with its interval.
+- `<prefix>_frequency_ratio.png`: landslide probability along each predictor,
+  relative to the study-area average.
+- `<prefix>_detectors.png`: precision, recall and lift, with and without matching
+  the slope distribution.
+- `<prefix>_dem_change_by_size.png`: inventory landslides found and patches matched,
+  by size.
+- `<prefix>_hazard_sweep.png`: hazard-area AUC over its two thresholds.
+- `<prefix>_agreement_map.png`: cells in both, detected only, and mapped only.
