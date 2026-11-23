@@ -7,6 +7,8 @@ Reads tables of scores (``validation_*.csv``) from ``--tables-dir`` and writes:
   <prefix>_detectors.png         precision, recall and lift of each detector
   <prefix>_dem_change_by_size.png  DoD against inventory landslide and patch size
   <prefix>_hazard_sweep.png      hazard-area AUC over its two thresholds
+  <prefix>_hazard_conditional.png  P(L | hazard area) / P(L), after Milledge et al. (2019)
+  <prefix>_frequency_area.png    frequency-area curves and tail exponents per catalogue
 
 With ``--dem`` and ``--inventory-raster`` (1 on landslide cells), and any of
 ``--rupture-unstable``, ``--hazard-area`` and ``--dem-change-class``:
@@ -38,6 +40,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--hazard-threshold", type=float, default=60.0,
                    help="Hazard area (m2/m) drawn as a detection on the map (default 60).")
     p.add_argument("--dem-change-class", default=None, help="<run>_dem_change_class.tif.")
+    p.add_argument("--frequency-area-min", type=float, default=None,
+                   help="Common lower area (m2) of the exponents to compare (default: the largest in the table).")
+    p.add_argument("--frequency-area-curves", nargs="*", default=None,
+                   help="Catalogues to draw on the density panel (default: all).")
     p.add_argument("--dpi", type=int, default=300, help="DPI of the figures (default 300).")
     return p
 
@@ -77,6 +83,12 @@ def main(argv=None) -> int:
         save(ch.plot_dem_change_by_size(t["polygon_recall"], t["patch_precision"])[0], "dem_change_by_size")
     if "sweep" in t:
         save(ch.plot_hazard_sweep(t["sweep"])[0], "hazard_sweep")
+    if "hazard_conditional" in t:
+        save(ch.plot_hazard_conditional(t["hazard_conditional"])[0], "hazard_conditional")
+    if {"frequency_fit", "frequency_density"} <= set(t):
+        save(ch.plot_frequency_area_comparison(t["frequency_fit"], t["frequency_density"],
+                                               area_min_m2=args.frequency_area_min,
+                                               curves=args.frequency_area_curves)[0], "frequency_area")
 
     if args.dem and args.inventory_raster:
         from ..io.slope_stability import read_band

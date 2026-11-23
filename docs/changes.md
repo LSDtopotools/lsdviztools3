@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- New: `lsdviz3-landslide-validation` draws normalised conditional probability against
+  hazard area (after Milledge et al. 2019) and compares frequency-area exponents between
+  catalogues above a common area.
 - New: `lsdviz3-landslide-validation` compares slope-stability outputs with a
   mapped landslide inventory: ROC and AUC, frequency ratio, precision and recall,
   results by landslide size, and agreement maps. See

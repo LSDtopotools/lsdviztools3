@@ -111,4 +111,9 @@ pixi run lsdviz3-landslide-validation --tables-dir tables --out-dir figures --pr
 - `<prefix>_dem_change_by_size.png`: inventory landslides found and patches matched,
   by size.
 - `<prefix>_hazard_sweep.png`: hazard-area AUC over its two thresholds.
+- `<prefix>_hazard_conditional.png`: P(L | hazard area) / P(L) after Milledge et al.
+  (2019), with a separate point for zero hazard area and the share of area per bin.
+- `<prefix>_frequency_area.png`: frequency-area curves and each catalogue's tail
+  exponent above one common area (`--frequency-area-min`). `--frequency-area-curves`
+  chooses the catalogues on the density panel.
 - `<prefix>_agreement_map.png`: cells in both, detected only, and mapped only.

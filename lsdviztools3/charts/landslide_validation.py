@@ -34,6 +34,10 @@ BINARY_COLUMNS = ("detector", "precision", "recall", "lift", "slope_matched_lift
 POLYGON_COLUMNS = ("area_low_m2", "area_high_m2", "n_polygons", "any_cell_detected", "half_detected")
 PATCH_COLUMNS = ("change", "area_low_m2", "area_high_m2", "n_patches", "majority_inside")
 SWEEP_COLUMNS = ("initiation_slope", "stopping_slope", "auc")
+CONDITIONAL_COLUMNS = ("is_zero", "ah_low", "ah_high", "ah_centre", "n_cells", "fraction_of_domain", "ratio",
+                       "ip_low", "ip_high", "significant")
+FREQUENCY_FIT_COLUMNS = ("catalogue", "n_patches", "area_min_m2", "eta", "eta_low", "eta_high", "n_tail")
+FREQUENCY_DENSITY_COLUMNS = ("catalogue", "area_centre_m2", "probability_density_per_m2", "n_landslides")
 
 TABLES: Dict[str, Tuple[str, Sequence[str]]] = {
     "auc": ("validation_auc.csv", AUC_COLUMNS),
@@ -43,6 +47,9 @@ TABLES: Dict[str, Tuple[str, Sequence[str]]] = {
     "polygon_recall": ("validation_dod_polygon_recall.csv", POLYGON_COLUMNS),
     "patch_precision": ("validation_dod_patch_precision.csv", PATCH_COLUMNS),
     "sweep": ("validation_hazard_sweep.csv", SWEEP_COLUMNS),
+    "hazard_conditional": ("validation_hazard_conditional.csv", CONDITIONAL_COLUMNS),
+    "frequency_fit": ("validation_frequency_area.csv", FREQUENCY_FIT_COLUMNS),
+    "frequency_density": ("validation_frequency_area_density.csv", FREQUENCY_DENSITY_COLUMNS),
 }
 
 
@@ -159,6 +166,118 @@ def plot_frequency_ratio(table: pd.DataFrame, *, title: Optional[str] = None):
     if title:
         fig.suptitle(title)
     return fig, axes
+
+
+def plot_hazard_conditional(table: pd.DataFrame, *, reference_area: Optional[float] = 60.0,
+                            title: Optional[str] = None):
+    """Normalised conditional probability against hazard area, after Milledge et al. (2019, Fig. 6).
+
+    The upper panel is P(L | Ah) / P(L) on a log axis, with a separate point for
+    Ah = 0 and an asterisk where the value lies outside the interval of their
+    Eq. 5. The lower panel is the share of the study area in each bin.
+    """
+    plt = _import_mpl()
+    zero = table[table.is_zero.astype(bool)]
+    bins = table[~table.is_zero.astype(bool)].sort_values("ah_centre")
+    if bins.empty:
+        raise ValueError("the conditional-probability table has no bins with hazard area above zero")
+    # The lowest bin can start at a vanishingly small area: draw it one decade wide.
+    low = bins.ah_low.to_numpy(float, copy=True)
+    high = bins.ah_high.to_numpy(float)
+    low[0] = max(low[0], high[0] / 10.0)
+    x = np.clip(bins.ah_centre.to_numpy(float), low, high)
+    x_zero = low[0] / 4.0
+    fig, (ax, hist) = plt.subplots(2, 1, figsize=(7.2, 5.6), sharex=True, height_ratios=(3.2, 1), constrained_layout=True)
+    colour = METHOD_COLOURS["hazard"]
+    ax.fill_between(x, bins.ip_low, bins.ip_high, color="#d9d9d9", lw=0, label="Interval for random landslide cells (Eq. 5)")
+    ax.axhline(1.0, color=INK, lw=0.8)
+    ax.plot(x, bins.ratio, "-o", color=colour, lw=2, ms=5, markeredgecolor="white", markeredgewidth=0.6,
+            label="Hazard area > 0")
+    flagged = bins.significant.astype(bool).to_numpy()
+    ax.plot(x[flagged], bins.ratio.to_numpy(float)[flagged] * 1.13, ls="none", marker="*", ms=5, color=INK,
+            label="Outside the interval")
+    if not zero.empty:
+        row = zero.iloc[0]
+        ax.errorbar([x_zero], [row.ratio], yerr=[[max(row.ratio - row.ratio * row.ip_low, 0)],
+                                                 [row.ratio * row.ip_high - row.ratio]],
+                    fmt="s", ms=7, color=colour, markeredgecolor="white", label="Hazard area = 0")
+        if bool(row.significant):
+            ax.plot([x_zero], [row.ratio * 1.18], marker="*", ms=5, color=INK, ls="none")
+    if reference_area is not None:
+        for a in (ax, hist):
+            a.axvline(reference_area, color=INK, lw=0.8, ls=":")
+        ax.text(reference_area * 1.08, 0.03, f"{reference_area:g} m²/m", transform=ax.get_xaxis_transform(), va="bottom",
+                fontsize=8, color=INK)
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_ylabel("P(L | hazard area) / P(L)")
+    ax.legend(frameon=False, fontsize=8, loc="upper left")
+    _tidy(ax)
+    edges_low, edges_high = low, high
+    hist.bar(edges_low, bins.fraction_of_domain, width=edges_high - edges_low, align="edge", color="#b2182b",
+             edgecolor="white", lw=0.5)
+    if not zero.empty:
+        hist.bar([x_zero], zero.fraction_of_domain, width=x_zero * 0.7, color="#b2182b", edgecolor="white", lw=0.5)
+    hist.set(xlabel="Hazard area (m²/m)", ylabel="Share of area")
+    _tidy(hist)
+    if not zero.empty:
+        ticks = [x_zero] + [t for t in (0.1, 1, 10, 100, 1000, 10000) if x_zero < t <= edges_high[-1]]
+        hist.set_xticks(ticks)
+        hist.set_xticklabels(["0"] + [f"{t:g}" for t in ticks[1:]])
+        hist.minorticks_off()
+    hist.set_xlim(x_zero * 0.5, edges_high[-1] * 1.2)
+    if title:
+        fig.suptitle(title)
+    return fig, (ax, hist)
+
+
+def plot_frequency_area_comparison(fits: pd.DataFrame, density: pd.DataFrame, *, area_min_m2: Optional[float] = None,
+                                   curves: Optional[Sequence[str]] = None, title: Optional[str] = None):
+    """Frequency-area density of each catalogue, and its tail exponent above one common area.
+
+    ``curves`` names the catalogues drawn on the density panel (default: all).
+    """
+    plt = _import_mpl()
+    if area_min_m2 is None:
+        area_min_m2 = float(fits.area_min_m2.max())
+    part = fits[np.isclose(fits.area_min_m2, area_min_m2)].reset_index(drop=True)
+    if part.empty:
+        raise ValueError(f"no fits at area_min_m2 = {area_min_m2:g}")
+    names = list(part.catalogue) if curves is None else list(curves)
+    unknown = [n for n in names if n not in set(part.catalogue)]
+    if unknown:
+        raise ValueError(f"catalogues not in the table: {unknown}")
+    fig, (left, right) = plt.subplots(1, 2, figsize=(12.4, max(4.6, 0.32 * len(part) + 1.6)), constrained_layout=True,
+                                      width_ratios=(1, 1.05))
+    styles = ("-", "--", ":", "-.")
+    used: Dict[str, int] = {}
+    for name in names:
+        method = method_of(name)
+        d = density[(density.catalogue == name) & (density.n_landslides > 0)].sort_values("area_centre_m2")
+        if d.empty:
+            continue
+        k = used.get(method, 0)
+        used[method] = k + 1
+        left.plot(d.area_centre_m2, d.probability_density_per_m2, styles[k % len(styles)], lw=1.8,
+                  color=METHOD_COLOURS[method], label=name)
+    left.axvline(area_min_m2, color=INK, lw=0.8, ls=":")
+    left.set(xscale="log", yscale="log", xlabel="Patch area (m²)", ylabel="Probability density (per m²)")
+    left.legend(frameon=False, fontsize=7)
+    _tidy(left)
+    y = np.arange(len(part))[::-1]
+    for yy, row in zip(y, part.itertuples()):
+        colour = METHOD_COLOURS[method_of(row.catalogue)]
+        right.plot([row.eta_low, row.eta_high], [yy, yy], color=colour, lw=2)
+        right.plot([row.eta], [yy], "o", ms=6, color=colour, markeredgecolor="white")
+        right.text(1.01, yy, f"n = {int(row.n_tail)}", transform=right.get_yaxis_transform(), va="center", fontsize=7,
+                   color=INK)
+    right.set_yticks(y)
+    right.set_yticklabels(part.catalogue, fontsize=8)
+    right.set_xlabel(f"Exponent η of p(A) ~ A^η for A ≥ {area_min_m2 / 1e4:g} ha (95% bootstrap)")
+    _tidy(right)
+    if title:
+        fig.suptitle(title)
+    return fig, (left, right)
 
 
 def plot_detector_scores(binary: pd.DataFrame, *, base_rate: Optional[float] = None, title: Optional[str] = None):
