@@ -224,7 +224,7 @@ def plot_catalogue_area_distribution(catalogues, *, per_decade: int = 8, title: 
 CATALOGUE_LABELS = {"by_daylight": "by daylight point", "by_toe": "by toe", "amalgamated": "amalgamated"}
 
 
-def plot_frequency_area(density, fit, *, title: Optional[str] = None, ax=None):
+def plot_frequency_area(density, fit, *, title: Optional[str] = None, ax=None, colours=None):
     """Frequency - area: the log-binned probability density p(A) with lsdtt3's power-law tail.
 
     ``density`` and ``fit`` are the tables of
@@ -233,11 +233,11 @@ def plot_frequency_area(density, fit, *, title: Optional[str] = None, ax=None):
     line from A_min: p(A) = (n_tail / n) (alpha - 1) / A_min (A / A_min)^(-alpha),
     alpha = -eta, the maximum-likelihood fit lsdtt3 wrote (its normalisation over
     the whole catalogue). The legend gives eta with its standard error and A_min;
-    a dotted line marks A_min.
+    a dotted line marks A_min. ``colours`` optionally maps a catalogue to a colour.
     """
     fig, ax = _catalogue_axes(ax, figsize=(6.2, 5.0))
     for k, cat in enumerate(fit["catalogue"].tolist()):
-        colour = SERIES_COLOURS[k % len(SERIES_COLOURS)]
+        colour = (colours or {}).get(cat, SERIES_COLOURS[k % len(SERIES_COLOURS)])
         part = density[(density["catalogue"] == cat) & (density["n_landslides"] > 0)]
         label = CATALOGUE_LABELS.get(cat, cat)
         ax.scatter(part["area_centre_m2"], part["probability_density_per_m2"], s=22, color=colour, linewidths=0,

@@ -24,6 +24,16 @@ Reads the run's rasters and tables (``<prefix>_<suffix>``; see
   screened-out crowns grey), _slip_failure_probability_map.png,
   _slip_body_depth_map.png, _slip_cover_safety_factor_map.png,
   _slip_cover_failure_probability_map.png, _water_table_depth_map.png
+  from a DEM of difference (run_dem_change_landslides):
+  <out-prefix>_dem_change_uncertainty.png  error of the difference: its
+      distribution, NMAD against slope, and the spatial variogram
+  <out-prefix>_dem_change_coverage.png  area in the study domain, and how it
+      depends on the detection threshold
+  <out-prefix>_dem_change_frequency_area.png  p(A) with the power-law tails
+  <out-prefix>_dem_change_false_detection.png  patches found against those from
+      noise alone, by size
+  with --dem (the newer DEM): <out-prefix>_dem_change_map.png, the changed
+  pixels, and _dem_difference_map.png, the bias-corrected difference
 
 Everything drawn is read from the files; nothing is recomputed.
 """
@@ -40,8 +50,9 @@ def build_parser() -> argparse.ArgumentParser:
         prog="lsdviz3-slope-stability",
         description="Plots of an lsdtt-slope-stability run: SINMAP's slope-area plot and class map, "
                     "the landslide and slip-body catalogues (area-volume, area-depth, area and "
-                    "length/width distributions), rupture against slip-surface depth, and maps of "
-                    "depth, factor of safety and probability of failure.")
+                    "length/width distributions), rupture against slip-surface depth, maps of "
+                    "depth, factor of safety and probability of failure, and potential landslides "
+                    "from a DEM of difference with their uncertainty.")
     p.add_argument("--data-dir", required=True, help="Directory holding the lsdtt-slope-stability outputs.")
     p.add_argument("--prefix", required=True, help="The run's write_fname.")
     p.add_argument("--out-dir", required=True, help="Directory for the outputs.")
@@ -53,6 +64,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-points", type=int, default=200_000,
                    help="At most this many cells in the SINMAP and depth scatter plots (every k-th "
                         "cell; default 200000).")
+    p.add_argument("--dem-difference-range", type=float, default=None, metavar="METRES",
+                   help="Colour range of the DEM of difference map, +/- this (default 5 x NMAD).")
     p.add_argument("--coordinates", default="local", help="Map coordinates: local/projected or geographic.")
     p.add_argument("--dpi", type=int, default=300, help="DPI of the charts (default 300).")
     return p
@@ -143,6 +156,10 @@ def main(argv=None) -> int:
         except ValueError as e:
             note(f"no depth comparison: {e}")
 
+    # DEM of difference.
+    from ..charts import dem_change as dc
+    written += dc.write_dem_change_charts(f, out_dir, stem, dpi=args.dpi, note=note)
+
     # Maps.
     if not args.dem:
         note("no maps: give --dem for the hillshade")
@@ -182,6 +199,9 @@ def main(argv=None) -> int:
                                                vmin=vmin, vmax=vmax, title=title, overlay_mask=mask,
                                                overlay_label="screened out, not evaluated",
                                                coordinates=args.coordinates))
+    if args.dem:
+        written += dc.write_dem_change_maps(f, args.dem, out_dir, stem, coordinates=args.coordinates,
+                                            value_range=args.dem_difference_range)
     for w in written:
         print(w)
     return 0

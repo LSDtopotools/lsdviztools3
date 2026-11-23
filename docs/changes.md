@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- New: `lsdviz3-slope-stability` draws potential landslides from a DEM of
+  difference: maps of changed pixels and the difference, the error statistics,
+  area coverage, frequency - area, and detections against noise alone. See
+  [Slope stability](slope_stability.md).
 - New: `lsdviz3-slope-stability` draws an lsdtt-slope-stability run: SINMAP's
   slope - specific catchment area plot and class map, the landslide and
   slip-body catalogues (area-volume, area-depth, area and length/width

@@ -64,3 +64,29 @@ it needs are there, and the command says which ones it skipped and why.
 
 The catalogues are statistics of *potential* landslides, not maps of
 individual ones.
+
+## Potential landslides from a DEM of difference
+
+The same command draws the outputs of `run_dem_change_landslides`. Give the newer
+DEM as `--dem`.
+
+```bash
+pixi run lsdviz3-slope-stability --data-dir runs/site --prefix site \
+  --dem runs/site/newer_dem.tif --out-dir figures
+```
+
+- `<prefix>_dem_change_map.png`: the changed pixels on a hillshade of the newer DEM.
+- `<prefix>_dem_difference_map.png`: the bias-corrected difference. Its colour range
+  is five times the NMAD, or `--dem-difference-range`.
+- `<prefix>_dem_change_uncertainty.png`: the distribution of the difference, the
+  error against slope, and the spatial variogram.
+- `<prefix>_dem_change_coverage.png`: the share of the study domain in loss and gain,
+  the area expected from noise alone, and the sensitivity to the threshold.
+- `<prefix>_dem_change_frequency_area.png`: p(A) with the power-law tails. Sizes where
+  noise gives more than 10 % of the patches are shaded, and a fit that starts inside
+  the shading is not reliable.
+- `<prefix>_dem_change_false_detection.png`: patches found against those from noise
+  alone, by size.
+
+The patches are candidates. Vegetation, snow, water, radar penetration and DEM
+artefacts also change elevation between two products.

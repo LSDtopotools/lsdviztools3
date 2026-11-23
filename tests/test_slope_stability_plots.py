@@ -283,3 +283,72 @@ def test_cli_no_outputs(tmp_path):
     with pytest.raises(SystemExit):
         plot_slope_stability.main(["--data-dir", str(tmp_path / "empty"), "--prefix", "ss",
                                    "--out-dir", str(tmp_path / "o")])
+
+
+# ------------------------------------------------------- DEM of difference
+def _dem_change_run(tmp_path):
+    d = tmp_path / "change"
+    d.mkdir()
+    r, c = np.mgrid[0:NR, 0:NC]
+    _write(d / "dc_dem_change_corrected.tif", np.sin(r / 3.0) * 2.0)
+    cls = np.zeros((NR, NC))
+    cls[5:10, 5:12] = -1.0
+    cls[18:24, 20:30] = 1.0
+    _write(d / "dc_dem_change_class.tif", cls)
+    pd.DataFrame({"quantity": ["used_stable_mask", "n_stable_cells", "bias_metres", "nmad_metres", "rmse_metres",
+                               "nugget_fraction", "correlation_range_metres"],
+                  "value": [1, 1000, 0.2, 1.5, 1.8, 0.2, 150.0]}).to_csv(d / "dc_dem_change_uncertainty.csv", index=False)
+    pd.DataFrame({"slope_median": [0.2, 0.4, 0.6], "nmad_metres": [1.0, 1.5, 2.2]}).to_csv(
+        d / "dc_dem_change_uncertainty_by_slope.csv", index=False)
+    pd.DataFrame({"lag_metres": [10.0, 50.0, 200.0, 800.0], "semivariance": [0.3, 0.6, 1.0, 1.0],
+                  "fitted_semivariance": [0.32, 0.6, 1.0, 1.0]}).to_csv(d / "dc_dem_change_variogram.csv", index=False)
+    pd.DataFrame({"change": ["loss", "gain"], "n_patches": [10, 20], "area_m2": [4000.0, 6000.0],
+                  "area_uncertainty_m2": [100.0, 150.0], "fraction_of_assessed_area": [0.04, 0.06],
+                  "volume_m3": [-1e4, 1e4], "volume_sigma_m3": [100.0, 100.0],
+                  "assessed_area_m2": [1e5, 1e5]}).to_csv(d / "dc_dem_change_coverage.csv", index=False)
+    pd.DataFrame({"detection_sigma": [1.5, 1.96, 3.0], "fraction_of_assessed_area": [0.2, 0.1, 0.03]}).to_csv(
+        d / "dc_dem_change_sensitivity.csv", index=False)
+    pd.DataFrame({"quantity": ["mean_false_area_m2", "area_false_discovery_ratio"], "value": [2500.0, 0.25]}).to_csv(
+        d / "dc_dem_change_false_detection.csv", index=False)
+    pd.DataFrame({"area_lower_m2": [100.0, 1000.0, 10000.0], "area_upper_m2": [1000.0, 10000.0, 100000.0],
+                  "n_observed": [20, 8, 2], "mean_n_simulated": [10.0, 0.4, 0.0],
+                  "false_discovery_ratio": [0.5, 0.05, 0.0]}).to_csv(d / "dc_dem_change_false_detection_by_area.csv",
+                                                                       index=False)
+    pd.DataFrame({"catalogue": ["loss"] * 3, "area_lower_m2": [100.0, 1000.0, 10000.0],
+                  "area_upper_m2": [1000.0, 10000.0, 100000.0], "area_centre_m2": [300.0, 3000.0, 30000.0],
+                  "n_landslides": [20, 8, 2], "probability_density_per_m2": [1e-3, 1e-4, 1e-5]}).to_csv(
+        d / "dc_dem_change_frequency_area.csv", index=False)
+    pd.DataFrame({"catalogue": ["loss"], "n_landslides": [30], "area_min_m2": [1000.0], "eta": [-2.0],
+                  "eta_standard_error": [0.1], "n_tail": [10]}).to_csv(d / "dc_dem_change_frequency_area_fit.csv",
+                                                                         index=False)
+    return d
+
+
+def test_dem_change_charts_are_written(tmp_path):
+    from lsdviztools3.charts import dem_change as dc
+    d = _dem_change_run(tmp_path)
+    out = tmp_path / "figures"
+    out.mkdir()
+    written = dc.write_dem_change_charts(ss_io.present(ss_io.slope_stability_files(d, "dc")), out, "dc", dpi=60)
+    assert sorted(p.name for p in written) == ["dc_dem_change_coverage.png", "dc_dem_change_false_detection.png",
+                                               "dc_dem_change_frequency_area.png", "dc_dem_change_uncertainty.png"]
+    assert all(p.stat().st_size > 0 for p in written)
+
+
+def test_noise_limited_area_reads_the_largest_noisy_class():
+    from lsdviztools3.charts.dem_change import noise_limited_area
+    table = pd.DataFrame({"area_upper_m2": [10.0, 20.0, 40.0], "n_observed": [5, 5, 5],
+                          "false_discovery_ratio": [0.5, 0.2, 0.05]})
+    assert noise_limited_area(table) == 20.0
+    assert np.isnan(noise_limited_area(table.assign(false_discovery_ratio=0.01)))
+
+
+def test_coverage_compares_noise_with_the_total():
+    from lsdviztools3.charts import dem_change as dc
+    coverage = pd.DataFrame({"change": ["loss", "gain"], "n_patches": [1, 2], "area_m2": [10.0, 30.0],
+                             "area_uncertainty_m2": [1.0, 1.0], "fraction_of_assessed_area": [0.1, 0.3],
+                             "assessed_area_m2": [100.0, 100.0]})
+    sensitivity = pd.DataFrame({"detection_sigma": [2.0, 3.0], "fraction_of_assessed_area": [0.4, 0.2]})
+    fig, axes = dc.plot_dem_change_coverage(coverage, sensitivity, {"mean_false_area_m2": 5.0})
+    assert [t.get_text() for t in axes[0].get_xticklabels()] == ["loss", "gain", "loss + gain"]
+    plt.close(fig)
