@@ -44,6 +44,22 @@ OUTPUTS: Dict[str, str] = {
     "slip_body_frequency_area_fit": "_slip_body_frequency_area_fit.csv",
     # Groundwater
     "water_table_depth": "_water_table_depth.tif",
+    # Potential landslides from a DEM of difference
+    "dem_change_class": "_dem_change_class.tif",
+    "dem_change_corrected": "_dem_change_corrected.tif",
+    "dem_change_sigma": "_dem_change_sigma.tif",
+    "dem_change_z": "_dem_change_z.tif",
+    "dem_change_label": "_dem_change_label.tif",
+    "dem_change_uncertainty": "_dem_change_uncertainty.csv",
+    "dem_change_uncertainty_by_slope": "_dem_change_uncertainty_by_slope.csv",
+    "dem_change_variogram": "_dem_change_variogram.csv",
+    "dem_change_patches": "_dem_change_patches.csv",
+    "dem_change_coverage": "_dem_change_coverage.csv",
+    "dem_change_sensitivity": "_dem_change_sensitivity.csv",
+    "dem_change_false_detection": "_dem_change_false_detection.csv",
+    "dem_change_false_detection_by_area": "_dem_change_false_detection_by_area.csv",
+    "dem_change_frequency_area": "_dem_change_frequency_area.csv",
+    "dem_change_frequency_area_fit": "_dem_change_frequency_area_fit.csv",
 }
 
 #: Columns a landslide or slip-body catalogue must have to be plotted.
@@ -130,3 +146,21 @@ def load_frequency_area(density_path, fit_path):
     if need_f - set(f.columns):
         raise KeyError(f"{Path(fit_path).name}: missing columns {sorted(need_f - set(f.columns))}")
     return d, f
+
+
+def load_quantity_table(path) -> Dict[str, float]:
+    """A two-column ``quantity,value`` table as a dict; an empty value is NaN."""
+    df = pd.read_csv(path)
+    missing = {"quantity", "value"} - set(df.columns)
+    if missing:
+        raise KeyError(f"{Path(path).name}: missing columns {sorted(missing)}")
+    return {str(k): float(v) for k, v in zip(df["quantity"], pd.to_numeric(df["value"], errors="coerce"))}
+
+
+def load_table(path, columns) -> pd.DataFrame:
+    """A CSV table, checked for the columns that are plotted."""
+    df = pd.read_csv(path)
+    missing = set(columns) - set(df.columns)
+    if missing:
+        raise KeyError(f"{Path(path).name}: missing columns {sorted(missing)}")
+    return df
